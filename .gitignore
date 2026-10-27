@@ -1,0 +1,23 @@
+# Upstream Dormio/openSleep sources, cloned for reference only (see docs/references/)
+/reference_repos/
+
+# Gradle / Android
+.gradle/
+.kotlin/
+build/
+/local.properties
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Samsung Health Sensor SDK: proprietary AAR, downloaded per developer (see wear/libs/README.md)
+/wear/libs/*.aar
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

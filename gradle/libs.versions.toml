@@ -1,0 +1,40 @@
+# Toolchain versions are the stack already proven on this machine (AGP 9.4.0 + Gradle 9.6.1 + Kotlin 2.4.10,
+# resolved against live Maven metadata on 2026-09-01). AGP 9 compiles Kotlin itself for Android modules.
+
+[versions]
+agp = "9.4.0"
+kotlin = "2.4.10"
+compileSdk = "37"
+targetSdk = "36"
+wearMinSdk = "30"
+mobileMinSdk = "33"
+buildTools = "36.0.0"
+
+coroutines = "1.11.0"
+serializationJson = "1.11.0"
+composeBom = "2026.08.00"
+androidxCore = "1.19.0"
+androidxActivity = "1.13.0"
+androidxLifecycle = "2.11.0"
+junit = "4.13.2"
+
+[libraries]
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
+
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+
+androidx-core = { group = "androidx.core", name = "core", version.ref = "androidxCore" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "androidxActivity" }
+androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
+androidx-lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "androidxLifecycle" }
+
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

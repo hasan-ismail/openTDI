@@ -1,0 +1,42 @@
+OpenTDI — Open Targeted Dream Incubation for Galaxy Watch and Android
+Copyright (C) 2026 Hasan Ismail
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, version 3 (see LICENSE).
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+Public License for more details.
+
+
+Additional permission under GNU GPL version 3 section 7
+-------------------------------------------------------
+
+If you modify this Program, or any covered work, by linking or combining it with the Samsung Health
+Sensor SDK (or a modified version of that library), containing parts covered by the terms of the
+Samsung Health Partner Service & SDK License Agreement, the licensors of this Program grant you
+additional permission to convey the resulting work. Corresponding Source for a non-source form of
+such a combination shall not include the source code for the parts of the Samsung Health Sensor SDK
+used, and the Samsung Health Sensor SDK is not made subject to the terms of this License.
+
+
+Third-party component not covered by this License
+-------------------------------------------------
+
+The Samsung Health Sensor SDK (samsung-health-sensor-api-*.aar) is proprietary to Samsung Electronics
+and is NOT part of this repository. Each developer downloads it from Samsung under Samsung's own license
+(see wear/libs/README.md). That license, not the GPL, governs the SDK — including its restrictions on
+
+demonstrated. This project is therefore published as source code only.
+
+The :samsung-health-stub module is original OpenTDI code that mirrors the SDK's public API (as
+documented in Samsung's public API reference) so the project compiles without the SDK; it contains
+no Samsung code.
+
+
+Not a medical device
+--------------------
+
+OpenTDI is wellness and research software. It is not a medical device and is not intended to
+diagnose, treat, cure, mitigate or prevent any disease or condition. Data from the Samsung Health
+Sensor SDK is for fitness and wellness information only.
