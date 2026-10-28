@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -94,7 +95,10 @@ private val Type = Typography().let { base ->
 
 /** Night-first theme; the rest of the UI uses its tokens, never raw colors. */
 @Composable
-fun OpenTdiTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = Colors, typography = Type, content = content)
+fun OpenTdiTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = Colors, typography = Type) {
+    // Text outside a Surface, or on the see-through cards (contentColorFor matches no token), otherwise falls back to black.
+    CompositionLocalProvider(LocalContentColor provides Colors.onSurface, content = content)
+}
 
 val TABS = listOf("Tonight", "Watch", "Stats", "Sessions", "Settings")
 
