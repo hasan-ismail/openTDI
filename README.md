@@ -49,23 +49,13 @@ The phone shows these live.
 
 ## Download
 
-No release is published yet: the licences of two bundled components are being sorted out first. Until then, build
-OpenTDI from source ([docs/SETUP.md](docs/SETUP.md)). Once a release is out:
-
-1. On the [Releases](../../releases) page, download `OpenTDI-phone.apk`. (`OpenTDI-watch.apk` is the watch app the
-   phone app already carries; you only need it to install the watch app yourself with `adb`.)
-2. To check the download on a computer, put the release's `SHA256SUMS` next to it and run
-   `sha256sum -c --ignore-missing SHA256SUMS`; it should print `OpenTDI-phone.apk: OK`.
-3. Open `OpenTDI-phone.apk` on the phone to install it. Android asks you to allow installs from your browser or files
-   app.
-4. Install the watch app from the phone: the phone app's set-up guide puts OpenTDI on the watch over Wi-Fi.
-
-Released apps are signed with OpenTDI's release key, so they cannot replace a copy you built yourself: uninstall that
-copy first, which deletes its data on that device.
+OpenTDI is published as **source code only**: there are no ready-made app files to download. The apps combine
+third-party GPL code (the espeak-ng speech engine inside sherpa-onnx, and spake2-java) with Google Play services, and
+the GPL does not allow distributing that combination as one app. Building it for your own devices is fine: follow
+[docs/SETUP.md](docs/SETUP.md).
 
 **Builds:** GitHub Actions tests and builds every push to `main` and every pull request
-([ci.yml](.github/workflows/ci.yml)). Each version tag builds the signed apps for the Releases page
-([release.yml](.github/workflows/release.yml)). Both check that no Samsung code is inside the apps.
+([ci.yml](.github/workflows/ci.yml)) and checks that no Samsung code is inside the apps. It publishes no app files.
 
 ## What works today
 

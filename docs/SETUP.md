@@ -221,36 +221,16 @@ Then, in the cue sound settings, turn on **Natural voice**, choose a voice and t
 missing, does not load or fails while rendering, the app says so and prepares the cues with the phone's own voice. The
 build fetches the sherpa-onnx AAR (`mobile/libs/`, gitignored, pinned SHA-256) by itself.
 
-## 12. Making a release (maintainers)
+## 12. Builds and releases (maintainers)
 
 GitHub Actions runs the unit tests, both debug builds and lint on every push to `main` and every pull request
-(`.github/workflows/ci.yml`; the debug APKs stay downloadable from the run for 7 days). Pushing a tag `v<versionName>`
-runs `.github/workflows/release.yml`: it builds both release APKs signed with one release key, checks with
-`tools/release/dexcheck.py` that neither APK (nor the phone's `assets/watch.apk`) contains Samsung code, and publishes
-`OpenTDI-phone.apk`, `OpenTDI-watch.apk` and `SHA256SUMS` as a GitHub Release whose notes are the tag's message. Both
-workflows build without Samsung's SDK (`-Popentdi.forceSamsungStub=true`).
+(`.github/workflows/ci.yml`), without Samsung's SDK (`-Popentdi.forceSamsungStub=true`), and checks with
+`tools/release/dexcheck.py` that neither APK (nor the phone's `assets/watch.apk`) contains Samsung code.
 
-1. Create the release key once. With the default PKCS12 keystore the key password is the keystore password:
-   ```bash
-   keytool -genkeypair -v -keystore opentdi-release.jks -alias opentdi -keyalg RSA -keysize 4096 -validity 10000
-   ```
-   Keep `opentdi-release.jks` and its password private and backed up, outside the repository. Released apps can only
-   be updated by apps signed with the same key: without it, users must uninstall (losing their data) to update.
-2. Store it as four repository secrets. `gh secret set` reads a value from stdin or asks for it:
-   ```bash
-   base64 -w0 opentdi-release.jks | gh secret set OPENTDI_KEYSTORE_BASE64    # macOS: base64 -i opentdi-release.jks
-   gh secret set OPENTDI_KEYSTORE_PASSWORD
-   gh secret set OPENTDI_KEY_ALIAS                                           # opentdi
-   gh secret set OPENTDI_KEY_PASSWORD                                        # the same as the keystore password
-   ```
-3. Raise `versionCode` by one and set `versionName` in both `mobile/build.gradle.kts` and `wear/build.gradle.kts`,
-   then merge to `main` and wait for CI to pass.
-4. Tag that commit with the release notes as the message, and push the tag. The release workflow stops if the tag is
-   not `v` followed by the `versionName`:
-   ```bash
-   git tag -a v0.3.0 -m "OpenTDI 0.3.0" -m "What changed, in a few lines."
-   git push origin v0.3.0
-   ```
+OpenTDI publishes **source only** (owner's decision, 2026-10-28): no APKs, no GitHub Releases, no CI artifacts. The
+apps combine third-party GPL code (espeak-ng inside sherpa-onnx, spake2-java) with Google Play services, which the GPL
+does not allow distributing as one app. Publishing app files would first need those two components replaced or left
+out of a public build.
 
 To sign a release build locally, set the same values as environment variables or Gradle properties, with
 `OPENTDI_KEYSTORE_FILE` the path to the keystore (a relative path starts at the repository root):
