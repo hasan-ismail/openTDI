@@ -44,9 +44,14 @@ sealed interface TimedEvent {
  * The sensor-free TIMED_CUES driver of §4.1–4.3, Phase 1 variant, for a config that passes validate(). Pure and not
  * thread-safe. `elapsedMs` is the phone's elapsed-realtime since session start. Every timer counts from when the
  * previous step actually ended; time spent PAUSED does not count (sessionMaxMin included); a cycle cut by a pause is
- * dropped.
+ * dropped. With a [gate] a loop also waits until the sleeper is still (StillnessGate), movement cuts the dwell, and a
+ * watch that stops streaming falls back to the timer alone when autoFallbackToTimed is on.
  */
-class TimedCueScheduler(sessionId: String, private val config: SessionConfig) {
+class TimedCueScheduler(
+    sessionId: String,
+    private val config: SessionConfig,
+    private val gate: StillnessGate? = null,
+) {
     /** The first sleep latency L: a uniform whole minute in [firstSleepMinMin, firstSleepMaxMin], seeded by the ID. */
     val firstLatencyMin: Int =
         Random(sessionId.hashCode()).nextInt(config.timed.firstSleepMinMin, config.timed.firstSleepMaxMin + 1)
@@ -139,12 +144,21 @@ class TimedCueScheduler(sessionId: String, private val config: SessionConfig) {
             AWAKE_INCUBATING -> if (now >= sessionEndsAtMs) {
                 end(SessionEndReason.TIME_LIMIT, chime = true) // row 22, checked only between cycles
             } else if (now >= nextDwellAtMs) {
+                val reason = when {
+                    gate == null -> StateReason.TIMED_DWELL
+                    gate.fresh(now) -> if (gate.settled(now)) StateReason.ONSET else null
+                    config.timed.autoFallbackToTimed -> StateReason.FALLBACK_TO_TIMED
+                    else -> null
+                } ?: return
                 cycle = completedCycles + 1
-                move(HYPNAGOGIA_DETECTED, StateReason.TIMED_DWELL) // row T1
+                move(HYPNAGOGIA_DETECTED, reason) // row T1
                 play(PromptCue.INITIAL_INCUBATION)
                 stepEndsAtMs = now + config.countdownS * 1000L
             }
-            HYPNAGOGIA_DETECTED -> if (now >= stepEndsAtMs) {
+            HYPNAGOGIA_DETECTED -> if (gate?.moving(now) == true) {
+                move(AWAKE_INCUBATING, StateReason.MAJOR_MOVEMENT) // §8.10: the cycle starts over once still again
+                nextDwellAtMs = now + config.detection.refractoryS * 1000L
+            } else if (now >= stepEndsAtMs) {
                 move(WAKING_USER, StateReason.PHONE_STAGE) // row T2
                 play(PromptCue.WAKE_PROMPT)
             }

@@ -245,6 +245,17 @@ and the stages it receives.
 | Loops (= `maxCycles`) | 4 | 1–10 | SOURCED: FS24 "record 4 rounds" (the code default is 3, `script_timer.js:13`; conflict C10 in [P] §9) |
 | Report | Phase 1: fixed 60 s window, no recording. Phase 2+: the same recording stop rules as DETECTION (§7.8) | — | 60 s SOURCED (FS24, `script_timer.js:18`). Using the DETECTION rules in Phase 2 is **[DEV]** from FS24 so both modes are directly comparable as control vs treatment |
 
+**Wait for stillness [EXT]** (owner, 2026-10-28: no cues while tossing and turning). With
+`timed.waitForStillness` (default on; off in the Quick test preset) a loop's dwell starts only when the timer's
+earliest time has passed **and** the phone's `StillnessGate`, fed the watch's 1 Hz packets, says settled: no §8.10
+major movement (3 of the last 5 seconds below `stillThreshold`) for `timed.stillForS` (default 300 s, GUESSED from the
+home TLR study's "5 min after movement stops", docs/references/lucid_induction.md) and the 15 s HR moving average at
+or below the session baseline (first `baselineWindowS` of watch data) × (1 − `dropFraction`), or stillness for twice
+`stillForS` (a baseline taken while already calm may never show the drop). A major movement during the dwell cuts it
+(`MAJOR_MOVEMENT`, next earliest time `refractoryS` later); the transition reason is `ONSET`. A watch that has sent
+nothing for `watchLinkTimeoutS` falls back to the timer (`FALLBACK_TO_TIMED`) when `autoFallbackToTimed` is on. The
+watch app is unchanged: it already streams stillness and HR.
+
 ### 4.2 TIMED_CUES timeline (derived from the MIT timer mode)
 
 Times are relative to Start. L is the drawn latency; R_k is the real duration of cycle k's wake + report + re-incubation

@@ -22,6 +22,7 @@ import com.opentdi.mobile.TAG_AUDIO
 import com.opentdi.mobile.TAG_SESSION
 import com.opentdi.mobile.audio.AudioEvent
 import com.opentdi.mobile.link.WatchStreamListener
+import com.opentdi.mobile.link.WatchTelemetry
 import com.opentdi.mobile.audio.CuePlayer
 import com.opentdi.mobile.audio.dndState
 import com.opentdi.mobile.audio.toLogLine
@@ -45,6 +46,7 @@ import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SessionEndReason
 import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.newSessionId
+import com.opentdi.shared.timed.StillnessGate
 import com.opentdi.shared.timed.TimedCueScheduler
 import com.opentdi.shared.timed.TimedEvent
 import java.io.File
@@ -154,7 +156,8 @@ class NapSessionService : LifecycleService() {
     /** One session, from start to SESSION_COMPLETE. Every scheduler call runs on the main thread. */
     private inner class Session(private val config: SessionConfig, private val cues: PreparedCues) {
         private val id = newSessionId(System.currentTimeMillis(), Random.Default)
-        private val scheduler = TimedCueScheduler(id, config)
+        private val gate = if (config.timed.waitForStillness) StillnessGate(config) else null
+        private val scheduler = TimedCueScheduler(id, config, gate)
         private val startRealtimeMs = SystemClock.elapsedRealtime()
         private val audioManager = getSystemService(AudioManager::class.java)
         // §7.7 step 5: the test cue's saved index; without a test cue yet, the index at Start.
@@ -171,6 +174,7 @@ class NapSessionService : LifecycleService() {
         }
         private var tickJob: Job? = null
         private var flushJob: Job? = null
+        private var gateJob: Job? = null
         private var cueJob: Job? = null
         private var ending = false
 
@@ -195,6 +199,19 @@ class NapSessionService : LifecycleService() {
                 while (isActive) {
                     delay(TICK_MS)
                     handle(scheduler.onTick(elapsedMs()))
+                }
+            }
+            gateJob = gate?.let { g ->
+                lifecycleScope.launch {
+                    // Only seconds that arrive after Start: frames already held belong to before the session.
+                    var seen = WatchTelemetry.live.value.let { it.sessionId to (it.frames.lastOrNull()?.seq ?: -1L) }
+                    WatchTelemetry.live.collect { live ->
+                        val lastSeq = if (live.sessionId == seen.first) seen.second else -1L
+                        for (frame in live.frames) {
+                            if (frame.seq > lastSeq) g.add(elapsedMs(), frame.packet.stillnessScore, frame.packet.hr)
+                        }
+                        seen = live.sessionId to (live.frames.lastOrNull()?.seq ?: lastSeq)
+                    }
                 }
             }
             flushJob = lifecycleScope.launch {
@@ -262,6 +279,7 @@ class NapSessionService : LifecycleService() {
             ending = true
             tickJob?.cancel()
             flushJob?.cancel()
+            gateJob?.cancel()
             val last = cueJob
             lifecycleScope.launch {
                 last?.join()

@@ -92,6 +92,7 @@ fun SessionConfig.validate(): List<String> {
         int("timed.betweenSleepS", betweenSleepS, 60..1200)
         int("timed.phase1ReportWindowS", phase1ReportWindowS, 30..90)
         int("timed.watchLinkTimeoutS", watchLinkTimeoutS, 30..600)
+        int("timed.stillForS", stillForS, 60..1800)
     }
 
     with(audio) {

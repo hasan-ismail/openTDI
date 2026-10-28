@@ -18,8 +18,12 @@ fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean): Pair<String
     } else {
         when (status.state) {
             TdiState.IDLE, TdiState.CALIBRATING_BASELINE -> "Starting"
-            TdiState.AWAKE_INCUBATING ->
+            // Past its earliest time a loop is waiting for the watch to show stillness (StillnessGate).
+            TdiState.AWAKE_INCUBATING -> if (status.nextEventAtRealtimeMs?.let { it <= nowMs } == true) {
+                "Waiting until you're still"
+            } else {
                 countdown(if (status.completedCycles == 0) "Waiting — first cue" else "Back to sleep — next cue", left)
+            }
             TdiState.HYPNAGOGIA_DETECTED -> countdown("Drifting off — next cue", left)
             TdiState.WAKING_USER, TdiState.RE_INCUBATING -> "Cue playing"
             TdiState.RECORDING_DREAM -> left?.let { "Listening for your answer — $it left" } ?: "Listening for your answer"
@@ -49,9 +53,10 @@ enum class TimingPreset(
     val reportS: Int,
     val backToSleepS: Int,
     val loops: Int,
+    val waitForStillness: Boolean,
 ) {
-    QUICK_TEST("Quick test", 1, 1, 60, 30, 60, 2),
-    LUCID_NAP("Lucid nap", 10, 15, 180, 60, 420, 4),
+    QUICK_TEST("Quick test", 1, 1, 60, 30, 60, 2, waitForStillness = false),
+    LUCID_NAP("Lucid nap", 10, 15, 180, 60, 420, 4, waitForStillness = true),
     ;
 
     fun applyTo(config: SessionConfig) = config.copy(
@@ -62,6 +67,7 @@ enum class TimingPreset(
             firstSleepMaxMin = firstMax,
             phase1ReportWindowS = reportS,
             betweenSleepS = backToSleepS,
+            waitForStillness = waitForStillness,
         ),
     )
 }
@@ -74,8 +80,13 @@ fun timingSummary(config: SessionConfig): String {
     val first = if (t.firstSleepMinMin == t.firstSleepMaxMin) "${t.firstSleepMinMin} min" else
         "${t.firstSleepMinMin}–${t.firstSleepMaxMin} min"
     val loops = if (config.maxCycles == 1) "1 loop" else "${config.maxCycles} loops"
-    return "First cue after $first, then $loops of ${span(config.countdownS)} drifting off, " +
-        "${span(t.phase1ReportWindowS)} to answer and ${span(t.betweenSleepS)} back to sleep."
+    val timing = "$loops of ${span(config.countdownS)} drifting off, ${span(t.phase1ReportWindowS)} to answer and " +
+        "${span(t.betweenSleepS)} back to sleep"
+    return if (t.waitForStillness) {
+        "First cue after at least $first and ${span(t.stillForS)} of lying still, then $timing. Moving restarts the wait."
+    } else {
+        "First cue after $first, then $timing."
+    }
 }
 
 private fun span(s: Int) = when {

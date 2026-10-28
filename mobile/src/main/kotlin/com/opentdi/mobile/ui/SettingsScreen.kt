@@ -200,6 +200,30 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
                 }
             }
         }
+        val still = timed.waitForStillness
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .toggleable(value = still, enabled = enabled, role = Role.Switch) { on ->
+                    edit { it.copy(timed = it.timed.copy(waitForStillness = on)) }
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Wait until I'm still")
+                Help(
+                    "Each loop also waits until the watch shows you lying still with your heart rate settling, and " +
+                        "moving restarts the wait. Needs the watch recording; without it the timer alone runs.",
+                )
+            }
+            Switch(checked = still, onCheckedChange = null, enabled = enabled)
+        }
+        if (still) {
+            IntSetting(
+                "Still for", "How long you lie still before a loop starts.",
+                timed.stillForS / 60, 1..30, 1, "min", enabled,
+            ) { v -> edit { it.copy(timed = it.timed.copy(stillForS = v * 60)) } }
+        }
         IntSetting(
             "First cue, earliest", "The first cue comes at a random minute between earliest and latest.",
             timed.firstSleepMinMin, 1..60, 1, "min", enabled,

@@ -268,9 +268,9 @@ class ConfigValidationTest {
         assertEquals("15", map["sensors.spo2IntervalMin"])
         assertEquals("60", map["sensors.spo2TimeoutS"])
         assertEquals("", map["simulation"])
-        // One row per leaf: 7 top-level, 21 detection, 12 accel, 6 timed, 17 audio (2 caps), 12 recording, 3 link,
+        // One row per leaf: 7 top-level, 21 detection, 12 accel, 8 timed, 17 audio (2 caps), 12 recording, 3 link,
         // 6 sensors.
-        assertEquals(84, rows.size)
+        assertEquals(86, rows.size)
 
         val words = "You are dreaming. You are in control."
         val custom = SessionConfig(audio = AudioConfig(cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to words)))

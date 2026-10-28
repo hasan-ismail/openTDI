@@ -73,6 +73,8 @@ data class TimedCueConfig(
     val phase1ReportWindowS: Int = 60, // 30..90 (Phase 1 only)
     val autoFallbackToTimed: Boolean = true,
     val watchLinkTimeoutS: Int = 120, // 30..600
+    val waitForStillness: Boolean = true, // owner 2026-10-28: a loop also waits for the watch to show you still
+    val stillForS: Int = 300, // 60..1800, GUESSED from the home TLR study's 5 min after movement stops
 )
 
 @Serializable

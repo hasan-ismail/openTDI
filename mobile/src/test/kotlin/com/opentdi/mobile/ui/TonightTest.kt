@@ -42,6 +42,10 @@ class TonightTest {
         val ended = SessionStatus(state = TdiState.SESSION_COMPLETE, completedCycles = 4, maxCycles = 4)
         assertEquals("Session complete" to null, statusLines(ended, NOW, ready = true))
         assertEquals("0:00", clock(-5_000)) // an overdue step never shows a negative time
+        assertEquals( // past its earliest time a loop waits for stillness
+            "Waiting until you're still",
+            statusLines(running(TdiState.AWAKE_INCUBATING, -1_000), NOW, ready = true).first,
+        )
     }
 
     @Test
@@ -59,7 +63,8 @@ class TonightTest {
             timingSummary(quick),
         )
         assertEquals(
-            "First cue after 10–15 min, then 4 loops of 3 min drifting off, 1 min to answer and 7 min back to sleep.",
+            "First cue after at least 10–15 min and 5 min of lying still, then 4 loops of 3 min drifting off, " +
+                "1 min to answer and 7 min back to sleep. Moving restarts the wait.",
             timingSummary(config),
         )
     }
