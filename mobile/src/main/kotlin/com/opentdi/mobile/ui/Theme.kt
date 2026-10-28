@@ -74,7 +74,7 @@ val TABS = listOf("Tonight", "Watch", "Sessions", "Settings")
 
 @Composable
 fun BottomTabs(selected: Int, onSelect: (Int) -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f)) {
         PrimaryTabRow(
             selectedTabIndex = selected,
             containerColor = Color.Transparent,
@@ -113,7 +113,8 @@ fun Page(title: String, content: @Composable ColumnScope.() -> Unit) {
 fun Section(title: String?, content: @Composable ColumnScope.() -> Unit) {
     Card(
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        // Slightly see-through, so the night sky shows faintly behind the cards.
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.86f)),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

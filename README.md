@@ -51,9 +51,11 @@ The phone shows these live.
 
 | | Works now | Coming next |
 |---|---|---|
-| **Cues** | Timed cues (MIT's sensor-free method), from the phone or the watch speaker; lucid-dream wording by default; your own words; slow, phrase-by-phrase voice; a natural voice that runs on the phone | Cues timed by your body: the watch notices you drifting off |
+| **Cues** | Timed cues (MIT's method) that wait until the watch shows you lying still; from the phone or the watch speaker; lucid-dream wording by default; your own words, or your own recorded voice; a natural voice that runs on the phone | |
 | **Watch** | Records heart rate, heartbeat timing, skin response, movement, skin temperature, blood oxygen and the raw pulse signal; shows it live on the phone | Breathing rate worked out from the pulse signal |
-| **Your answers** | You can speak; nothing is recorded yet | Recording and on-phone transcription, and a dream journal |
+| **Alarms** | On the watch: a wake-up alarm (five tones, a spoken one with your name, snooze) that logs how long you take to wake up, and a WBTB alarm that guides you through staying up and buzzes when to sleep again | |
+| **Late-night cues** | After WBTB, a soft trained sound while you lie still; an experiment mode that secretly skips some nights so you can see whether it helps you | |
+| **Your answers** | A dream report on the watch after each alarm: record the dream, then a few one-tap questions | Turning the recordings into text, and a dream journal on the phone |
 | **Safety** | Volume cap set by you; warnings when the media volume is off or Do Not Disturb would mute the cues | |
 
 Good to know: MIT's own studies used a calm voice and short reminders, like OpenTDI. In their at-home study, timed

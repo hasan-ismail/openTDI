@@ -1,5 +1,6 @@
 package com.opentdi.mobile
 
+import com.opentdi.mobile.ui.NightSky
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationManager
@@ -71,8 +72,9 @@ class MainActivity : ComponentActivity() {
             OpenTdiTheme {
                 var tab by rememberSaveable { mutableIntStateOf(0) }
                 BackHandler(enabled = tab != 0) { tab = 0 }
+                NightSky() // behind every tab; the scaffold is see-through
                 Scaffold(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     bottomBar = { BottomTabs(tab) { tab = it } },
                 ) { padding ->
                     Box(Modifier.padding(padding).consumeWindowInsets(padding)) {

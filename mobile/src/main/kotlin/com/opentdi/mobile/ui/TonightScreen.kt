@@ -1,5 +1,6 @@
 package com.opentdi.mobile.ui
 
+import androidx.compose.animation.Crossfade
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -78,6 +79,7 @@ fun TonightScreen(
     val idle = !status.running && !ui.preparing && !ui.testing
 
     Page("Tonight") {
+        MoonHeader(remember { System.currentTimeMillis() })
         StatusCard(status, now, ready)
         alarmsLine(config.alarms)?.let { Help(it) }
         if (status.running) {
@@ -132,7 +134,9 @@ fun TonightScreen(
 private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean) {
     val (headline, cycle) = statusLines(status, now, ready)
     Section(null) {
-        Text(headline, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+        Crossfade(headline, label = "headline") { // a calm fade, never a jump, as the night moves on
+            Text(it, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+        }
         cycle?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
         status.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         status.lastEvent?.let { Help("Last: $it") }

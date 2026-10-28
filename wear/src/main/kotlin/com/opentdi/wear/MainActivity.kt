@@ -1,5 +1,10 @@
 package com.opentdi.wear
 
+import com.opentdi.shared.sky.moonPhase
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.Canvas
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
@@ -251,9 +256,19 @@ private fun MainScreen(
     }
     val packet = state.lastPacket?.packet
     val listState = rememberTransformingLazyColumnState()
+    val moon = remember { moonPhase(System.currentTimeMillis()) }
     ScreenScaffold(scrollState = listState) { contentPadding ->
+        WatchStars()
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
-            item { ListHeader { Text("OpenTDI") } }
+            item {
+                ListHeader {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Canvas(Modifier.size(16.dp)) { drawMoon(moon) } // tonight's real moon phase
+                        Spacer(Modifier.width(6.dp))
+                        Text("OpenTDI")
+                    }
+                }
+            }
             state.alarmRinging?.let { kind ->
                 item { BigLine(if (kind == "WAKE") "Good morning" else "Wake back to bed") }
                 item { Button(onClick = onAlarmStop, modifier = Modifier.fillMaxWidth(), label = { Text("I'm awake") }) }
