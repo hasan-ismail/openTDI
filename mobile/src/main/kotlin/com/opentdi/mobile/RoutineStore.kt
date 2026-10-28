@@ -26,6 +26,12 @@ val ROUTINE = listOf(
         "About 2 drinks delayed and shortened REM, when lucid dreams happen (27 studies).",
     ),
     RoutineStep(
+        "medicine", // sleep_and_dreams.md §1 [17]
+        "Always",
+        "Never change or skip a medicine for this app",
+        "Many antidepressants change REM sleep; only your prescriber should change a medicine.",
+    ),
+    RoutineStep(
         "workout",
         "4 h before bed",
         "Finish any hard workout",

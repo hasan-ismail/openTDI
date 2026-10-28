@@ -140,7 +140,7 @@ fun SessionConfig.validate(): List<String> {
         int("alarms.maxSnoozes", maxSnoozes, 0..5)
         int("alarms.snoozeMin", snoozeMin, 1..30)
         rule(sleeperName.length <= 30) { "alarms.sleeperName is longer than 30 characters" }
-        int("alarms.lateCueDelayMin", lateCueDelayMin, 10..120)
+        int("alarms.lateCueAfterOnsetMin", lateCueAfterOnsetMin, 10..120)
         float("alarms.lateCueVolume", lateCueVolume, 0.02f..1f)
         rule(lateCues == LateCueMode.OFF || wbtbEnabled) { "alarms.lateCues need the WBTB alarm (alarms.wbtbEnabled)" }
     }

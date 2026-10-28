@@ -125,7 +125,7 @@ fun withDefaultNumbers(config: SessionConfig): SessionConfig {
             maxRingMin = d.alarms.maxRingMin,
             maxSnoozes = d.alarms.maxSnoozes,
             snoozeMin = d.alarms.snoozeMin,
-            lateCueDelayMin = d.alarms.lateCueDelayMin,
+            lateCueAfterOnsetMin = d.alarms.lateCueAfterOnsetMin,
         ),
     )
 }
@@ -478,7 +478,8 @@ private fun LateCuesSettings(
             LateCueMode.OFF -> "Soft three-note cues after WBTB, while you lie still. Unproven: try them as an experiment."
             LateCueMode.ON -> "After WBTB the watch trains the cue, then plays it softly once you are still again."
             LateCueMode.EXPERIMENT ->
-                "Each night the watch secretly picks cues or no cues, so your morning reports show whether they help."
+                "Each night the watch secretly picks cues or no cues, balanced over nights, so your morning " +
+                    "reports show whether they help."
         },
     )
     if (alarms.lateCues != LateCueMode.OFF) {
@@ -494,9 +495,11 @@ private fun LateCuesSettings(
             Text("Play the cue on the watch")
         }
         IntSetting(
-            "Cues start after", "Minutes after the back-to-sleep buzz; REM came about 40 min after WBTB in a lab study.",
-            alarms.lateCueDelayMin, 10..120, 5, "min", enabled,
-        ) { v -> change { it.copy(lateCueDelayMin = v) } }
+            "Cues start after",
+            "Minutes after you fall back asleep: the watch takes your first 10 still minutes after the buzz as " +
+                "sleep. REM came about 42 min after falling back asleep in a lab study.",
+            alarms.lateCueAfterOnsetMin, 10..120, 5, "min", enabled,
+        ) { v -> change { it.copy(lateCueAfterOnsetMin = v) } }
     }
 }
 

@@ -92,9 +92,9 @@ class CsvTest {
             CsvFiles.W_CONFIG, CsvFiles.W_ACCEL_RAW, CsvFiles.W_SENSOR_RAW, CsvFiles.W_PACKETS, CsvFiles.W_ACCEL_EVENTS,
             CsvFiles.W_ENGINE, CsvFiles.W_INPUTS, CsvFiles.W_TRANSITIONS, CsvFiles.W_LINK, CsvFiles.P_CONFIG,
             CsvFiles.P_FRAMES, CsvFiles.P_TRANSITIONS, CsvFiles.P_AUDIO, CsvFiles.P_LINK, CsvFiles.W_SKIN_TEMP,
-            CsvFiles.W_SPO2, CsvFiles.W_PPG_RAW,
+            CsvFiles.W_SPO2, CsvFiles.W_PPG_RAW, CsvFiles.W_ALARM, CsvFiles.W_MORNING,
         )
-        assertEquals(17, all.map { it.name }.toSet().size)
+        assertEquals(19, all.map { it.name }.toSet().size)
         all.forEach { f ->
             assertEquals(f.name, f.columns.size, f.columns.toSet().size)
             assertTrue(f.name, f.columns.all { it.matches(Regex("[a-z0-9_]+")) })
@@ -107,6 +107,12 @@ class CsvTest {
         // New packet columns go at the end of w_packets.csv, so older column positions never move.
         assertEquals(listOf("emitted_wall_ms", "skin_temp_c", "spo2_pct"), CsvFiles.W_PACKETS.columns.takeLast(3))
         assertEquals("event", CsvFiles.W_SPO2.columns[5])
+        // The watch's DreamReportScreen writes one column per question, in this order.
+        assertEquals(
+            "wall_ms,after,recording,recalled,insight,control,nightmare,false_awakening,cue_in_dream,cue_woke," +
+                "refreshed,sleep_paralysis,unusual_night",
+            CsvFiles.W_MORNING.columns.joinToString(","),
+        )
         assertEquals(
             "rx_wall_ms,batch_seq,frame_seq,ts_ms,source,hr_bpm,hr_status,ibi_ms,rmssd_ms,eda_us,eda_status," +
                 "accel_mean_g,accel_rms_g,accel_peak_g,stillness,jerk,limp,skin_temp_c,spo2_pct,state,state_reason," +

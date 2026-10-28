@@ -122,6 +122,11 @@ private fun StepPage(
                     "OpenTDI is wellness and research software, not a medical device. Its sleep estimates may be wrong.",
                     style = MaterialTheme.typography.bodyLarge,
                 )
+                // sleep_and_dreams.md §6 [91][92][93]
+                Help(
+                    "If you have a diagnosed sleep, mood, seizure or mental-health condition, ask your clinician " +
+                        "before using OpenTDI.",
+                )
                 Help(
                     "Talk to a doctor first if you have ever had a psychotic disorder, narcolepsy, frequent sleep " +
                         "paralysis, sleepwalking or another sleep disorder. Lucid-dream practice disturbs sleep a " +

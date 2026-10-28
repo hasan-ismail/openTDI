@@ -46,6 +46,7 @@ import androidx.wear.compose.material3.TextButton
 import com.opentdi.shared.csv.CsvFiles
 import com.opentdi.shared.csv.CsvWriter
 import com.opentdi.shared.csv.csvLine
+import com.opentdi.shared.csv.readCsv
 import com.opentdi.wear.alarm.WakeAlarms
 import java.io.File
 import java.io.IOException
@@ -53,10 +54,16 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 
-/** The questions, their answers as written to w_morning.csv, and the button labels. */
+/**
+ * The questions, in w_morning.csv's column order, and their answers as written there; a button shows [LABELS] or the
+ * answer. Recall offers a white dream (sure you dreamed, no content) [38][49]; lucidity is two 0–5 ratings, insight
+ * and control, as in the LuCiD scale [64]; nightmares are tagged [96][97] (sleep_and_dreams.md §8).
+ */
 private val QUESTIONS = listOf(
-    "Do you remember a dream?" to listOf("YES", "VAGUE", "NO"),
-    "Did you know you were dreaming?" to listOf("YES", "ALMOST", "NO"),
+    "Do you remember a dream?" to listOf("YES", "WHITE", "NO"),
+    "Knew you were dreaming?" to (0..5).map { "$it" },
+    "Could you steer it?" to (0..5).map { "$it" },
+    "Nightmare?" to listOf("YES", "NO"),
     "Did you dream that you woke up?" to listOf("YES", "NO"),
     "Did a cue turn up in a dream, even changed?" to listOf("YES", "NO"),
     "Did a cue wake you?" to listOf("YES", "NO"),
@@ -64,7 +71,9 @@ private val QUESTIONS = listOf(
     "Any sleep paralysis (awake but unable to move)?" to listOf("YES", "NO"),
     "Unusual night (ill, alcohol, very late)?" to listOf("YES", "NO"),
 )
-private const val SLEEP_PARALYSIS = 6 // its index in QUESTIONS
+private val LABELS = mapOf("WHITE" to "Sure I dreamed, no content")
+private const val NIGHTMARE = 3 // its index in QUESTIONS
+private const val SLEEP_PARALYSIS = 8 // its index in QUESTIONS
 
 /**
  * The morning report (owner, 2026-10-28; lucid_induction.md §5.3), also after WBTB: say the dream into the watch, then
@@ -112,7 +121,7 @@ fun DreamReportScreen(
         view.keepScreenOn = recorder != null
         onDispose { view.keepScreenOn = false }
     }
-    // 0 is the recording, 1..8 the questions, then Save.
+    // 0 is the recording, 1..QUESTIONS.size the questions, then Save.
     var step by remember { mutableIntStateOf(0) }
     BackHandler(enabled = step > 0) { step-- }
     val listState = rememberTransformingLazyColumnState()
@@ -192,8 +201,9 @@ fun DreamReportScreen(
                                 val (question, options) = QUESTIONS[i]
                                 Line("$s of ${QUESTIONS.size}", style = MaterialTheme.typography.labelSmall)
                                 Line(question, style = MaterialTheme.typography.titleMedium)
-                                val scale = options.first() == "1"
-                                // 1 to 5 in two rows, three and two; the others one full-width button each.
+                                val scale = options.size > 3
+                                // A scale in rows of three (1 to 5: three and two; 0 to 5: three and three) of
+                                // 52 dp buttons; the others one full-width button each.
                                 for (row in options.chunked(if (scale) 3 else 1)) {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         for (option in row) {
@@ -210,7 +220,8 @@ fun DreamReportScreen(
                                                 modifier = Modifier.weight(1f),
                                                 label = {
                                                     Text(
-                                                        option.lowercase().replaceFirstChar { it.uppercase() },
+                                                        LABELS[option]
+                                                            ?: option.lowercase().replaceFirstChar { it.uppercase() },
                                                         modifier = Modifier.fillMaxWidth(),
                                                         textAlign = TextAlign.Center,
                                                     )
@@ -219,7 +230,16 @@ fun DreamReportScreen(
                                         }
                                     }
                                 }
-                                if (scale) Line("1 = not at all, 5 = very", style = MaterialTheme.typography.labelSmall)
+                                if (scale) {
+                                    Line(
+                                        if (options.first() == "0") {
+                                            "0 = not at all, 5 = completely"
+                                        } else {
+                                            "1 = not at all, 5 = very"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
                                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                     TextButton(onClick = ::next) { Text("Skip") }
                                 }
@@ -230,11 +250,26 @@ fun DreamReportScreen(
                                         ?: "No recording",
                                 )
                                 if (answers[SLEEP_PARALYSIS] == "YES") {
+                                    // Wellness wording: no condition sent to a doctor, nothing called abnormal [100].
                                     Line(
-                                        "Sleep paralysis is harmless and passes: stay calm and move one finger or toe. " +
-                                            "Sleeping on your side and WBTB at most once a week make it less likely. " +
-                                            "Talk to a doctor if it keeps happening or frightens you.",
+                                        "If you wake unable to move again, stay calm: it passes. Move one finger or toe. " +
+                                            "Sleeping on your side and fewer WBTB nights may make it less likely. " +
+                                            "Talking to a healthcare professional may be helpful.",
                                     )
+                                }
+                                if (answers[NIGHTMARE] == "YES") {
+                                    // This report's nightmare and the watch's saved reports of the last 7 days.
+                                    // GUESSED: 2 in 7 days; [96][97] give no number, only "if frequent, suggest pausing"
+                                    // (sleep_and_dreams.md §6).
+                                    val nightmares = remember {
+                                        1 + nightmaresSince(dir.parentFile ?: dir, System.currentTimeMillis() - WEEK_MS)
+                                    }
+                                    if (nightmares >= 2) {
+                                        Line(
+                                            "${if (nightmares == 2) "Two" else nightmares} nightmares this week. " +
+                                                "Consider a few nights off.",
+                                        )
+                                    }
                                 }
                                 Button(
                                     onClick = {
@@ -254,6 +289,7 @@ fun DreamReportScreen(
 }
 
 private val FILE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
+private const val WEEK_MS = 7 * 24 * 3_600_000L
 
 private fun startRecorder(context: Context, file: File): MediaRecorder? {
     val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -301,4 +337,27 @@ private fun save(dir: File, after: String, recording: String?, answers: List<Str
     } else {
         CsvWriter(file.bufferedWriter(), CsvFiles.W_MORNING.columns).use { it.row(*row.toTypedArray<Any?>()) }
     }
+}
+
+/**
+ * The nightmare=YES rows written since [sinceMs] in the w_morning.csv of each folder in [root] (filesDir/sessions);
+ * a file from before the nightmare column, or one that cannot be read, counts none.
+ */
+internal fun nightmaresSince(root: File, sinceMs: Long): Int {
+    var n = 0
+    for (folder in root.listFiles().orEmpty()) {
+        val file = File(folder, CsvFiles.W_MORNING.name)
+        if (file.lastModified() < sinceMs) continue // a missing file reads 0; an older one holds no newer row
+        val rows = try {
+            file.reader().use(::readCsv)
+        } catch (e: IOException) {
+            continue
+        } catch (e: IllegalArgumentException) { // a row cut short when the watch died
+            continue
+        }
+        val column = rows.firstOrNull().orEmpty().indexOf("nightmare")
+        if (column < 0) continue
+        n += rows.drop(1).count { it.getOrNull(column) == "YES" && (it[0]?.toLongOrNull() ?: 0L) >= sinceMs }
+    }
+    return n
 }

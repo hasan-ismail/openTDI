@@ -6,6 +6,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import androidx.core.content.edit
 import com.opentdi.shared.audio.lucidCue
 import com.opentdi.shared.config.StructuralConstants.MAJOR_MOVEMENT_MIN_S
 import com.opentdi.shared.config.StructuralConstants.MAJOR_MOVEMENT_WINDOW_S
@@ -14,18 +15,20 @@ import kotlin.random.Random
 
 /**
  * Late-night lucidity cues after WBTB (owner, 2026-10-28; docs/references/lucid_induction.md §5). During the WBTB
- * awake time the cue is trained: it plays [TRAINING_CUES] times while the watch says what it means. From
- * lateCueDelayMin after the back-to-sleep buzz, once the sleeper has had no major movement (§8.10) for [STILL_MS], one
- * soft cue plays every 20–30 s, at most [CUES_PER_BOUT] per still stretch; a movement pauses it until 5 min of
- * stillness again. On a no-cue night of the EXPERIMENT the same moments are logged as WOULD_CUE and nothing plays,
- * so the morning reports can compare the two kinds of night. All timings GUESSED from the studies in §5.
+ * awake time the cue is trained: it plays [TRAINING_CUES] times while the watch says what it means. After the
+ * back-to-sleep buzz the first still stretch of [RE_ONSET_MS] is taken as falling back asleep (RE_ONSET, logged with
+ * its latency); from lateCueAfterOnsetMin after it, once the sleeper has had no major movement (§8.10) for
+ * [STILL_MS], one soft cue plays every 20–30 s, at most [CUES_PER_BOUT] per still stretch; a movement pauses it until
+ * 5 min of stillness again. REM came 42.1 ± 24.7 min after falling back asleep, not after the buzz (sleep_and_dreams.md §1
+ * [12]). On a no-cue night of the EXPERIMENT the same moments are logged as WOULD_CUE and nothing plays, so the
+ * morning reports can compare the two kinds of night. All timings GUESSED from the studies in §5.
  */
 class LateCues(
     private val context: Context,
     private val config: () -> AlarmConfig,
     private val log: (event: String, stillness: Float?, hr: Float?, detail: String?) -> Unit,
 ) {
-    /** Tonight's arm: always cues when ON; EXPERIMENT tosses a coin at arming, unseen (§5.4). */
+    /** Tonight's arm: always cues when ON; EXPERIMENT randomises in pairs of nights at arming, unseen (§5.4). */
     var cueNight = true
         private set
     private val playing = mutableSetOf<AudioTrack>() // held until done: an unreferenced track may be collected
@@ -33,6 +36,7 @@ class LateCues(
     private val cue = lucidCue(SAMPLE_RATE)
     private val recentMoving = ArrayDeque<Boolean>()
     private var stillSinceMs: Long? = null
+    private var armedAtMs: Long? = null // the buzz, while waiting for the sleeper to fall back asleep
     private var startAtMs: Long? = null
     private var nextCueAtMs = 0L
     private var boutCues = 0
@@ -45,17 +49,45 @@ class LateCues(
         nextTrainingAtMs = nowMs + TRAINING_FIRST_MS
     }
 
-    /** The back-to-sleep buzz: cues may start lateCueDelayMin from now. */
+    /**
+     * The back-to-sleep buzz: cues may start lateCueAfterOnsetMin after the sleeper falls back asleep. In the
+     * EXPERIMENT the first night of a pair tosses a coin and the second gets the other arm, so season and slow drift
+     * cannot load one side (sleep_and_dreams.md §3 [49]); the pending arm stays in private preferences the sleeper
+     * never sees, and lapses after [PAIR_MAX_MS] so a pair cannot span seasons.
+     */
     fun arm(nowMs: Long) {
         val c = config()
-        cueNight = c.lateCues == LateCueMode.ON || (c.lateCues == LateCueMode.EXPERIMENT && Random.nextBoolean())
-        startAtMs = nowMs + c.lateCueDelayMin * 60_000L
-        log("ARMED", null, null, "night=${if (cueNight) "CUE" else "NO_CUE"};start_in_min=${c.lateCueDelayMin}")
+        var pair = ""
+        if (c.lateCues == LateCueMode.EXPERIMENT) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            if (prefs.contains(KEY_SECOND_ARM) && nowMs - prefs.getLong(KEY_FIRST_MS, 0) <= PAIR_MAX_MS) {
+                cueNight = prefs.getBoolean(KEY_SECOND_ARM, true)
+                prefs.edit {
+                    remove(KEY_SECOND_ARM)
+                    remove(KEY_FIRST_MS)
+                }
+                pair = ";pair=2/2"
+            } else {
+                cueNight = Random.nextBoolean()
+                prefs.edit {
+                    putBoolean(KEY_SECOND_ARM, !cueNight)
+                    putLong(KEY_FIRST_MS, nowMs)
+                }
+                pair = ";pair=1/2"
+            }
+        } else {
+            cueNight = c.lateCues == LateCueMode.ON
+        }
+        armedAtMs = nowMs
+        startAtMs = null
+        val night = if (cueNight) "CUE" else "NO_CUE"
+        log("ARMED", null, null, "night=$night$pair;start_after_onset_min=${c.lateCueAfterOnsetMin}")
     }
 
     /** The wake-up alarm: no lucidity cue during the ring, the dream replay or the report. */
     fun disarm() {
-        if (startAtMs == null && trainingLeft == 0) return
+        if (startAtMs == null && armedAtMs == null && trainingLeft == 0) return
+        armedAtMs = null
         startAtMs = null
         trainingLeft = 0
         log("ENDED", null, null, null)
@@ -81,6 +113,13 @@ class LateCues(
             boutCues = 0
         } else if (stillSinceMs == null) {
             stillSinceMs = nowMs
+        }
+        armedAtMs?.let { armed ->
+            val onset = reOnsetAt(armed, stillSinceMs, nowMs) ?: return@let
+            armedAtMs = null
+            startAtMs = onset + config().lateCueAfterOnsetMin * 60_000L
+            // Asleep within 10 min went with more lucid nights (sleep_and_dreams.md §5 [67]): worth keeping.
+            log("RE_ONSET", stillness, hr, "latency_min=${(onset - armed) / 60_000}")
         }
         val start = startAtMs ?: return
         val still = stillSinceMs ?: return
@@ -130,6 +169,10 @@ class LateCues(
     }
 
     private companion object {
+        const val PREFS = "late_cues"
+        const val KEY_SECOND_ARM = "experiment_second_arm" // the pair's second night: true = cue
+        const val KEY_FIRST_MS = "experiment_first_ms" // when the pair's first night was armed
+        const val PAIR_MAX_MS = 7 * 24 * 3_600_000L // GUESSED: an older pending arm is dropped and a new pair starts
         const val SAMPLE_RATE = 24_000
         const val STILL_THRESHOLD = 0.8f // the StillnessGate's default (MIT_STANDARD) still second
         const val STILL_MS = 5 * 60_000L // home TLR study: cues resume 5 min after movement stops
@@ -142,3 +185,13 @@ class LateCues(
         const val TRAINING_VOLUME = 0.4f
     }
 }
+
+/** GUESSED: a still stretch this long after the buzz is taken as falling back asleep; its start is the re-onset. */
+internal const val RE_ONSET_MS = 10 * 60_000L
+
+/**
+ * The estimated re-onset once the still stretch that began at [stillSinceMs] (null while moving) has lasted
+ * [RE_ONSET_MS] from the buzz at [armedAtMs] or later; stillness before the buzz counts from the buzz. Null until then.
+ */
+internal fun reOnsetAt(armedAtMs: Long, stillSinceMs: Long?, nowMs: Long): Long? =
+    stillSinceMs?.let { maxOf(it, armedAtMs) }?.takeIf { nowMs - it >= RE_ONSET_MS }

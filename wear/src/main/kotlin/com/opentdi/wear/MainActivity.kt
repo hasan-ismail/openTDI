@@ -300,8 +300,10 @@ private fun MainScreen(
                     }
                 }
             }
+            // The WBTB awake time (sleep_and_dreams.md §4 [63][65], §6 [83]): the morning's reality check, one
+            // simple dream goal, and the side to sleep on.
             state.wbtbBackToSleepAtMs?.let { at ->
-                item { Line("Pinch your nose and try to breathe in. If you can, you're dreaming.") }
+                item { Line("Pinch your nose and try to breathe through it; if you can, you are dreaming.") }
                 item { Line("Stay up until ${WakeAlarms.hhmm(at)}. Keep the light dim and drink only water.") }
                 item { Line("Recall your last dream and its odd moments.") }
                 item {
@@ -310,7 +312,9 @@ private fun MainScreen(
                             "remember I'm dreaming.",
                     )
                 }
+                item { Line("Pick one simple thing to do in your next dream.") }
                 item { Line("A buzz says go back to sleep.") }
+                item { Line("Lie on your side to fall back asleep.") }
             }
             if (state.lateCuesTraining && state.wbtbBackToSleepAtMs != null) {
                 item {

@@ -90,7 +90,7 @@ enum class TtsEngine { SYSTEM, NEURAL }
 @Serializable
 enum class AlarmTone { MELODY, GENTLE_CHIMES, RISING_TONE, CLASSIC_BEEPS, VIBRATE_ONLY, SPOKEN }
 
-/** Late-night lucidity cues after WBTB; EXPERIMENT picks cue or no-cue at random each night, unseen (blinded). */
+/** Late-night lucidity cues after WBTB; EXPERIMENT cues one night of each pair, picked at random, unseen (blinded). */
 @Serializable
 enum class LateCueMode { OFF, ON, EXPERIMENT }
 
