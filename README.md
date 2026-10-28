@@ -84,9 +84,13 @@ become **lucid** has not been tested yet. Your own nights are the first test, so
 
 ## Your data stays with you
 
-- Everything is stored **on your own phone and watch**, in the app's private storage. Nothing is uploaded anywhere.
-- The phone app uses the network only to reach your watch on your own Wi-Fi when it installs the watch app; it never
-  contacts the internet. The watch app only uses the network for Samsung's own sensor service.
+- Everything is stored **on your own phone and watch**, in the app's private storage. OpenTDI has no server, no
+  account and no analytics.
+- The phone and the watch talk through Google Play services' Wear Data Layer (cues, commands, the night files and your
+  dream recordings). It normally uses Bluetooth or your Wi-Fi; when neither connects them, Google may relay the data
+  through its servers, end-to-end encrypted ([Android's Data Layer overview](https://developer.android.com/training/wearables/data/overview)).
+- Apart from that, the phone app uses the network only to reach your watch on your own Wi-Fi when it installs the
+  watch app. The watch app only uses the network for Samsung's own sensor service.
 - Each session is saved as a set of simple spreadsheet (CSV) files. You can look through your sessions and delete any
   of them in the app (**Sessions**).
 
