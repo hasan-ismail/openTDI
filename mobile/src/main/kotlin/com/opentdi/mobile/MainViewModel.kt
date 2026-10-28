@@ -51,6 +51,7 @@ data class UiState(
     val testing: Boolean = false,
     val cueMessage: String? = null,
     val calibratedIndex: Int? = null, // media volume step of the last full test cue (§7.7 calibration)
+    val watchTested: Boolean = false, // a test cue played on the watch in this app run
     val batteryUnrestricted: Boolean = true, // as checked at the last resume
     val batteryManual: Boolean = false, // no battery settings screen opened: show the path instead
 )
@@ -158,13 +159,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val audio = withContext(Dispatchers.IO) { loadPreparedCues(app, config) }.audio.getValue(cue)
                 val index = app.getSystemService(AudioManager::class.java).getStreamVolume(AudioManager.STREAM_MUSIC)
                 var last: AudioEvent? = null
-                val played = CuePlayer(app).play(cue, audio, config.audio, calibratedIndex = index) { event ->
+                val played = CuePlayer(app).play(cue, audio, config.audio, calibratedIndex = index, testCue = true) { event ->
                     last = event
                     Log.i(TAG_AUDIO, event.toLogLine(config.audio.route, cycle = null))
                 }
+                if (config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER) {
+                    mutableUi.update { it.copy(watchTested = played) } // the watch keeps its own calibration
+                }
                 if (played) {
-                    // A muted test is no calibration (it would scale every later cue to silence), nor is the watch's.
-                    if (index > 0 && config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER) {
+                    if (config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER && index > 0) {
+                        // A muted test is no calibration: it would scale every later cue to silence.
                         saveCalibratedIndex(app, index)
                         mutableUi.update { it.copy(calibratedIndex = index) }
                     }

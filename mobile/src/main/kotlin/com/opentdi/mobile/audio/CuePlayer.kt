@@ -11,6 +11,8 @@ import android.media.AudioTrack
 import android.os.SystemClock
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.ChannelClient
+import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import com.opentdi.mobile.logLine
 import com.opentdi.shared.audio.FadeEnvelope
@@ -29,10 +31,14 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** One p_audio.csv row (§12.3) without wall_ms, elapsed_ms, cycle and route, which the logger adds. */
 data class AudioEvent(
@@ -65,7 +71,8 @@ fun AudioEvent.toLogLine(route: AudioRouteMode, cycle: Int?): String = logLine(
 )
 
 /**
- * Plays rendered cues on the phone's built-in speaker, the only Phase 1 route (§7.4, §7.6, §7.7): a float
+ * Plays rendered cues on the phone's built-in speaker (§7.4, §7.6, §7.7), or sends them to the watch on the
+ * wrist-speaker route (playOnWatch). On the phone: a float
  * MODE_STREAM AudioTrack with the fade-in and G_target in the samples (the track volume stays 1.0), audio focus per
  * cue, a routed-device check, the DND and zero-volume rules and the volume-raised correction. It never changes a
  * stream volume.
@@ -76,16 +83,20 @@ class CuePlayer(private val context: Context) {
 
     /**
      * Plays [audio] once as [cue]; true when it played to the end, false when it was skipped or cut (already logged
-     * to [log]). [calibratedIndex] is STREAM_MUSIC's index at session start (§7.7 step 5).
+     * to [log]). [calibratedIndex] is STREAM_MUSIC's index at session start (§7.7 step 5); [testCue] marks the Test
+     * cue tap, which on the wrist-speaker route becomes the watch's calibration.
      */
     suspend fun play(
         cue: PromptCue,
         audio: WavAudio,
         config: AudioConfig,
         calibratedIndex: Int,
+        testCue: Boolean = false,
         log: (AudioEvent) -> Unit,
     ): Boolean = withContext(Dispatchers.IO) {
-        if (config.route == AudioRouteMode.WATCH_WRIST_SPEAKER) return@withContext playOnWatch(cue, audio, config, log)
+        if (config.route == AudioRouteMode.WATCH_WRIST_SPEAKER) {
+            return@withContext playOnWatch(cue, audio, config, testCue, log)
+        }
         val index = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         val (filter, categories) = notificationManager.dndState()
         log(AudioEvent("DND_STATE", cue, dndFilter = filter, dndCategories = categories, streamIndex = index))
@@ -154,62 +165,116 @@ class CuePlayer(private val context: Context) {
 
     /**
      * The wrist speaker: the cue goes to the watch faded in and at G_target, and the watch's media volume sets the
-     * loudness. The phone's DND, volume and focus rules are about the phone speaker, so they do not apply here.
+     * loudness, never above the watch's last test cue. The phone's DND, volume and focus rules are about the phone
+     * speaker, so they do not apply here.
      */
     private suspend fun playOnWatch(
         cue: PromptCue,
         audio: WavAudio,
         config: AudioConfig,
+        testCue: Boolean,
         log: (AudioEvent) -> Unit,
     ): Boolean {
         val gain = config.targetGain()
-        fun event(name: String, detail: String) =
-            AudioEvent(name, cue, gain = gain, fadeMs = config.fadeInMs, detail = detail)
-        val nodes = try {
-            Wearable.getCapabilityClient(context)
-                .getCapability(DataLayerPaths.CAPABILITY_WATCH, CapabilityClient.FILTER_REACHABLE).await().nodes
-        } catch (e: ApiException) {
-            emptySet()
+        // gain is what played, as on the phone route: the watch scales a cue down when its volume was raised.
+        fun event(name: String, detail: String, reply: WristCue.Reply? = null) = AudioEvent(
+            name, cue, routedType = reply?.routedType?.takeIf { it >= 0 }, gain = gain * (reply?.factor ?: 1f),
+            fadeMs = config.fadeInMs, streamIndex = reply?.streamIndex?.takeIf { it >= 0 }, detail = detail,
+        )
+        val channels = Wearable.getChannelClient(context)
+        val channel = try {
+            openWatchChannel(channels)
+        } catch (e: CancellationException) {
+            log(event("CUE_END", "stopped"))
+            throw e
         }
-        val node = nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull()
-        if (node == null) {
+        if (channel == null) {
             log(event("CUE_SKIPPED", "watch_unreachable"))
             return false
         }
         val pcm = FadeEnvelope(audio.sampleRate, config.fadeInMs).applyTo(audio.samples, gain)
-        val channels = Wearable.getChannelClient(context)
-        val channel = try {
-            channels.openChannel(node.id, DataLayerPaths.WRIST_AUDIO_CHANNEL).await()
-        } catch (e: ApiException) {
-            log(event("CUE_SKIPPED", "watch_channel_failed"))
-            return false
-        }
-        log(event("CUE_START", "watch"))
-        val status = try {
+        val reply = try {
             coroutineScope {
-                // A blocked read only returns once the channel closes, so the deadline closes it: transfer plus play.
+                // A blocked stream call returns only once the channel closes, so the deadline (transfer plus play) and
+                // a Stop both close it. A stopped cue still plays to its end on the watch.
                 val watchdog = launch {
-                    delay(2 * pcm.size * 1000L / audio.sampleRate + WATCH_MARGIN_MS)
-                    channels.close(channel)
+                    try {
+                        delay(2 * pcm.size * 1000L / audio.sampleRate + WATCH_MARGIN_MS)
+                    } finally {
+                        channels.close(channel)
+                    }
                 }
                 try {
-                    WristCue.write(channels.getOutputStream(channel).await(), pcm, audio.sampleRate)
-                    channels.getInputStream(channel).await().read()
+                    WristCue.write(channels.getOutputStream(channel).await(), pcm, audio.sampleRate, testCue)
+                    WristCue.readReply(channels.getInputStream(channel).await()) { log(event("CUE_START", "watch")) }
                 } finally {
                     watchdog.cancel()
                 }
             }
         } catch (e: IOException) {
-            -1
+            null
         } catch (e: ApiException) {
-            -1
+            null
+        } catch (e: CancellationException) {
+            log(event("CUE_END", "stopped"))
+            throw e
         } finally {
             channels.close(channel)
         }
-        return when (status) {
-            WristCue.PLAYED -> true.also { log(event("CUE_END", "watch")) }
-            WristCue.VOLUME_ZERO -> false.also { log(event("VOLUME_ZERO", "watch_media_volume_off")) }
-            else -> false.also { log(event("CUE_END", "watch_failed=$status")) }
+        val context = currentCoroutineContext()
+        if (!context.isActive) { // the Stop's close ended the blocked call with an IOException
+            log(event("CUE_END", "stopped"))
+            context.ensureActive()
+        }
+        if (reply != null && reply.factor < 1f) log(event("VOLUME_RAISED", "watch;factor=${reply.factor}", reply))
+        return when (reply?.status) {
+            WristCue.PLAYED -> true.also { log(event("CUE_END", "watch", reply)) }
+            WristCue.VOLUME_ZERO -> false.also { log(event("VOLUME_ZERO", "watch_media_volume_off", reply)) }
+            WristCue.NOT_ON_SPEAKER -> false.also { log(event("CUE_SKIPPED", "watch_media_not_on_speaker", reply)) }
+            null -> false.also { log(event("CUE_END", "watch_no_reply")) }
+            else -> false.also { log(event("CUE_END", "watch_failed", reply)) }
+        }
+    }
+
+    /**
+     * The cue channel to the watch, retried for [WATCH_CONNECT_MS]: a Bluetooth gap of a few seconds should not cost
+     * a cue (a lost WAKE_PROMPT aborts its cycle). Null when the watch stayed out of reach.
+     */
+    private suspend fun openWatchChannel(channels: ChannelClient): ChannelClient.Channel? {
+        // Outside the timeout block: a channel that opens just as the timeout fires is still used (or closed on Stop).
+        var opened: ChannelClient.Channel? = null
+        try {
+            withTimeoutOrNull(WATCH_CONNECT_MS) {
+                while (opened == null) {
+                    opened = watchNode()?.let { openChannel(channels, it.id) }
+                    if (opened == null) delay(WATCH_RETRY_MS)
+                }
+            }
+        } catch (e: CancellationException) {
+            opened?.let { channels.close(it) }
+            throw e
+        }
+        return opened
+    }
+
+    private suspend fun watchNode(): Node? = try {
+        Wearable.getCapabilityClient(context)
+            .getCapability(DataLayerPaths.CAPABILITY_WATCH, CapabilityClient.FILTER_REACHABLE).await().nodes
+            .let { nodes -> nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull() }
+    } catch (e: ApiException) {
+        null
+    }
+
+    /** A channel that only arrives after a Stop or the timeout is closed, so the watch is never left waiting on it. */
+    private suspend fun openChannel(channels: ChannelClient, nodeId: String): ChannelClient.Channel? {
+        val task = channels.openChannel(nodeId, DataLayerPaths.WRIST_AUDIO_CHANNEL)
+        return try {
+            task.await()
+        } catch (e: ApiException) {
+            null
+        } catch (e: CancellationException) {
+            task.addOnSuccessListener { late -> late?.let { channels.close(it) } }
+            throw e
         }
     }
 
@@ -345,6 +410,8 @@ class CuePlayer(private val context: Context) {
         const val DEADLINE_MARGIN_MS = 2000L
         const val POLL_MS = 20L
         const val WATCH_MARGIN_MS = 20_000L
+        const val WATCH_CONNECT_MS = 30_000L
+        const val WATCH_RETRY_MS = 3_000L
 
         // A 250 ms buffer leaves the 20 ms polling writer a wide margin against underruns.
         fun buildTrack(sampleRate: Int): AudioTrack = AudioTrack.Builder()

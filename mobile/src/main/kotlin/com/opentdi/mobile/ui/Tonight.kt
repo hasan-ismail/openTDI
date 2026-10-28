@@ -91,44 +91,73 @@ data class CheckItem(val check: Check, val ok: Boolean, val text: String, val bl
 
 /**
  * The Tonight checklist. Total silence blocks Start (§7.7) so the red line explains why; the DND state is polled
- * every second while the screen is visible, and Start checks it again when tapped.
+ * every second while the screen is visible, and Start checks it again when tapped. When the watch plays the cues
+ * ([onWatch]) the phone's volume and DND do not matter, and the watch must be recording (its health service keeps the
+ * watch app running all night) and have played a test cue since the app started ([tested]).
  */
 fun checklist(
     volumeOff: Boolean,
     dnd: DndEffect,
     batteryUnrestricted: Boolean,
     cueProblem: String?,
-    calibrated: Boolean,
+    tested: Boolean,
     watchStreaming: Boolean,
-): List<CheckItem> = listOf(
-    CheckItem(
-        Check.VOLUME,
-        !volumeOff,
-        if (volumeOff) "Media volume is off, so cues would be silent." else "Media volume is on",
-        blocking = true,
-    ),
-    CheckItem(
-        Check.DND,
-        dnd == DndEffect.PLAYS,
-        dnd.message ?: "Do Not Disturb lets cues play",
-        blocking = dnd == DndEffect.TOTAL_SILENCE,
-    ),
-    CheckItem(
-        Check.BATTERY,
-        batteryUnrestricted,
-        if (batteryUnrestricted) "Battery use is unrestricted" else
-            "Allow unrestricted battery so Android doesn't stop the session while you sleep.",
-    ),
-    CheckItem(Check.CUES, cueProblem == null, cueProblem ?: "Cues are prepared", blocking = true),
-    CheckItem(
-        Check.TEST_CUE,
-        calibrated,
-        if (calibrated) "Test cue played at bedtime volume" else
-            "Play a test cue once at your bedtime volume: cues never play louder than that.",
-    ),
-    CheckItem(
-        Check.WATCH,
-        watchStreaming,
-        if (watchStreaming) "Watch is streaming" else "Watch not streaming (optional): start recording on the watch.",
-    ),
-)
+    onWatch: Boolean = false,
+): List<CheckItem> = buildList {
+    if (!onWatch) {
+        add(
+            CheckItem(
+                Check.VOLUME,
+                !volumeOff,
+                if (volumeOff) "Media volume is off, so cues would be silent." else "Media volume is on",
+                blocking = true,
+            ),
+        )
+        add(
+            CheckItem(
+                Check.DND,
+                dnd == DndEffect.PLAYS,
+                dnd.message ?: "Do Not Disturb lets cues play",
+                blocking = dnd == DndEffect.TOTAL_SILENCE,
+            ),
+        )
+    }
+    add(
+        CheckItem(
+            Check.BATTERY,
+            batteryUnrestricted,
+            if (batteryUnrestricted) "Battery use is unrestricted" else
+                "Allow unrestricted battery so Android doesn't stop the session while you sleep.",
+        ),
+    )
+    add(CheckItem(Check.CUES, cueProblem == null, cueProblem ?: "Cues are prepared", blocking = true))
+    add(
+        when {
+            !onWatch -> CheckItem(
+                Check.TEST_CUE,
+                tested,
+                if (tested) "Test cue played at bedtime volume" else
+                    "Play a test cue once at your bedtime volume: cues never play louder than that.",
+            )
+            tested -> CheckItem(Check.TEST_CUE, true, "Test cue played on the watch", blocking = true)
+            else -> CheckItem(
+                Check.TEST_CUE,
+                false,
+                "Play a test cue on the watch at your bedtime volume: cues never play louder than that.",
+                blocking = true,
+            )
+        },
+    )
+    add(
+        when {
+            watchStreaming -> CheckItem(Check.WATCH, true, "Watch is streaming", blocking = onWatch)
+            onWatch -> CheckItem(
+                Check.WATCH,
+                false,
+                "Start recording on the watch: it plays tonight's cues.",
+                blocking = true,
+            )
+            else -> CheckItem(Check.WATCH, false, "Watch not streaming (optional): start recording on the watch.")
+        },
+    )
+}

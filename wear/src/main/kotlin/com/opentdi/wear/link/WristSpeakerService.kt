@@ -5,58 +5,84 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
-import com.opentdi.shared.audio.WavAudio
 import com.opentdi.shared.audio.WristCue
+import com.opentdi.shared.audio.volumeRaisedCorrection
 import com.opentdi.shared.model.DataLayerPaths
+import java.io.OutputStream
 
 /**
  * The wrist speaker: Play Services starts this when the phone opens the cue channel. It plays the cue on the watch's
- * own speaker at the watch's media volume and answers with a [WristCue] status byte.
+ * own speaker at the watch's media volume and answers with a [WristCue.Reply]. As on the phone (§7.7 step 5), the
+ * test cue's volume is the calibration: a cue never plays louder than the last test cue, whatever the volume is now.
  */
 class WristSpeakerService : WearableListenerService() {
     override fun onChannelOpened(channel: ChannelClient.Channel) {
         if (channel.path != DataLayerPaths.WRIST_AUDIO_CHANNEL) return
         val channels = Wearable.getChannelClient(this)
-        // Callbacks run on a background thread; anything thrown here would also stop the watch's recording.
-        val status = try {
-            play(WristCue.read(Tasks.await(channels.getInputStream(channel))))
-        } catch (e: Exception) {
-            Log.w(TAG, "WRIST_CUE_FAILED reason=${e.javaClass.simpleName}")
-            WristCue.FAILED
-        }
+        // Callbacks run one at a time on a background thread: a phone that never sends must not block later cues.
+        val guard = Handler(Looper.getMainLooper())
+        guard.postDelayed({ channels.close(channel) }, READ_DEADLINE_MS)
+        // Anything thrown here would also stop the watch's recording, so every failure becomes a reply.
+        var out: OutputStream? = null // a channel's output stream may only be opened once
         try {
-            Tasks.await(channels.getOutputStream(channel)).run {
-                write(status)
-                flush()
+            val cue = try {
+                WristCue.read(Tasks.await(channels.getInputStream(channel)))
+            } finally {
+                guard.removeCallbacksAndMessages(null)
             }
-        } catch (e: Exception) { // the phone gave up waiting and closed the channel
-            Log.w(TAG, "WRIST_CUE_NO_REPLY reason=${e.javaClass.simpleName}")
+            val stream = Tasks.await(channels.getOutputStream(channel)).also { out = it }
+            WristCue.writeReply(stream, play(cue, stream))
+        } catch (e: Exception) { // a closed channel, a bad header, a track the system refused
+            Log.w(TAG, "WRIST_CUE_FAILED reason=${e.javaClass.simpleName}")
+            try {
+                WristCue.writeReply(out ?: Tasks.await(channels.getOutputStream(channel)), WristCue.Reply(WristCue.FAILED))
+            } catch (e: Exception) { // the phone gave up waiting and closed the channel
+                Log.w(TAG, "WRIST_CUE_NO_REPLY reason=${e.javaClass.simpleName}")
+            }
         }
     }
 
-    private fun play(audio: WavAudio): Int {
+    private fun play(cue: WristCue.Cue, out: OutputStream): WristCue.Reply {
         val audioManager = getSystemService(AudioManager::class.java)
-        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
-            Log.w(TAG, "WRIST_CUE_SKIPPED reason=media_volume_off")
-            return WristCue.VOLUME_ZERO
+        val index = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        // getStreamVolume is the current media device's index, so it is the speaker's only while media goes there.
+        // Before API 33 there is no such query; the routed device after the cue still reports a headset.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            audioManager.getAudioDevicesForAttributes(ATTRIBUTES).none { it.type == SPEAKER }
+        ) {
+            Log.w(TAG, "WRIST_CUE_SKIPPED reason=media_not_on_speaker")
+            return WristCue.Reply(WristCue.NOT_ON_SPEAKER, index)
         }
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build(),
+        if (index == 0) {
+            Log.w(TAG, "WRIST_CUE_SKIPPED reason=media_volume_off")
+            return WristCue.Reply(WristCue.VOLUME_ZERO, index)
+        }
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val calibrated = prefs.getInt(KEY_CALIBRATED_INDEX, 0)
+        val factor = if (!cue.calibrate && calibrated in 1 until index) {
+            volumeRaisedCorrection(
+                audioManager.getStreamVolumeDb(AudioManager.STREAM_MUSIC, index, SPEAKER),
+                audioManager.getStreamVolumeDb(AudioManager.STREAM_MUSIC, calibrated, SPEAKER),
             )
+        } else {
+            1f
+        }
+        val samples = cue.audio.samples
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(ATTRIBUTES)
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                    .setSampleRate(audio.sampleRate)
+                    .setSampleRate(cue.audio.sampleRate)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                     .build(),
             )
@@ -64,22 +90,32 @@ class WristSpeakerService : WearableListenerService() {
             .build()
         try {
             audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                .firstOrNull { it.type == SPEAKER }
                 ?.let { track.setPreferredDevice(it) }
-            track.play()
             // Trailing silence carries the last cue samples through the mixer, so the head position reaches them.
-            val out = audio.samples.copyOf(audio.samples.size + audio.sampleRate / 4)
-            track.write(out, 0, out.size, AudioTrack.WRITE_BLOCKING)
+            val pcm = FloatArray(samples.size + cue.audio.sampleRate / 4) { n ->
+                if (n < samples.size) samples[n] * factor else 0f
+            }
+            WristCue.writeStarted(out)
+            track.play()
+            val written = track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
             val deadline = SystemClock.elapsedRealtime() + DRAIN_MS
-            while (track.playbackHeadPosition < audio.samples.size && SystemClock.elapsedRealtime() < deadline) {
+            while (track.playbackHeadPosition < samples.size && SystemClock.elapsedRealtime() < deadline) {
                 SystemClock.sleep(POLL_MS)
             }
+            val routed = track.routedDevice?.type ?: -1
+            val status = when {
+                written != pcm.size -> WristCue.FAILED
+                routed != SPEAKER -> WristCue.NOT_ON_SPEAKER
+                else -> WristCue.PLAYED
+            }
+            if (status == WristCue.PLAYED && cue.calibrate) prefs.edit().putInt(KEY_CALIBRATED_INDEX, index).apply()
             Log.i(
                 TAG,
-                "WRIST_CUE_PLAYED samples=${audio.samples.size} rate=${audio.sampleRate} " +
-                    "routedType=${track.routedDevice?.type}",
+                "WRIST_CUE_END status=$status samples=${samples.size} rate=${cue.audio.sampleRate} index=$index " +
+                    "calibrated=$calibrated factor=$factor written=$written routedType=$routed",
             )
-            return WristCue.PLAYED
+            return WristCue.Reply(status, index, routed, factor)
         } finally {
             track.release()
         }
@@ -87,7 +123,15 @@ class WristSpeakerService : WearableListenerService() {
 
     private companion object {
         const val TAG = "OTDI.Audio"
+        const val SPEAKER = AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+        const val PREFS = "wrist_speaker"
+        const val KEY_CALIBRATED_INDEX = "calibratedIndex"
+        const val READ_DEADLINE_MS = 60_000L
         const val DRAIN_MS = 2000L
         const val POLL_MS = 20L
+        val ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
     }
 }

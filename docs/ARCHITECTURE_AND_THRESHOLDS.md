@@ -65,8 +65,8 @@ Phases follow owner requirements G20 and G21 and decision D17.
 | Dashboard: Compose Canvas charts at 1 Hz (HR, RMSSD, EDA, actigraphy, baseline bands, confidence) | 3 | D14 |
 | `BLUETOOTH_SLEEP_AUDIO` route + configurable keep-alive carrier + manual earbud test | 3 | "Extra audio routes" = Phase 3 per G20. The enum value exists from Phase 1 |
 | `USB_WIRED_DAC` route | Deferred | Enum value exists, disabled in UI (G21) |
-| `WATCH_WRIST_SPEAKER` route | Deferred | Enum value exists, disabled in UI (G21) |
-| Wrist mic streaming (`/opentdi/wrist_audio_channel`) | Deferred | Path reserved only (D3) |
+| `WATCH_WRIST_SPEAKER` route | 1 (owner request, 2026-10-27) | Phone keeps the timer and sends each cue to the watch speaker, §7.6 |
+| Wrist mic streaming | Deferred | `/opentdi/wrist_audio_channel` carries speaker cues only (D3) |
 | Standalone watch fallback (watch plays and records when the phone is gone) | Deferred | Until then: missed-cycle rule, §5.4 |
 | 60 fps charts | Deferred | G21 |
 | Arm-raised "limp" task (the closest analogue of Dormio's hand-closure task) | Deferred | Protocol change; needs owner approval ([D] §10.6) |
@@ -574,7 +574,16 @@ play c[] in a loop on its own AudioTrack (same attributes, performance mode and 
 | `NIGHTSTAND_SPEAKER` (default) | 1 | `TYPE_BUILTIN_SPEAKER` (2) | CLAUDE.md calls it "Default MIT Mode"; the sources only say "the computer" / "computer speakers" ([P] §4.1). The UI says "Nightstand speaker" |
 | `BLUETOOTH_SLEEP_AUDIO` | 3 | `TYPE_BLUETOOTH_A2DP` (8), `TYPE_BLE_HEADSET` (26), `TYPE_BLE_SPEAKER` (27) | Never `TYPE_BLUETOOTH_SCO` (7) or `TYPE_BLE_BROADCAST` (30) ([U] §1.1) |
 | `USB_WIRED_DAC` | Deferred | (`TYPE_USB_HEADSET`, `TYPE_USB_DEVICE`, `TYPE_WIRED_HEADPHONES`, `TYPE_WIRED_HEADSET`) | Disabled in UI |
-| `WATCH_WRIST_SPEAKER` | Deferred | — | Disabled in UI |
+| `WATCH_WRIST_SPEAKER` | 1 (owner request) | the watch's `TYPE_BUILTIN_SPEAKER` (2) | Settings → Sound → "Play cues on the watch", for a phone in another room; rules below |
+
+**Wrist speaker.** The phone keeps the timer and the logs. For each cue it applies the fade-in and G_target and sends
+the samples over `/opentdi/wrist_audio_channel` (`WristCue`, §10.2); the watch plays them on its own speaker at its own
+media volume. The phone's DND, media-volume and focus rules (§7.7) do not apply. The watch skips a cue when its media
+output is not its speaker or its media volume is 0, and the watch's last test cue is its calibration: a later cue at a
+higher watch volume is scaled down with the §7.7 step 5 correction. The route's cap is the nightstand's (GUESSED).
+The phone retries reaching the watch for 30 s (GUESSED) before skipping a cue (a skipped `WAKE_PROMPT` aborts its
+cycle, row 15). Start requires a test cue played on the watch since the app started and the watch recording, whose
+health FGS keeps the watch app running all night.
 
 `setPreferredDevice` is only a hint (FACT: `Engine.cpp:824-825`, `AudioPolicyManager.cpp:7986-7987`, [U] §2.4). So:
 set it on both tracks before `play()`; shortly after `play()` check `getRoutedDevice()?.id == chosen.id`, else stop,
@@ -1048,7 +1057,7 @@ explicitNulls = false }`. Every timestamp is epoch ms. Units are in the field na
 @Serializable enum class SessionMode { DETECTION, TIMED_CUES }
 @Serializable enum class PromptCue { INITIAL_INCUBATION, WAKE_PROMPT, SLEEP_STATE_QUESTION /*[EXT]*/, RE_INCUBATION, SESSION_END }
 @Serializable enum class AudioRouteMode { NIGHTSTAND_SPEAKER, BLUETOOTH_SLEEP_AUDIO,
-    USB_WIRED_DAC /*deferred, disabled*/, WATCH_WRIST_SPEAKER /*deferred, disabled*/ }
+    USB_WIRED_DAC /*deferred, disabled*/, WATCH_WRIST_SPEAKER /*phone sends cues to the watch speaker, §7.6*/ }
 @Serializable enum class SensitivityPreset { LOW, MIT_STANDARD /*UI label "Standard"*/, HIGH }
 @Serializable enum class SensorSource { SAMSUNG_SDK, ANDROID_SENSORS, SIMULATION }
 @Serializable enum class SimulationMode { FAST_HYPNAGOGIA, REALTIME_HYPNAGOGIA, AWAKE_CONTROL, STOP }
@@ -1354,7 +1363,7 @@ Consequences:
 | `/opentdi/hypnagogia_trigger` | watch → phone | `MessageClient.sendRequest` | `HypnagogiaTrigger` | `Ack(ok, code)`: `Ack(true, ACCEPTED)`, `Ack(true, DUPLICATE)` (already accepted; the watch treats it as accepted), `Ack(false, MODE_TIMED)`, `Ack(false, NOT_AWAKE_INCUBATING)`. Attempts at +0, +2, +4, +8 s from the first send, each with a 2 s app-level reply timeout, stopping at the missed-cycle deadline. A new attempt does not cancel the earlier `sendRequest` Task (it cannot be cancelled); the first `Ack` from any attempt wins and later replies are logged and ignored. The phone de-duplicates by (sessionId, cycle, onsetTimestampMs) |
 | `/opentdi/sensor_stream` | watch → phone | batched `MessageClient`: `sendMessage` for routine batches (dropped on `TARGET_NODE_NOT_CONNECTED` = 4000), `sendRequest` + up to 3 retries for a batch that contains a state change **[EXT]** | `TelemetryBatch`, flushed every `telemetryFlushS` (2 s) and immediately on any state change | none / `Ack` |
 | `/opentdi/session_files` **[EXT]** | watch → phone | `ChannelClient.openChannel` + `sendFile` at session end (Phase 2) | each watch CSV of the session | channel close reason |
-| `/opentdi/wrist_audio_channel` | — | `ChannelClient` | reserved for the deferred wrist speaker / mic | — |
+| `/opentdi/wrist_audio_channel` | phone → watch | `ChannelClient.openChannel`, one channel per cue | `WristCue`: magic "OTD2", calibrate flag (the test cue), sample rate, count, mono PCM16 already faded and at G_target | a started byte just before the sound, then status (played, volume zero, failed, not on speaker), the watch's media index, routed device type and volume-raised factor; the wrist mic is deferred |
 
 **Never `DataClient` for the stream** (D3, owner 17): data items are persisted and cloud-backed ([A] §4.8).
 Messages must generally be under 100 KB (FACT, [A] §4.3); a 5-frame batch is about 2 KB (INFERENCE).

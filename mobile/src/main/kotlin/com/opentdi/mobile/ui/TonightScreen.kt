@@ -65,12 +65,10 @@ fun TonightScreen(
     val warnings = remember(config) { config.warnings() }
     val cueProblem = remember(config, ui.cues) { cueSetProblem(ui.cues, config) }
     val streaming = live.receivedAtMs?.let { now - it <= STALE_MS } == true
-    // The phone's media volume and DND only matter when the phone speaker plays the cues.
-    val onWatch = ui.config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER
-    val phoneVolumeOff = volumeOff && !onWatch
+    val onWatch = config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER
     val checks = checklist(
-        phoneVolumeOff, if (onWatch) DndEffect.PLAYS else dnd, ui.batteryUnrestricted, cueProblem,
-        ui.calibratedIndex != null, streaming,
+        volumeOff, dnd, ui.batteryUnrestricted, cueProblem,
+        if (onWatch) ui.watchTested else ui.calibratedIndex != null, streaming, onWatch,
     )
     val ready = errors.isEmpty() && checks.none { it.blocking && !it.ok }
     val idle = !status.running && !ui.preparing && !ui.testing
@@ -98,7 +96,7 @@ fun TonightScreen(
                 }
                 val fixEnabled = when (item.check) {
                     Check.CUES -> idle && config.theme.isNotBlank() && config.theme.length <= 60
-                    Check.TEST_CUE -> idle && cueProblem == null && !phoneVolumeOff
+                    Check.TEST_CUE -> idle && cueProblem == null && (onWatch || !volumeOff)
                     else -> true
                 }
                 CheckRow(item, fix?.takeIf { fixEnabled })

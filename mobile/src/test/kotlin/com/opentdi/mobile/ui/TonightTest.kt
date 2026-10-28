@@ -66,13 +66,24 @@ class TonightTest {
 
     @Test
     fun checklist_blocksOnVolumeCuesAndTotalSilence() {
-        val allGood = checklist(false, DndEffect.PLAYS, true, null, calibrated = true, watchStreaming = true)
+        val allGood = checklist(false, DndEffect.PLAYS, true, null, tested = true, watchStreaming = true)
         assertTrue(allGood.all { it.ok })
-        val bad = checklist(true, DndEffect.TOTAL_SILENCE, false, "No cues", calibrated = false, watchStreaming = false)
+        val bad = checklist(true, DndEffect.TOTAL_SILENCE, false, "No cues", tested = false, watchStreaming = false)
         assertTrue(bad.none { it.ok })
         assertEquals(setOf(Check.VOLUME, Check.DND, Check.CUES), bad.filter { it.blocking }.map { it.check }.toSet())
         assertEquals("No cues", bad.single { it.check == Check.CUES }.text)
         assertEquals(DndEffect.TOTAL_SILENCE.message, bad.single { it.check == Check.DND }.text)
+    }
+
+    @Test
+    fun checklist_onTheWatch_skipsThePhoneSpeaker_andNeedsTheWatch() {
+        // The phone muted in Total silence does not matter; an untested, silent watch does.
+        val bad = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = false, watchStreaming = false, onWatch = true)
+        assertEquals(listOf(Check.BATTERY, Check.CUES, Check.TEST_CUE, Check.WATCH), bad.map { it.check })
+        assertEquals(setOf(Check.TEST_CUE, Check.WATCH), bad.filter { it.blocking && !it.ok }.map { it.check }.toSet())
+        val good = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = true, watchStreaming = true, onWatch = true)
+        assertTrue(good.all { it.ok })
+        assertEquals("Test cue played on the watch", good.single { it.check == Check.TEST_CUE }.text)
     }
 
     private companion object {

@@ -111,7 +111,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 ) { Text("Prepare cues") }
                 OutlinedButton(
                     onClick = viewModel::testCue,
-                    enabled = idle && cueProblem == null && !volumeOff,
+                    // The phone's media volume only matters when the phone speaker plays the cues.
+                    enabled = idle && cueProblem == null &&
+                        (!volumeOff || config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER),
                     modifier = Modifier.weight(1f),
                 ) { Text("Test cue") }
             }

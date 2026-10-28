@@ -136,7 +136,13 @@ class NapSessionService : LifecycleService() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_moon)
             .setContentTitle("OpenTDI session running")
-            .setContentText("Timed cues on the nightstand speaker")
+            .setContentText(
+                if (loadConfig(this).audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER) {
+                    "Timed cues on the watch speaker"
+                } else {
+                    "Timed cues on the nightstand speaker"
+                },
+            )
             .setContentIntent(open)
             .addAction(0, "Stop", stop)
             .setOngoing(true)
@@ -306,9 +312,11 @@ class NapSessionService : LifecycleService() {
                     add("$key.ttsChannels" to rendered.ttsChannels.toString())
                     add("$key.sha256" to cues.sha256.getValue(rendered.cue))
                 }
-                add("route.deviceType" to speaker?.type?.toString().orEmpty())
-                add("route.deviceId" to speaker?.id?.toString().orEmpty())
-                add("audio.calibratedStreamIndex" to calibratedIndex.toString())
+                if (config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER) { // the watch keeps its own calibration
+                    add("route.deviceType" to speaker?.type?.toString().orEmpty())
+                    add("route.deviceId" to speaker?.id?.toString().orEmpty())
+                    add("audio.calibratedStreamIndex" to calibratedIndex.toString())
+                }
                 add("audio.streamMaxIndex" to audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toString())
                 add("audio.targetGain" to config.audio.targetGain().toString())
                 add(
