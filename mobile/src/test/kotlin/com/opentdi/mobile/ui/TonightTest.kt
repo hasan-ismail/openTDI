@@ -6,6 +6,7 @@ import com.opentdi.shared.config.validate
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SessionMode
 import com.opentdi.shared.model.TdiState
+import com.opentdi.shared.model.WatchState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -51,7 +52,7 @@ class TonightTest {
     @Test
     fun presets_fillTheTiming_andAreRecognised() {
         val config = SessionConfig(mode = SessionMode.TIMED_CUES)
-        assertEquals(TimingPreset.LUCID_NAP, presetOf(config)) // the defaults are the lucid nap
+        assertEquals(TimingPreset.LUCID_NIGHT, presetOf(config)) // the defaults are the lucid night
         val quick = TimingPreset.QUICK_TEST.applyTo(config)
         assertEquals(TimingPreset.QUICK_TEST, presetOf(quick))
         assertEquals(emptyList<String>(), quick.validate())
@@ -71,9 +72,9 @@ class TonightTest {
 
     @Test
     fun checklist_blocksOnVolumeCuesAndTotalSilence() {
-        val allGood = checklist(false, DndEffect.PLAYS, true, null, tested = true, watchStreaming = true)
+        val allGood = checklist(false, DndEffect.PLAYS, true, null, tested = true, watch = WatchState.RECORDING)
         assertTrue(allGood.all { it.ok })
-        val bad = checklist(true, DndEffect.TOTAL_SILENCE, false, "No cues", tested = false, watchStreaming = false)
+        val bad = checklist(true, DndEffect.TOTAL_SILENCE, false, "No cues", tested = false, watch = null)
         assertTrue(bad.none { it.ok })
         assertEquals(setOf(Check.VOLUME, Check.DND, Check.CUES), bad.filter { it.blocking }.map { it.check }.toSet())
         assertEquals("No cues", bad.single { it.check == Check.CUES }.text)
@@ -83,17 +84,24 @@ class TonightTest {
     @Test
     fun checklist_onTheWatch_skipsThePhoneSpeaker_andNeedsTheWatch() {
         // The phone muted in Total silence does not matter; an untested, silent watch does.
-        val bad = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = false, watchStreaming = false, onWatch = true)
+        val bad = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = false, watch = null, onWatch = true)
         assertEquals(listOf(Check.BATTERY, Check.CUES, Check.TEST_CUE, Check.WATCH), bad.map { it.check })
         assertEquals(setOf(Check.TEST_CUE, Check.WATCH), bad.filter { it.blocking && !it.ok }.map { it.check }.toSet())
-        val good = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = true, watchStreaming = true, onWatch = true)
+        val good = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = true, watch = WatchState.RECORDING, onWatch = true)
         assertTrue(good.all { it.ok })
         assertEquals("Test cue played on the watch", good.single { it.check == Check.TEST_CUE }.text)
+        // A watch waiting for Start session is ready; one with OpenTDI closed is not.
+        val waiting = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.WAITING, onWatch = true)
+        assertTrue(waiting.single { it.check == Check.WATCH }.ok)
+        val closed = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE, onWatch = true)
+        assertTrue(closed.single { it.check == Check.WATCH }.let { !it.ok && it.blocking })
+        assertTrue(checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE).single { it.check == Check.WATCH }
+            .let { !it.ok && !it.blocking }) // optional when the phone plays the cues
     }
 
     @Test
     fun checklist_warnsBelowAFullWatchBattery_withoutBlocking() {
-        fun battery(pct: Int?) = checklist(false, DndEffect.PLAYS, true, null, true, true, watchBatteryPct = pct)
+        fun battery(pct: Int?) = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.RECORDING, watchBatteryPct = pct)
             .singleOrNull { it.check == Check.WATCH_BATTERY }
         assertNull(battery(null)) // unknown while the watch is not streaming
         assertTrue(battery(100)!!.ok)

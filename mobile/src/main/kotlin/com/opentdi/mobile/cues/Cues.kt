@@ -160,7 +160,7 @@ fun loadPreparedCues(context: Context, config: SessionConfig): PreparedCues {
  * phrase, each trimmed of leading and trailing silence, joined with exactly phrasePauseMs of silence after a lead of
  * ¾ fadeInMs, peak-normalised to −3 dBFS and stored as PCM16 mono WAVs. NEURAL renders with the on-device Kokoro
  * model; when it is not installed, does not load or fails while rendering, [onFallback] gets the reason and the system
- * voice renders instead. Call from the main thread, never during a nap. Throws [CueException] or IOException.
+ * voice renders instead. Call from the main thread, never during a session. Throws [CueException] or IOException.
  */
 suspend fun renderCues(context: Context, config: SessionConfig, onFallback: (String) -> Unit = {}): CueSet {
     if (config.audio.ttsEngine == TtsEngine.NEURAL) {

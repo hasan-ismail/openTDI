@@ -6,6 +6,11 @@ import android.media.AudioManager
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.opentdi.shared.model.WatchStatus
+import com.opentdi.shared.model.TdiCommand
+import com.opentdi.shared.model.SessionEndReason
+import com.opentdi.shared.model.DeviceRole
+import com.opentdi.mobile.link.watchRequest
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.mobile.audio.AudioEvent
 import com.opentdi.mobile.audio.CuePlayer
@@ -85,6 +90,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             delay(1000)
         }
     }.distinctUntilChanged()
+
+    /** The watch app's state and battery, asked every 5 s while the screen collects it; null when it does not answer. */
+    val watchStatus: Flow<WatchStatus?> = flow {
+        while (true) {
+            emit(watchRequest(app, TdiCommand.StatusRequest(DeviceRole.PHONE)))
+            delay(5000)
+        }
+    }.distinctUntilChanged()
+
+    /** Ends the watch's night recording, which goes on after the cues end. */
+    fun stopWatch() {
+        viewModelScope.launch {
+            val status = watchRequest(app, TdiCommand.AbortSession("watch", DeviceRole.PHONE, SessionEndReason.USER))
+            Log.i(TAG_SESSION, logLine("WATCH_STOP", "state" to (status?.state ?: "NO_ANSWER")))
+        }
+    }
 
     /** Applies and saves a settings change. */
     fun edit(transform: (SessionConfig) -> SessionConfig) {

@@ -51,6 +51,19 @@
             android:exported="false"
             android:foregroundServiceType="health" />
 
+        <!-- The phone's Start session, Stop watch recording and status requests (sendRequest). -->
+        <service
+            android:name=".link.PhoneCommandService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.REQUEST_RECEIVED" />
+                <data
+                    android:host="*"
+                    android:path="/opentdi/state_command"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
+
         <!-- The wrist speaker: Play Services starts it when the phone opens the cue channel. -->
         <service
             android:name=".link.WristSpeakerService"

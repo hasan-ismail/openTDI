@@ -209,7 +209,7 @@ to work with this project's Android Gradle Plugin (`sdkmanager "build-tools;37.0
 
 The phone can render the cues with an on-device neural voice instead of Android's text-to-speech: Kokoro-82M v0.19
 (int8) through sherpa-onnx, with American and British voices (three women, three men). It runs only when you tap **Prepare cues**, never
-during a nap, and needs no network. The model is not in the APK or the repository: download it once (103 MB, 152 MB
+during a session, and needs no network. The model is not in the APK or the repository: download it once (103 MB, 152 MB
 unpacked; Kokoro weights Apache-2.0, espeak-ng data GPL-3.0) and copy it into the app's private storage.
 
 ```bash

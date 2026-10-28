@@ -4,6 +4,7 @@ import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.TdiState
+import com.opentdi.shared.model.WatchState
 import java.util.Locale
 
 /** The Tonight card's big line and the cycle line under it, for [status] at [nowMs] (elapsedRealtime). */
@@ -54,14 +55,16 @@ enum class TimingPreset(
     val backToSleepS: Int,
     val loops: Int,
     val waitForStillness: Boolean,
+    val sessionMin: Int,
 ) {
-    QUICK_TEST("Quick test", 1, 1, 60, 30, 60, 2, waitForStillness = false),
-    LUCID_NAP("Lucid nap", 10, 15, 180, 60, 420, 4, waitForStillness = true),
+    QUICK_TEST("Quick test", 1, 1, 60, 30, 60, 2, waitForStillness = false, sessionMin = 15),
+    LUCID_NIGHT("Lucid night", 10, 15, 180, 60, 420, 4, waitForStillness = true, sessionMin = 180),
     ;
 
     fun applyTo(config: SessionConfig) = config.copy(
         countdownS = dwellS,
         maxCycles = loops,
+        sessionMaxMin = sessionMin,
         timed = config.timed.copy(
             firstSleepMinMin = firstMin,
             firstSleepMaxMin = firstMax,
@@ -103,8 +106,9 @@ data class CheckItem(val check: Check, val ok: Boolean, val text: String, val bl
 /**
  * The Tonight checklist. Total silence blocks Start (§7.7) so the red line explains why; the DND state is polled
  * every second while the screen is visible, and Start checks it again when tapped. When the watch plays the cues
- * ([onWatch]) the phone's volume and DND do not matter, and the watch must be recording (its health service keeps the
- * watch app running all night) and have played a test cue since the app started ([tested]).
+ * ([onWatch]) the phone's volume and DND do not matter, and the watch must be waiting or recording (its health service
+ * keeps the watch app running all night) and have played a test cue since the app started ([tested]). [watch] is null
+ * when the watch does not answer.
  */
 fun checklist(
     volumeOff: Boolean,
@@ -112,9 +116,9 @@ fun checklist(
     batteryUnrestricted: Boolean,
     cueProblem: String?,
     tested: Boolean,
-    watchStreaming: Boolean,
+    watch: WatchState?,
     onWatch: Boolean = false,
-    watchBatteryPct: Int? = null, // known only while the watch streams
+    watchBatteryPct: Int? = null, // null while the watch does not answer
 ): List<CheckItem> = buildList {
     if (!onWatch) {
         add(
@@ -161,15 +165,23 @@ fun checklist(
         },
     )
     add(
-        when {
-            watchStreaming -> CheckItem(Check.WATCH, true, "Watch is streaming", blocking = onWatch)
-            onWatch -> CheckItem(
+        when (watch) {
+            WatchState.RECORDING -> CheckItem(Check.WATCH, true, "Watch is recording", blocking = onWatch)
+            WatchState.WAITING ->
+                CheckItem(Check.WATCH, true, "Watch is waiting: Start session starts it too", blocking = onWatch)
+            WatchState.IDLE -> CheckItem(
                 Check.WATCH,
                 false,
-                "Start recording on the watch: it plays tonight's cues.",
-                blocking = true,
+                "Open OpenTDI on the watch so Start session starts its recording too." +
+                    if (onWatch) "" else " (Optional: cues play on the phone.)",
+                blocking = onWatch,
             )
-            else -> CheckItem(Check.WATCH, false, "Watch not streaming (optional): start recording on the watch.")
+            null -> CheckItem(
+                Check.WATCH,
+                false,
+                "Watch not connected." + if (onWatch) " It plays tonight's cues." else " (Optional: cues play on the phone.)",
+                blocking = onWatch,
+            )
         },
     )
     if (watchBatteryPct != null) {

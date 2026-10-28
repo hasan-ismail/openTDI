@@ -94,7 +94,11 @@ class MainActivity : ComponentActivity() {
                             Page.MAIN -> MainScreen(
                                 state = state,
                                 onStart = { startSession(logRawAccel, androidSensorsOnly = false) },
-                                onStop = { HealthTrackingForegroundService.stop(this@MainActivity) },
+                                onStop = {
+                                    // Closing too: an open app would start waiting again the next time it resumes.
+                                    HealthTrackingForegroundService.stop(this@MainActivity)
+                                    finish()
+                                },
                                 onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
                                 onStatusTap = ::onStatusTap,
                                 onDetails = { page = Page.DETAILS },
@@ -140,6 +144,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Opening the app waits for the phone's Start session (owner, 2026-10-28), once a sensor permission allows a
+        // health service; without one, Start recording asks for it first.
+        val s0 = SensingStateHolder.state.value
+        val missing = missingPermissions()
+        if (!s0.running && !s0.waiting &&
+            (heartRatePermission(Build.VERSION.SDK_INT) !in missing || Manifest.permission.ACTIVITY_RECOGNITION !in missing)
+        ) {
+            HealthTrackingForegroundService.waitForPhone(this)
+        }
         if (!resolving) return
         resolving = false
         // Back from Galaxy Store: only a new session reconnects to Health Sensor Service; still missing, it falls back.
@@ -212,7 +225,10 @@ private fun MainScreen(
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item { ListHeader { Text("OpenTDI") } }
-            if (!state.running) {
+            if (!state.running && state.waiting) {
+                item { BigLine("Waiting for the phone") }
+                item { Text("Tap Start session on your phone, or start recording here.") }
+            } else if (!state.running) {
                 item { BigLine("Not recording") }
             } else if (state.status == null) {
                 item { BigLine("Starting sensors…") }
@@ -238,6 +254,16 @@ private fun MainScreen(
                     )
                 } else {
                     Button(onClick = onStart, modifier = Modifier.fillMaxWidth(), label = { Text("Start recording") })
+                }
+            }
+            if (state.waiting && !state.running) {
+                item {
+                    Button(
+                        onClick = onStop,
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Stop waiting") },
+                    )
                 }
             }
             if (state.sessionId != null) {

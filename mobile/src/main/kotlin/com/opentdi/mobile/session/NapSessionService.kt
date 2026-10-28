@@ -16,6 +16,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import com.opentdi.shared.model.TdiCommand
+import com.opentdi.shared.model.DeviceRole
+import com.opentdi.mobile.link.watchRequest
 import com.opentdi.mobile.MainActivity
 import com.opentdi.mobile.R
 import com.opentdi.mobile.TAG_AUDIO
@@ -181,6 +184,13 @@ class NapSessionService : LifecycleService() {
         fun begin() {
             wakeLock.acquire((config.sessionMaxMin + 10) * 60_000L) // §14.4
             SessionMonitor.update { SessionStatus(running = true, sessionId = id, maxCycles = config.maxCycles) }
+            lifecycleScope.launch { // the waiting watch starts recording too (owner, 2026-10-28)
+                val watch = watchRequest(
+                    this@NapSessionService,
+                    TdiCommand.StartSession(id, config, DeviceRole.PHONE, System.currentTimeMillis()),
+                )
+                sessionEvent(logLine("WATCH_START", "state" to (watch?.state ?: "NO_ANSWER")))
+            }
             lifecycleScope.launch(Dispatchers.IO) { log.writeConfig(configRows()) }
             val (filter, categories) = getSystemService(NotificationManager::class.java).dndState()
             val index = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)

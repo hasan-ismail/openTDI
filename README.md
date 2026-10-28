@@ -21,7 +21,9 @@ on its sensor-free version that uses timed cues only
 
 ## How a session goes
 
-1. **Lie down and tap Start** on the phone. You hear the first reminder: *"You are dreaming. You are in control."*
+1. **Open OpenTDI on the watch** (it waits for the phone), then **tap Start session** on the phone: the watch starts
+   recording and you hear the first reminder: *"You are dreaming. You are in control."* The watch records the whole
+   night; stop it in the morning from the phone or the watch.
 2. **About 10–15 minutes later**, around when most people start drifting off, the reminder plays again, softly.
 3. **Three minutes after that**, a gentle voice says *"You're falling asleep. You are dreaming now. What do you
    notice?"* Say whatever is on your mind, or nothing at all.

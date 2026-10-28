@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.mobile.MainViewModel
 import com.opentdi.mobile.audio.DndEffect
@@ -65,11 +66,13 @@ fun TonightScreen(
     val warnings = remember(config) { config.warnings() }
     val cueProblem = remember(config, ui.cues) { cueSetProblem(ui.cues, config) }
     val streaming = live.receivedAtMs?.let { now - it <= STALE_MS } == true
+    val watchStatus by viewModel.watchStatus.collectAsStateWithLifecycle(initialValue = null)
+    val watch = if (streaming) WatchState.RECORDING else watchStatus?.state
     val onWatch = config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER
     val checks = checklist(
         volumeOff, dnd, ui.batteryUnrestricted, cueProblem,
-        if (onWatch) ui.watchTested else ui.calibratedIndex != null, streaming, onWatch,
-        live.watchBatteryPct.takeIf { streaming },
+        if (onWatch) ui.watchTested else ui.calibratedIndex != null, watch, onWatch,
+        watchStatus?.batteryPct ?: live.watchBatteryPct.takeIf { streaming },
     )
     val ready = errors.isEmpty() && checks.none { it.blocking && !it.ok }
     val idle = !status.running && !ui.preparing && !ui.testing
@@ -83,6 +86,12 @@ fun TonightScreen(
         } else {
             Button(onClick = onStart, enabled = idle && ready, modifier = Modifier.fillMaxWidth().height(64.dp)) {
                 Text("Start session", style = MaterialTheme.typography.titleLarge)
+            }
+            // The watch records the whole night, past the end of the cues: in the morning it is stopped here.
+            if (watch == WatchState.RECORDING) {
+                OutlinedButton(onClick = viewModel::stopWatch, modifier = Modifier.fillMaxWidth()) {
+                    Text("Stop watch recording")
+                }
             }
         }
         Section("Before you sleep") {

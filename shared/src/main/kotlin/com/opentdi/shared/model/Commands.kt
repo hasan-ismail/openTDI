@@ -16,6 +16,11 @@ sealed class TdiCommand {
         val protocolVersion: Int = PROTOCOL_VERSION,
     ) : TdiCommand()
 
+    /** Phone → watch: asks for the watch's [WatchStatus]; every request on the path is answered with one. */
+    @Serializable
+    @SerialName("status")
+    data class StatusRequest(val origin: DeviceRole) : TdiCommand()
+
     @Serializable
     @SerialName("pause")
     data class PauseSession(val sessionId: String, val origin: DeviceRole) : TdiCommand()
@@ -55,3 +60,11 @@ sealed class TdiCommand {
         val atWallMs: Long,
     ) : TdiCommand()
 }
+
+/** The watch app: not running, waiting for the phone's Start session (sensors off), or recording. */
+@Serializable
+enum class WatchState { IDLE, WAITING, RECORDING }
+
+/** The watch's answer to every `/opentdi/state_command` request (`MessageClient.sendRequest`). */
+@Serializable
+data class WatchStatus(val state: WatchState, val batteryPct: Int? = null)

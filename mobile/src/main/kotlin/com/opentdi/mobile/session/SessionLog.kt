@@ -66,7 +66,7 @@ class SessionLog(private val dir: File, private val startRealtimeMs: Long, priva
         try {
             block()
         } catch (e: IOException) {
-            closed = true // a full disk ends the logging, never the nap
+            closed = true // a full disk ends the logging, never the session
             failed(e)
         }
     }

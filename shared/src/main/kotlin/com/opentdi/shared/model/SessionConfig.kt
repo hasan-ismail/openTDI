@@ -11,7 +11,7 @@ data class SessionConfig(
     val mode: SessionMode = SessionMode.DETECTION,
     val theme: String = "lucid dreaming", // 1..60 chars; the default cue words are about lucidity (§7.1)
     val maxCycles: Int = 4, // 1..10
-    val sessionMaxMin: Int = 60, // 15..180
+    val sessionMaxMin: Int = 180, // 15..180; the Lucid night preset
     val countdownS: Int = 180, // 60..300 step 15; also the TIMED dwell (15 only when simulation == FAST_HYPNAGOGIA)
     val detection: DetectionConfig = DetectionConfig(),
     val accel: AccelConfig = AccelConfig(),
