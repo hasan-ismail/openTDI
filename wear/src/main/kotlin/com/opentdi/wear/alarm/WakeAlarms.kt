@@ -98,7 +98,7 @@ class WakeAlarms(
             if (r.tone == AlarmTone.VIBRATE_ONLY && !r.escalated && elapsed >= ESCALATE_MS) {
                 r.escalated = true
                 r.rampFromMs = nowMs
-                player.start(AlarmTone.MELODY, 0.05f, gentle = r.kind == "WBTB")
+                player.start(AlarmTone.MELODY, 0.05f, gentle = r.kind == "WBTB", WatchOutputs.earbudsChosen(context))
                 log(nowMs, r.kind, "ESCALATED", stillness, hr, "tone=${AlarmTone.MELODY}")
             }
             val rise = (nowMs - r.rampFromMs) / (config.rampS * 1000f)
@@ -189,7 +189,7 @@ class WakeAlarms(
     private fun ring(nowMs: Long, kind: String, tone: AlarmTone, gentle: Boolean, stillness: Float?, hr: Float?) {
         if (kind == "WAKE") lateCues?.disarm()
         ringing = Ringing(kind, tone, nowMs)
-        player.start(tone, if (config.rampS == 0) 1f else 0.05f, gentle)
+        player.start(tone, if (config.rampS == 0) 1f else 0.05f, gentle, WatchOutputs.earbudsChosen(context))
         log(nowMs, kind, "RING", stillness, hr, "tone=$tone;alarm_volume=${player.alarmVolumeIndex()}")
         val left = if (kind == "WAKE") config.maxSnoozes - snoozes else 0
         SensingStateHolder.update { it.copy(alarmRinging = kind, snoozesLeft = left) }

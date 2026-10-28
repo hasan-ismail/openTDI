@@ -1,5 +1,6 @@
 package com.opentdi.mobile
 
+import com.opentdi.shared.model.WatchOutput
 import java.util.concurrent.atomic.AtomicBoolean
 import com.opentdi.mobile.cues.saveOwnVoice
 import com.opentdi.mobile.cues.recordMic
@@ -144,7 +145,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Plays the late-night cue once on the watch at [volume], for setting its loudness while lying in bed. */
     fun testLateCue(volume: Float) {
         viewModelScope.launch {
-            if (watchRequest(app, TdiCommand.TestLateCue(volume)) == null) {
+            val earbuds = ui.value.config.audio.watchOutput == WatchOutput.EARBUDS
+            if (watchRequest(app, TdiCommand.TestLateCue(volume, earbuds)) == null) {
                 mutableUi.update { it.copy(cueMessage = "The watch did not answer: is it connected?") }
             }
         }
@@ -166,7 +168,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
             }
-            val status = watchRequest(app, TdiCommand.TestAlarm(tone))
+            val earbuds = ui.value.config.audio.watchOutput == WatchOutput.EARBUDS
+            val status = watchRequest(app, TdiCommand.TestAlarm(tone, earbuds))
             if (status == null) mutableUi.update { it.copy(cueMessage = "The watch did not answer: is it connected?") }
         }
     }

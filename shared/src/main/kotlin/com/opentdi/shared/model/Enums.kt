@@ -94,6 +94,10 @@ enum class AlarmTone { MELODY, GENTLE_CHIMES, RISING_TONE, CLASSIC_BEEPS, VIBRAT
 @Serializable
 enum class LateCueMode { OFF, ON, EXPERIMENT }
 
+/** Where the watch plays sound: its speaker, or earbuds paired with the watch (speaker when they are not connected). */
+@Serializable
+enum class WatchOutput { SPEAKER, EARBUDS }
+
 /** The Kokoro v0.19 voices in voices.bin order, so a name's index is its speaker id; af_ and bf_ are female. */
 val NEURAL_SPEAKERS = listOf(
     "af", "af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael",

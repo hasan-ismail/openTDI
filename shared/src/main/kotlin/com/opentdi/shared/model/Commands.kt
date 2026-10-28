@@ -24,12 +24,12 @@ sealed class TdiCommand {
     /** Phone → watch: plays [tone] on the watch for a few seconds, for choosing one in the settings. */
     @Serializable
     @SerialName("test_alarm")
-    data class TestAlarm(val tone: AlarmTone) : TdiCommand()
+    data class TestAlarm(val tone: AlarmTone, val earbuds: Boolean = false) : TdiCommand()
 
     /** Phone → watch: plays the late-night lucidity cue once at [volume], for setting its loudness in bed. */
     @Serializable
     @SerialName("test_late_cue")
-    data class TestLateCue(val volume: Float) : TdiCommand()
+    data class TestLateCue(val volume: Float, val earbuds: Boolean = false) : TdiCommand()
 
     @Serializable
     @SerialName("pause")
@@ -81,4 +81,5 @@ data class WatchStatus(
     val state: WatchState,
     val batteryPct: Int? = null,
     val samsungKit: String? = null, // "built in", "your kit", or null: basic sensors only
+    val earbuds: String? = null, // the earbuds connected to the watch, by name, or null
 )

@@ -1,5 +1,6 @@
 package com.opentdi.mobile.ui
 
+import com.opentdi.shared.model.WatchOutput
 import com.opentdi.shared.model.LateCueMode
 import com.opentdi.mobile.UiState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -131,6 +132,7 @@ private fun SettingsCards(viewModel: MainViewModel, ui: UiState, idle: Boolean, 
         TimingCard(config, idle, edit)
         AlarmsCard(config, idle, edit, viewModel)
         SoundCard(config, idle, edit)
+        WatchAudioCard(config, idle, edit, viewModel)
     }
 }
 
@@ -552,6 +554,37 @@ private fun toneLabel(tone: AlarmTone) = when (tone) {
 }
 
 private fun hhmm(minuteOfDay: Int) = String.format(Locale.ROOT, "%d:%02d", minuteOfDay / 60, minuteOfDay % 60)
+
+/** Where the watch plays cues, late cues and alarms: its speaker, or earbuds paired with the watch. */
+@Composable
+private fun WatchAudioCard(config: SessionConfig, enabled: Boolean, edit: Edit, viewModel: MainViewModel) {
+    val watch by viewModel.watchStatus.collectAsStateWithLifecycle(initialValue = null)
+    Section("Watch audio") {
+        Help("Where the watch plays cues and alarms. Earbuds let you sleep with one or both in without waking anyone.")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((output, label) in listOf(WatchOutput.SPEAKER to "Watch speaker", WatchOutput.EARBUDS to "Earbuds")) {
+                FilterChip(
+                    selected = config.audio.watchOutput == output,
+                    onClick = { edit { it.copy(audio = it.audio.copy(watchOutput = output)) } },
+                    label = { Text(label) },
+                    enabled = enabled,
+                )
+            }
+        }
+        if (config.audio.watchOutput == WatchOutput.EARBUDS) {
+            Text(
+                watch?.earbuds?.let { "Connected to the watch: $it" }
+                    ?: "No earbuds connected to the watch right now: the speaker plays instead.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Help(
+                "Pair the earbuds with the watch, not the phone: on the watch, Settings > Connections > Bluetooth. " +
+                    "Alarms ring in the earbuds and on the watch, so an earbud that falls out cannot hide them. " +
+                    "Play a test cue once with the earbuds in: they keep their own volume.",
+            )
+        }
+    }
+}
 
 @Composable
 private fun SoundCard(config: SessionConfig, enabled: Boolean, edit: Edit) {

@@ -1,5 +1,7 @@
 package com.opentdi.wear
 
+import android.content.Context
+import android.content.Intent
 import com.opentdi.shared.sky.moonPhase
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
@@ -298,6 +300,13 @@ private fun MainScreen(
             if (!state.running && state.waiting) {
                 item { BigLine("Waiting for the phone") }
                 item { Text("Tap Start session on your phone, or start recording here.") }
+                item {
+                    val context = LocalContext.current
+                    // Apps cannot read or change Always On Display, so the watch offers its display settings instead.
+                    FilledTonalButton(onClick = { openDisplaySettings(context) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Always On Display off (saves battery)")
+                    }
+                }
             } else if (!state.running) {
                 item { BigLine("Not recording") }
             } else if (state.status == null) {
@@ -481,4 +490,13 @@ private fun format(pattern: String, value: Float?) = value?.let { String.format(
 private fun elapsed(ms: Long): String {
     val s = ms.coerceAtLeast(0) / 1000
     return String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+}
+
+/** The watch's display settings, where Always On Display is switched off; a watch without that screen does nothing. */
+private fun openDisplaySettings(context: Context) {
+    try {
+        context.startActivity(Intent(android.provider.Settings.ACTION_DISPLAY_SETTINGS))
+    } catch (e: android.content.ActivityNotFoundException) {
+        Unit
+    }
 }

@@ -4,7 +4,6 @@ import java.io.File
 import com.opentdi.shared.audio.WavIo
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
@@ -24,8 +23,12 @@ class AlarmPlayer(private val context: Context) {
     private val vibrator = context.getSystemService(Vibrator::class.java)
     private var track: AudioTrack? = null
 
-    /** Starts [tone] at [volume] (0..1 of the alarm stream); a [gentle] vibration is softer and sparser. */
-    fun start(tone: AlarmTone, volume: Float, gentle: Boolean) {
+    /**
+     * Starts [tone] at [volume] (0..1 of the alarm stream); a [gentle] vibration is softer and sparser. With [earbuds]
+     * no output is preferred, so Android rings the alarm in the earbuds and on the speaker: a fallen-out earbud cannot
+     * hide it.
+     */
+    fun start(tone: AlarmTone, volume: Float, gentle: Boolean, earbuds: Boolean = false) {
         stop()
         val voice = if (tone == AlarmTone.SPOKEN) spokenLoop() else null
         // Without a voice from the phone yet, SPOKEN falls back to the melody.
@@ -47,9 +50,7 @@ class AlarmPlayer(private val context: Context) {
                 .apply {
                     write(loop, 0, loop.size, AudioTrack.WRITE_BLOCKING)
                     setLoopPoints(0, loop.size, -1)
-                    audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                        .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                        ?.let { setPreferredDevice(it) }
+                    if (!earbuds) WatchOutputs.speaker(audioManager)?.let { setPreferredDevice(it) }
                     setVolume(volume)
                     play()
                 }

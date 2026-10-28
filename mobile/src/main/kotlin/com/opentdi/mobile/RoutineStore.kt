@@ -44,6 +44,12 @@ val ROUTINE = listOf(
         "It records all night; wear it 30 min off the charger so its skin readings settle.",
     ),
     RoutineStep(
+        "aod",
+        "Before bed",
+        "Turn off the watch's Always On Display",
+        "A lit watch face all night drains the battery the recording needs (Settings > Display on the watch).",
+    ),
+    RoutineStep(
         "dim",
         "3 h before bed",
         "Dim, warm lamps only; no bright ceiling light",

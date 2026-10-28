@@ -23,15 +23,22 @@ object WristCue {
     private const val MAGIC = 0x4F544432 // "OTD2": the header layout; a different app version reads as FAILED
     private const val MAX_SAMPLES = 48_000 * 120 // two minutes at 48 kHz bounds what the watch allocates
 
-    class Cue(val audio: WavAudio, val calibrate: Boolean, val store: Boolean = false)
+    class Cue(val audio: WavAudio, val calibrate: Boolean, val store: Boolean = false, val earbuds: Boolean = false)
 
     /** The watch's answer: [status], its media volume index, the output the cue played on and the volume-raised factor. */
     data class Reply(val status: Int, val streamIndex: Int = -1, val routedType: Int = -1, val factor: Float = 1f)
 
-    fun write(out: OutputStream, samples: FloatArray, sampleRate: Int, calibrate: Boolean, store: Boolean = false) {
+    fun write(
+        out: OutputStream,
+        samples: FloatArray,
+        sampleRate: Int,
+        calibrate: Boolean,
+        store: Boolean = false,
+        earbuds: Boolean = false,
+    ) {
         val data = DataOutputStream(out.buffered())
         data.writeInt(MAGIC)
-        data.writeInt((if (calibrate) 1 else 0) or (if (store) 2 else 0))
+        data.writeInt((if (calibrate) 1 else 0) or (if (store) 2 else 0) or (if (earbuds) 4 else 0))
         data.writeInt(sampleRate)
         data.writeInt(samples.size)
         for (s in samples) data.writeShort((s.coerceIn(-1f, 1f) * Short.MAX_VALUE).roundToInt())
@@ -48,7 +55,7 @@ object WristCue {
             throw IOException("bad wrist cue header: rate=$sampleRate count=$count")
         }
         val audio = WavAudio(FloatArray(count) { data.readShort() / Short.MAX_VALUE.toFloat() }, sampleRate)
-        return Cue(audio, calibrate = flags and 1 != 0, store = flags and 2 != 0)
+        return Cue(audio, calibrate = flags and 1 != 0, store = flags and 2 != 0, earbuds = flags and 4 != 0)
     }
 
     fun writeStarted(out: OutputStream) {

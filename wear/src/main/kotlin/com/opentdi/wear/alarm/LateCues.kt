@@ -3,7 +3,6 @@ package com.opentdi.wear.alarm
 import com.opentdi.shared.model.LateCueMode
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
@@ -22,7 +21,7 @@ import kotlin.random.Random
  * so the morning reports can compare the two kinds of night. All timings GUESSED from the studies in §5.
  */
 class LateCues(
-    context: Context,
+    private val context: Context,
     private val config: () -> AlarmConfig,
     private val log: (event: String, stillness: Float?, hr: Float?, detail: String?) -> Unit,
 ) {
@@ -92,8 +91,11 @@ class LateCues(
         log(if (cueNight) "CUE" else "WOULD_CUE", stillness, hr, "bout_cue=$boutCues")
     }
 
-    /** One cue at [volume] of the media stream, on the watch speaker; the static track frees itself when done. */
-    fun play(volume: Float) {
+    /**
+     * One cue at [volume] of the media stream, on the watch speaker or, when chosen ([earbuds], by default the choice
+     * the phone sent), the earbuds paired with the watch; the static track frees itself when done.
+     */
+    fun play(volume: Float, earbuds: Boolean = WatchOutputs.earbudsChosen(context)) {
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -112,9 +114,7 @@ class LateCues(
             .setBufferSizeInBytes(cue.size * Float.SIZE_BYTES)
             .build()
         track.write(cue, 0, cue.size, AudioTrack.WRITE_BLOCKING)
-        audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-            ?.let { track.setPreferredDevice(it) }
+        WatchOutputs.pick(audioManager, earbuds)?.let { track.setPreferredDevice(it) }
         track.setVolume(volume)
         track.setNotificationMarkerPosition(cue.size)
         playing += track

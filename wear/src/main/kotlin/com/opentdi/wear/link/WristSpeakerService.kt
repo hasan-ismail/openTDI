@@ -1,5 +1,6 @@
 package com.opentdi.wear.link
 
+import com.opentdi.wear.alarm.WatchOutputs
 import java.io.File
 import com.opentdi.wear.alarm.AlarmPlayer
 import com.opentdi.shared.audio.WavIo
@@ -64,9 +65,12 @@ class WristSpeakerService : WearableListenerService() {
     private fun play(cue: WristCue.Cue, out: OutputStream): WristCue.Reply {
         val audioManager = getSystemService(AudioManager::class.java)
         val index = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        // Earbuds chosen and connected: media goes to them, and the volume index read above is theirs.
+        val target = WatchOutputs.pick(audioManager, cue.earbuds)
+        val toEarbuds = target != null && WatchOutputs.isEarbuds(target.type)
         // getStreamVolume is the current media device's index, so it is the speaker's only while media goes there.
         // Before API 33 there is no such query; the routed device after the cue still reports a headset.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        if (!toEarbuds && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             audioManager.getAudioDevicesForAttributes(ATTRIBUTES).none { it.type == SPEAKER }
         ) {
             Log.w(TAG, "WRIST_CUE_SKIPPED reason=media_not_on_speaker")
@@ -77,11 +81,21 @@ class WristSpeakerService : WearableListenerService() {
             return WristCue.Reply(WristCue.VOLUME_ZERO, index)
         }
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val calibrated = prefs.getInt(KEY_CALIBRATED_INDEX, 0)
+        // Speaker and earbuds have their own volume steps, so each keeps its own test-cue calibration.
+        val calibrationKey = if (toEarbuds) KEY_CALIBRATED_INDEX_EARBUDS else KEY_CALIBRATED_INDEX
+        val device = target?.type ?: SPEAKER
+        // The output whose volume curve converts the steps to dB (classic or LE Audio earbuds, else the speaker).
+        val curve = when (device) {
+            AudioDeviceInfo.TYPE_BLE_HEADSET -> AudioDeviceInfo.TYPE_BLE_HEADSET
+            AudioDeviceInfo.TYPE_BLE_SPEAKER -> AudioDeviceInfo.TYPE_BLE_SPEAKER
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+            else -> SPEAKER
+        }
+        val calibrated = prefs.getInt(calibrationKey, 0)
         val factor = if (!cue.calibrate && calibrated in 1 until index) {
             volumeRaisedCorrection(
-                audioManager.getStreamVolumeDb(AudioManager.STREAM_MUSIC, index, SPEAKER),
-                audioManager.getStreamVolumeDb(AudioManager.STREAM_MUSIC, calibrated, SPEAKER),
+                audioManager.getStreamVolumeDb(AudioManager.STREAM_MUSIC, index, curve),
+                audioManager.getStreamVolumeDb(AudioManager.STREAM_MUSIC, calibrated, curve),
             )
         } else {
             1f
@@ -99,9 +113,7 @@ class WristSpeakerService : WearableListenerService() {
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
         try {
-            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                .firstOrNull { it.type == SPEAKER }
-                ?.let { track.setPreferredDevice(it) }
+            target?.let { track.setPreferredDevice(it) }
             // Trailing silence carries the last cue samples through the mixer, so the head position reaches them.
             val pcm = FloatArray(samples.size + cue.audio.sampleRate / 4) { n ->
                 if (n < samples.size) samples[n] * factor else 0f
@@ -116,10 +128,10 @@ class WristSpeakerService : WearableListenerService() {
             val routed = track.routedDevice?.type ?: -1
             val status = when {
                 written != pcm.size -> WristCue.FAILED
-                routed != SPEAKER -> WristCue.NOT_ON_SPEAKER
+                routed != device -> WristCue.NOT_ON_SPEAKER // not on the chosen output
                 else -> WristCue.PLAYED
             }
-            if (status == WristCue.PLAYED && cue.calibrate) prefs.edit().putInt(KEY_CALIBRATED_INDEX, index).apply()
+            if (status == WristCue.PLAYED && cue.calibrate) prefs.edit().putInt(calibrationKey, index).apply()
             Log.i(
                 TAG,
                 "WRIST_CUE_END status=$status samples=${samples.size} rate=${cue.audio.sampleRate} index=$index " +
@@ -136,6 +148,7 @@ class WristSpeakerService : WearableListenerService() {
         const val SPEAKER = AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
         const val PREFS = "wrist_speaker"
         const val KEY_CALIBRATED_INDEX = "calibratedIndex"
+        const val KEY_CALIBRATED_INDEX_EARBUDS = "calibratedIndexEarbuds"
         const val READ_DEADLINE_MS = 60_000L
         const val DRAIN_MS = 2000L
         const val POLL_MS = 20L

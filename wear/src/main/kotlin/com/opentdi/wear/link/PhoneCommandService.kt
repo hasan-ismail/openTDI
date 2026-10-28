@@ -1,5 +1,7 @@
 package com.opentdi.wear.link
 
+import com.opentdi.shared.model.WatchOutput
+import com.opentdi.wear.alarm.WatchOutputs
 import com.opentdi.wear.alarm.LateCues
 import com.opentdi.shared.model.AlarmConfig
 import android.os.BatteryManager
@@ -38,17 +40,20 @@ class PhoneCommandService : WearableListenerService() {
             state.waiting -> WatchState.WAITING
             else -> WatchState.IDLE
         }
-        if (command is TdiCommand.StartSession) WakeAlarms.saveConfig(this, command.config.alarms)
+        if (command is TdiCommand.StartSession) {
+            WakeAlarms.saveConfig(this, command.config.alarms)
+            WatchOutputs.saveChoice(this, command.config.audio.watchOutput == WatchOutput.EARBUDS)
+        }
         if (command is TdiCommand.TestAlarm) {
             Thread {
                 val player = AlarmPlayer(applicationContext)
-                player.start(command.tone, TEST_VOLUME, gentle = false)
+                player.start(command.tone, TEST_VOLUME, gentle = false, earbuds = command.earbuds)
                 Thread.sleep(TEST_MS)
                 player.stop()
             }.start()
         }
         if (command is TdiCommand.TestLateCue) {
-            LateCues(applicationContext, { AlarmConfig() }) { _, _, _, _ -> }.play(command.volume)
+            LateCues(applicationContext, { AlarmConfig() }) { _, _, _, _ -> }.play(command.volume, command.earbuds)
         }
         try {
             if (command is TdiCommand.StartSession && now == WatchState.WAITING) {
@@ -63,9 +68,12 @@ class PhoneCommandService : WearableListenerService() {
         }
         Log.i(TAG, "PHONE_COMMAND command=${command?.javaClass?.simpleName} state=$now")
         val battery = getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val audio = getSystemService(android.media.AudioManager::class.java)
         return Tasks.forResult(
-            OpenTdiJson.encodeToString(WatchStatus.serializer(), WatchStatus(now, battery, SamsungKit.source(this)))
-                .encodeToByteArray(),
+            OpenTdiJson.encodeToString(
+                WatchStatus.serializer(),
+                WatchStatus(now, battery, SamsungKit.source(this), WatchOutputs.earbuds(audio)?.productName?.toString()),
+            ).encodeToByteArray(),
         )
     }
 

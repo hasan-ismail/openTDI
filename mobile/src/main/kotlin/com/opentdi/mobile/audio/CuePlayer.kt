@@ -1,5 +1,6 @@
 package com.opentdi.mobile.audio
 
+import com.opentdi.shared.model.WatchOutput
 import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioAttributes
@@ -205,7 +206,10 @@ class CuePlayer(private val context: Context) {
                     }
                 }
                 try {
-                    WristCue.write(channels.getOutputStream(channel).await(), pcm, audio.sampleRate, testCue)
+                    WristCue.write(
+                        channels.getOutputStream(channel).await(), pcm, audio.sampleRate, testCue,
+                        earbuds = config.watchOutput == WatchOutput.EARBUDS,
+                    )
                     WristCue.readReply(channels.getInputStream(channel).await()) { log(event("CUE_START", "watch")) }
                 } finally {
                     watchdog.cancel()

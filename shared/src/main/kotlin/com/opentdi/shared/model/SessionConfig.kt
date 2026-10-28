@@ -100,6 +100,7 @@ data class AudioConfig(
     val ttsEngine: TtsEngine = TtsEngine.SYSTEM, // NEURAL falls back to SYSTEM while the model is not on the phone
     val neuralSpeaker: String = "af_bella", // one of NEURAL_SPEAKERS; used by NEURAL only
     val ownVoice: Map<PromptCue, String> = emptyMap(), // cue → SHA-256 of the user's own recording, used instead of TTS
+    val watchOutput: WatchOutput = WatchOutput.SPEAKER, // the watch's sound: speaker, or earbuds paired with the watch
 )
 
 @Serializable
