@@ -1,7 +1,6 @@
 # Device audit (Phase 2) — 2026-10-27
 
-Read-only `adb shell getprop` / `dumpsys package` queries over Wi-Fi wireless debugging
-
+Read-only `adb shell getprop` / `dumpsys package` queries over Wi-Fi wireless debugging.
 
 | | Watch | Phone |
 |---|---|---|
@@ -46,8 +45,8 @@ Watch `WearableService` dump: `1 connected out of 1`, a Bluetooth Classic (`Type
 - The watch drops its adb transport when Wi-Fi idles; reconnect with the mDNS-advertised port.
 - The phone has a second profile, **Secure Folder (user 150)**; `pm list packages` without `--user 0` throws
   `SecurityException: Shell does not have permission to access user 150`. Always pass `--user 0`.
-
-
+- **Watch pairing crash (2026-10-27 18:36):** after a failed `adb pair` (the first attempt went to a wrong address on
+  the local network), the watch soft-restarted. Dropbox
   `system_server_native_crash`: thread `AdbDebuggingMan`, SIGABRT, `FORTIFY: pthread_mutex_lock called on a destroyed
   mutex`, in `android::native_pairing_wait` ← `AdbDebuggingManager$PairingThread.run` — a teardown race in the
   platform's wireless-debugging pairing code. Kernel uptime was unaffected (soft restart only). Avoid new pairing
