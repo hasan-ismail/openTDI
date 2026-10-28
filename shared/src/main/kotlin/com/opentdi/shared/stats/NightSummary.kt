@@ -63,7 +63,8 @@ data class Epochs(
     /** The sleep estimate per epoch; null where there is no estimate. */
     val asleep: List<Boolean?>,
     /**
-     * "REM-likely v1" (RemLikely.kt): a rough guess from stillness, heart rate and EDA, never a sleep stage; null where
+     * "REM-likely v2" (RemLikely.kt): a rough guess from stillness, heart rate, HRV, twitches, skin temperature and
+     * EDA, never a sleep stage; null where
      * [asleep] is, and empty without a sleep estimate.
      */
     val remLikely: List<Boolean?> = emptyList(),
@@ -142,7 +143,7 @@ data class DreamReport(
 )
 
 /** Bump whenever [summarizeNight]'s output changes for the same files. */
-const val SUMMARY_VERSION = 3
+const val SUMMARY_VERSION = 4
 
 /** The evening a time belongs to: noon to noon, so an evening and the night after it share one date. */
 fun nightDate(epochMs: Long, zone: ZoneId): LocalDate =

@@ -53,6 +53,12 @@ internal class Seconds(
     val hrGood: FloatArray,
     /** Skin conductance in μS where Samsung's eda_status is 0 (normal). */
     val eda: FloatArray,
+    /** The watch's rolling RMSSD of filtered beat-to-beat intervals, ms. */
+    val rmssd: FloatArray = FloatArray(hr.size) { Float.NaN },
+    /** Wrist skin temperature, °C, the last measurement held (about one a minute). */
+    val skinTemp: FloatArray = FloatArray(hr.size) { Float.NaN },
+    /** The second's largest acceleration away from gravity, g: small twitches show here. */
+    val accelPeak: FloatArray = FloatArray(hr.size) { Float.NaN },
 ) {
     val size: Int get() = hr.size
 

@@ -71,6 +71,9 @@ private class Packet(
     val angle: Float?,
     val hrGood: Float?,
     val eda: Float?,
+    val rmssd: Float?,
+    val skinTemp: Float?,
+    val accelPeak: Float?,
 )
 
 /** w_packets.csv, read line by line (a night is about 25,000 rows), on a 1-s grid; null without a whole row. */
@@ -85,6 +88,9 @@ private fun readPackets(reader: Reader): Seconds? {
     val stillness = header.indexOf("stillness")
     val angle = header.indexOf("angle_z_deg")
     val edaUs = header.indexOf("eda_us")
+    val rmssd = header.indexOf("rmssd_ms")
+    val skinTemp = header.indexOf("skin_temp_c")
+    val accelPeak = header.indexOf("accel_peak_g")
     val packets = ArrayList<Packet>()
     for (line in lines) {
         val f = line.split(',') // numbers and enum names only, never a quoted field
@@ -101,6 +107,9 @@ private fun readPackets(reader: Reader): Seconds? {
             angle = f.float(angle),
             hrGood = bpm.takeIf { hrStat == null || hrStat == HR_GOOD },
             eda = f.float(edaUs).takeIf { edaStat == EDA_NORMAL },
+            rmssd = f.float(rmssd),
+            skinTemp = f.float(skinTemp),
+            accelPeak = f.float(accelPeak),
         )
     }
     if (packets.isEmpty()) return null
@@ -124,6 +133,9 @@ private fun readPackets(reader: Reader): Seconds? {
         sec.detached[s] = p.detached
         sec.hrGood[s] = p.hrGood ?: Float.NaN
         sec.eda[s] = p.eda ?: Float.NaN
+        sec.rmssd[s] = p.rmssd ?: Float.NaN
+        sec.skinTemp[s] = p.skinTemp ?: Float.NaN
+        sec.accelPeak[s] = p.accelPeak ?: Float.NaN
     }
     return sec
 }
