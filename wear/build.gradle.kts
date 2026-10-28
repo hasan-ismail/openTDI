@@ -23,8 +23,8 @@ android {
         applicationId = "com.opentdi" // same as the phone: the Data Layer needs one application ID (spec §10.1)
         minSdk = libs.versions.wearMinSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         buildConfigField("boolean", "SAMSUNG_SDK_BUNDLED", (samsungAar != null).toString())
         buildConfigField("String", "SAMSUNG_SDK_AAR", "\"${samsungAar?.name ?: ""}\"")
     }

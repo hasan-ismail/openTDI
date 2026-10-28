@@ -18,8 +18,8 @@ android {
         applicationId = "com.opentdi"
         minSdk = libs.versions.mobileMinSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         // The owner's phone is arm64-v8a; the other three ABIs would add about 90 MB of sherpa-onnx native code.
         ndk { abiFilters += "arm64-v8a" }
     }
