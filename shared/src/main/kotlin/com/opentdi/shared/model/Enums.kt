@@ -86,6 +86,10 @@ enum class EndAlarm { CHIME, NONE }
 @Serializable
 enum class TtsEngine { SYSTEM, NEURAL }
 
+/** Watch alarm sounds (AlarmTones); VIBRATE_ONLY plays none. */
+@Serializable
+enum class AlarmTone { MELODY, GENTLE_CHIMES, RISING_TONE, CLASSIC_BEEPS, VIBRATE_ONLY }
+
 /** The Kokoro v0.19 voices in voices.bin order, so a name's index is its speaker id; af_ and bf_ are female. */
 val NEURAL_SPEAKERS = listOf(
     "af", "af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael",

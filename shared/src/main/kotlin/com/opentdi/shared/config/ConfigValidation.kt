@@ -129,6 +129,14 @@ fun SessionConfig.validate(): List<String> {
         int("sensors.spo2IntervalMin", spo2IntervalMin, 5..120)
         int("sensors.spo2TimeoutS", spo2TimeoutS, 30..120)
     }
+
+    with(alarms) {
+        int("alarms.wakeAtMin", wakeAtMin, 0..1439)
+        int("alarms.wbtbAtMin", wbtbAtMin, 0..1439)
+        int("alarms.wbtbAwakeMin", wbtbAwakeMin, 5..60)
+        int("alarms.rampS", rampS, 0..120)
+        int("alarms.maxRingMin", maxRingMin, 1..30)
+    }
     return errors
 }
 

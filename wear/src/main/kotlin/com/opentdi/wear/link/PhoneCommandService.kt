@@ -10,12 +10,15 @@ import com.opentdi.shared.model.OpenTdiJson
 import com.opentdi.shared.model.TdiCommand
 import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.WatchStatus
+import com.opentdi.wear.alarm.AlarmPlayer
+import com.opentdi.wear.alarm.WakeAlarms
 import com.opentdi.wear.sensing.HealthTrackingForegroundService
 import com.opentdi.wear.sensing.SensingStateHolder
 
 /**
- * The phone's `/opentdi/state_command` requests: Start session starts the recording, the phone's "Stop watch
- * recording" ends it, and every request is answered with the watch's [WatchStatus].
+ * The phone's `/opentdi/state_command` requests: Start session starts the recording (and brings the night's alarm
+ * settings), the phone's "Stop watch recording" ends it, a tone test plays a few seconds of an alarm, and every request
+ * is answered with the watch's [WatchStatus].
  */
 class PhoneCommandService : WearableListenerService() {
     override fun onRequest(nodeId: String, path: String, request: ByteArray): Task<ByteArray>? {
@@ -31,6 +34,15 @@ class PhoneCommandService : WearableListenerService() {
             state.running -> WatchState.RECORDING
             state.waiting -> WatchState.WAITING
             else -> WatchState.IDLE
+        }
+        if (command is TdiCommand.StartSession) WakeAlarms.saveConfig(this, command.config.alarms)
+        if (command is TdiCommand.TestAlarm) {
+            Thread {
+                val player = AlarmPlayer(applicationContext)
+                player.start(command.tone, TEST_VOLUME, gentle = false)
+                Thread.sleep(TEST_MS)
+                player.stop()
+            }.start()
         }
         try {
             if (command is TdiCommand.StartSession && now == WatchState.WAITING) {
@@ -52,5 +64,7 @@ class PhoneCommandService : WearableListenerService() {
 
     private companion object {
         const val TAG = "OTDI.Link"
+        const val TEST_VOLUME = 0.6f
+        const val TEST_MS = 6000L
     }
 }

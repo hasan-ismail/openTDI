@@ -79,6 +79,7 @@ fun TonightScreen(
 
     Page("Tonight") {
         StatusCard(status, now, ready)
+        alarmsLine(config.alarms)?.let { Help(it) }
         if (status.running) {
             OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth().height(64.dp)) {
                 Text("Stop session", style = MaterialTheme.typography.titleLarge)

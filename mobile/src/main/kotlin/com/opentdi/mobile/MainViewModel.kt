@@ -1,5 +1,6 @@
 package com.opentdi.mobile
 
+import com.opentdi.shared.model.AlarmTone
 import android.app.Application
 import android.app.NotificationManager
 import android.media.AudioManager
@@ -104,6 +105,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val status = watchRequest(app, TdiCommand.AbortSession("watch", DeviceRole.PHONE, SessionEndReason.USER))
             Log.i(TAG_SESSION, logLine("WATCH_STOP", "state" to (status?.state ?: "NO_ANSWER")))
+        }
+    }
+
+    /** Plays a few seconds of [tone] on the watch, for choosing an alarm sound. */
+    fun testAlarm(tone: AlarmTone) {
+        viewModelScope.launch {
+            val status = watchRequest(app, TdiCommand.TestAlarm(tone))
+            if (status == null) mutableUi.update { it.copy(cueMessage = "The watch did not answer: is it connected?") }
         }
     }
 

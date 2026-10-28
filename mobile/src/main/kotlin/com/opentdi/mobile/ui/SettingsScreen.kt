@@ -1,5 +1,14 @@
 package com.opentdi.mobile.ui
 
+import java.util.Locale
+import com.opentdi.shared.model.AlarmTone
+import com.opentdi.shared.model.AlarmConfig
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -123,6 +132,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
             )
         }
         TimingCard(config, idle, edit)
+        AlarmsCard(config, idle, edit, viewModel::testAlarm)
         SoundCard(config, idle, edit)
         AboutCard()
     }
@@ -254,6 +264,101 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
         ) { v -> edit { it.copy(sessionMaxMin = v) } }
     }
 }
+
+/** The watch alarms (owner, 2026-10-28): they ring on the watch, so the phone can stay in another room. */
+@Composable
+private fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, onTest: (AlarmTone) -> Unit) {
+    val alarms = config.alarms
+    fun change(transform: (AlarmConfig) -> AlarmConfig) = edit { it.copy(alarms = transform(it.alarms)) }
+    Section("Alarms (on the watch)") {
+        Help("They ring on the watch while it records. Start session sends them to the watch.")
+        SwitchRow("Wake-up alarm", alarms.wakeEnabled, enabled) { on -> change { it.copy(wakeEnabled = on) } }
+        if (alarms.wakeEnabled) {
+            TimeRow("Wake up at", alarms.wakeAtMin, enabled) { m -> change { it.copy(wakeAtMin = m) } }
+            Help("The watch logs how long you take to wake up: your first movement, and when you tap I'm awake.")
+            ToneChips(alarms.wakeTone, enabled, onTest) { t -> change { it.copy(wakeTone = t) } }
+        }
+        SwitchRow("Wake back to bed (WBTB)", alarms.wbtbEnabled, enabled) { on -> change { it.copy(wbtbEnabled = on) } }
+        if (alarms.wbtbEnabled) {
+            TimeRow("Wake briefly at", alarms.wbtbAtMin, enabled) { m -> change { it.copy(wbtbAtMin = m) } }
+            Help(
+                "About 5 hours after you fall asleep. Stay up for a while, recall your last dream and repeat " +
+                    "\"next time I'm dreaming, I'll remember I'm dreaming\"; a buzz then says go back to sleep.",
+            )
+            IntSetting(
+                "Stay up for", "Before the back-to-sleep buzz.", alarms.wbtbAwakeMin, 5..60, 5, "min", enabled,
+            ) { v -> change { it.copy(wbtbAwakeMin = v) } }
+            ToneChips(alarms.wbtbTone, enabled, onTest) { t -> change { it.copy(wbtbTone = t) } }
+        }
+        if (alarms.wakeEnabled || alarms.wbtbEnabled) {
+            IntSetting(
+                "Volume rise", "The tone starts quiet and reaches the watch's alarm volume after this long.",
+                alarms.rampS, 0..120, 10, "s", enabled,
+            ) { v -> change { it.copy(rampS = v) } }
+        }
+    }
+}
+
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimeRow(label: String, minuteOfDay: Int, enabled: Boolean, onChange: (Int) -> Unit) {
+    var picking by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("$label ${hhmm(minuteOfDay)}", modifier = Modifier.weight(1f))
+        TextButton(onClick = { picking = true }, enabled = enabled) { Text("Change") }
+    }
+    if (picking) {
+        val state = rememberTimePickerState(minuteOfDay / 60, minuteOfDay % 60, is24Hour = true)
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    onChange(state.hour * 60 + state.minute)
+                    picking = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text("Cancel") } },
+            text = { TimePicker(state) },
+        )
+    }
+}
+
+/** The tone choices; tapping the selected one again plays it on the watch for a few seconds. */
+@Composable
+private fun ToneChips(selected: AlarmTone, enabled: Boolean, onTest: (AlarmTone) -> Unit, onSelect: (AlarmTone) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (tone in AlarmTone.entries) {
+            FilterChip(
+                selected = tone == selected,
+                onClick = { onSelect(tone) },
+                label = { Text(toneLabel(tone)) },
+                enabled = enabled,
+            )
+        }
+    }
+    TextButton(onClick = { onTest(selected) }, enabled = enabled) { Text("Play \"${toneLabel(selected)}\" on the watch") }
+}
+
+private fun toneLabel(tone: AlarmTone) = when (tone) {
+    AlarmTone.MELODY -> "Melody"
+    AlarmTone.GENTLE_CHIMES -> "Soft chimes"
+    AlarmTone.RISING_TONE -> "Rising tone"
+    AlarmTone.CLASSIC_BEEPS -> "Beeps"
+    AlarmTone.VIBRATE_ONLY -> "Vibrate only"
+}
+
+private fun hhmm(minuteOfDay: Int) = String.format(Locale.ROOT, "%d:%02d", minuteOfDay / 60, minuteOfDay % 60)
 
 @Composable
 private fun SoundCard(config: SessionConfig, enabled: Boolean, edit: Edit) {

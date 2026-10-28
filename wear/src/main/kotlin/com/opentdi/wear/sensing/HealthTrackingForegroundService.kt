@@ -19,7 +19,9 @@ import com.opentdi.shared.model.AccelConfig
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.wear.MainActivity
 import com.opentdi.wear.R
+import com.opentdi.wear.alarm.WakeAlarms
 import com.opentdi.wear.link.TelemetrySender
+import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.android.asCoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -38,6 +40,8 @@ class HealthTrackingForegroundService : LifecycleService() {
     private var session: LoggingSession? = null // sensing thread only
     private var ticker: Job? = null
     private var foreground = false
+    private var alarms: WakeAlarms? = null // sensing thread only
+    private var alarmsJson: String? = null
     private val telemetry by lazy { TelemetrySender(applicationContext, lifecycleScope) } // outlives a session
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -47,6 +51,11 @@ class HealthTrackingForegroundService : LifecycleService() {
             SensingStateHolder.update { it.copy(waiting = false) }
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
+        } else if (intent?.action == ACTION_STOP_ALARM) {
+            handler.post {
+                val p = SensingStateHolder.state.value.lastPacket?.packet
+                alarms?.stop(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
+            }
         } else if (intent?.action == ACTION_WAIT) {
             if (!foreground) startInForeground(WAITING_TEXT)
             if (ticker == null) SensingStateHolder.update { it.copy(waiting = true) }
@@ -86,14 +95,31 @@ class HealthTrackingForegroundService : LifecycleService() {
                 val wait = next - SystemClock.elapsedRealtime()
                 if (wait > 0) delay(wait) else next = SystemClock.elapsedRealtime() // asleep: no burst of late ticks
                 s.tick(++seconds)
+                tickAlarms(s)
             }
         }
+    }
+
+    /** The alarms the phone sent last, rescheduled when it sends new ones (a Start session while recording). */
+    private fun tickAlarms(s: LoggingSession) {
+        val json = WakeAlarms.loadConfigJson(applicationContext)
+        if (alarms == null || json != alarmsJson) {
+            alarms?.close()
+            alarmsJson = json
+            val dir = File(filesDir, "sessions/${s.sessionId}")
+            alarms = WakeAlarms(applicationContext, dir, System.currentTimeMillis(), WakeAlarms.parse(json))
+        }
+        val p = SensingStateHolder.state.value.lastPacket?.packet
+        alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
     }
 
     private fun stopSession() {
         ticker?.cancel()
         ticker = null
         handler.post {
+            alarms?.close()
+            alarms = null
+            alarmsJson = null
             session?.stop()
             session = null
         }
@@ -137,6 +163,7 @@ class HealthTrackingForegroundService : LifecycleService() {
     companion object {
         private const val ACTION_STOP = "com.opentdi.wear.action.STOP_LOGGING"
         private const val ACTION_WAIT = "com.opentdi.wear.action.WAIT_FOR_PHONE"
+        private const val ACTION_STOP_ALARM = "com.opentdi.wear.action.STOP_ALARM"
         private const val ACTION_START_FROM_PHONE = "com.opentdi.wear.action.START_FROM_PHONE"
         private const val WAITING_TEXT = "Waiting for the phone"
         private const val RECORDING_TEXT = "Logging sensors"
@@ -173,6 +200,14 @@ class HealthTrackingForegroundService : LifecycleService() {
             context.startService(
                 Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_START_FROM_PHONE),
             )
+        }
+
+        /** "I'm awake": stops a ringing alarm; the recording goes on. */
+        fun stopAlarmIntent(context: Context): Intent =
+            Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_STOP_ALARM)
+
+        fun stopAlarm(context: Context) {
+            context.startService(stopAlarmIntent(context))
         }
 
         fun stop(context: Context) {

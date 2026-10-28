@@ -1,5 +1,6 @@
 package com.opentdi.mobile.ui
 
+import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.config.validate
@@ -107,6 +108,15 @@ class TonightTest {
         assertTrue(battery(100)!!.ok)
         val low = battery(62)!!
         assertTrue(!low.ok && !low.blocking && "62%" in low.text)
+    }
+
+    @Test
+    fun alarmsLine_namesTheAlarmsThatAreOn() {
+        assertNull(alarmsLine(AlarmConfig()))
+        assertEquals(
+            "Watch alarms: WBTB 4:30, wake up 7:05",
+            alarmsLine(AlarmConfig(wakeEnabled = true, wakeAtMin = 425, wbtbEnabled = true, wbtbAtMin = 270)),
+        )
     }
 
     private companion object {

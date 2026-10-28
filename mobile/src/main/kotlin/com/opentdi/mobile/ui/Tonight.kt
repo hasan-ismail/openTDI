@@ -1,5 +1,6 @@
 package com.opentdi.mobile.ui
 
+import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.model.SessionConfig
@@ -195,4 +196,14 @@ fun checklist(
             ),
         )
     }
+}
+
+/** "Watch alarms: WBTB 4:30, wake up 7:00", or null when both are off. */
+fun alarmsLine(alarms: AlarmConfig): String? {
+    fun hhmm(m: Int) = String.format(Locale.ROOT, "%d:%02d", m / 60, m % 60)
+    val parts = listOfNotNull(
+        "WBTB ${hhmm(alarms.wbtbAtMin)}".takeIf { alarms.wbtbEnabled },
+        "wake up ${hhmm(alarms.wakeAtMin)}".takeIf { alarms.wakeEnabled },
+    )
+    return if (parts.isEmpty()) null else "Watch alarms: " + parts.joinToString(", ")
 }

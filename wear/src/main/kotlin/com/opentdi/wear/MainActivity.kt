@@ -54,6 +54,7 @@ import com.opentdi.shared.model.PROTOCOL_VERSION
 import com.opentdi.shared.model.SensorSource
 import com.opentdi.shared.model.SensorStatus
 import com.opentdi.shared.sensing.AccelProcessor
+import com.opentdi.wear.alarm.WakeAlarms
 import com.opentdi.wear.sensing.HealthTrackingForegroundService
 import com.opentdi.wear.sensing.SensingState
 import com.opentdi.wear.sensing.SensingStateHolder
@@ -101,6 +102,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
                                 onStatusTap = ::onStatusTap,
+                                onAlarmStop = { HealthTrackingForegroundService.stopAlarm(this@MainActivity) },
                                 onDetails = { page = Page.DETAILS },
                                 onSessions = { page = Page.SESSIONS },
                             )
@@ -208,6 +210,7 @@ private fun MainScreen(
     onStop: () -> Unit,
     onBasicSensors: () -> Unit,
     onStatusTap: (SensorStatus) -> Unit,
+    onAlarmStop: () -> Unit,
     onDetails: () -> Unit,
     onSessions: () -> Unit,
 ) {
@@ -225,6 +228,19 @@ private fun MainScreen(
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item { ListHeader { Text("OpenTDI") } }
+            state.alarmRinging?.let { kind ->
+                item { BigLine(if (kind == "WAKE") "Good morning" else "Wake back to bed") }
+                item { Button(onClick = onAlarmStop, modifier = Modifier.fillMaxWidth(), label = { Text("I'm awake") }) }
+            }
+            state.wbtbBackToSleepAtMs?.let { at ->
+                item {
+                    Text(
+                        "Stay up until ${WakeAlarms.hhmm(at)}. Recall your last dream, then repeat: next time I'm " +
+                            "dreaming, I'll remember I'm dreaming. A buzz says go back to sleep.",
+                    )
+                }
+            }
+            if (state.alarmRinging == null) state.lastWakeText?.let { item { Text(it) } }
             if (!state.running && state.waiting) {
                 item { BigLine("Waiting for the phone") }
                 item { Text("Tap Start session on your phone, or start recording here.") }

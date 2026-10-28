@@ -20,6 +20,7 @@ data class SessionConfig(
     val recording: RecordingConfig = RecordingConfig(),
     val link: LinkConfig = LinkConfig(),
     val sensors: SensorsConfig = SensorsConfig(),
+    val alarms: AlarmConfig = AlarmConfig(),
     val simulation: SimulationMode? = null, // set only by the simulation receiver
 )
 
@@ -132,4 +133,21 @@ data class SensorsConfig(
     val spo2SpotChecks: Boolean = true, // SPO2_ON_DEMAND spot checks → w_spo2.csv
     val spo2IntervalMin: Int = 15, // 5..120
     val spo2TimeoutS: Int = 60, // 30..120
+)
+
+/**
+ * Watch alarms (owner, 2026-10-28). They ring on the watch, which records all night beside the sleeper, while the
+ * phone may be in another room. Times are minutes of the local day; the next occurrence after recording starts rings.
+ */
+@Serializable
+data class AlarmConfig(
+    val wakeEnabled: Boolean = false,
+    val wakeAtMin: Int = 420, // 0..1439 (07:00)
+    val wakeTone: AlarmTone = AlarmTone.MELODY,
+    val wbtbEnabled: Boolean = false,
+    val wbtbAtMin: Int = 270, // 0..1439 (04:30), GUESSED: about 5 h after a 23:30 sleep onset
+    val wbtbTone: AlarmTone = AlarmTone.VIBRATE_ONLY, // a vibration rarely wakes anyone else
+    val wbtbAwakeMin: Int = 20, // 5..60, GUESSED: then a short vibration says go back to sleep
+    val rampS: Int = 30, // 0..120: the tone rises from quiet to the watch's alarm volume
+    val maxRingMin: Int = 10, // 1..30: then it stops by itself
 )

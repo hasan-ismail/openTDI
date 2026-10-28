@@ -21,6 +21,11 @@ sealed class TdiCommand {
     @SerialName("status")
     data class StatusRequest(val origin: DeviceRole) : TdiCommand()
 
+    /** Phone → watch: plays [tone] on the watch for a few seconds, for choosing one in the settings. */
+    @Serializable
+    @SerialName("test_alarm")
+    data class TestAlarm(val tone: AlarmTone) : TdiCommand()
+
     @Serializable
     @SerialName("pause")
     data class PauseSession(val sessionId: String, val origin: DeviceRole) : TdiCommand()

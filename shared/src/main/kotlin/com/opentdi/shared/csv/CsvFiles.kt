@@ -30,6 +30,7 @@ object CsvFiles {
         "w_skin_temp.csv",
         "arrival_wall_ms,sdk_ts_ms,object_temp_c,ambient_temp_c,status,batch_size",
     )
+    val W_ALARM = file("w_alarm.csv", "wall_ms,alarm(WAKE/WBTB),event,stillness,hr_bpm,detail")
     val W_SPO2 = file(
         "w_spo2.csv",
         "arrival_wall_ms,sdk_ts_ms,spo2_pct,hr_bpm,status," +
