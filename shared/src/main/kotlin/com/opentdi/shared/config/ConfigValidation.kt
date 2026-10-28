@@ -134,7 +134,7 @@ fun SessionConfig.validate(): List<String> {
         int("alarms.wakeAtMin", wakeAtMin, 0..1439)
         int("alarms.wbtbAtMin", wbtbAtMin, 0..1439)
         int("alarms.wbtbAwakeMin", wbtbAwakeMin, 5..60)
-        int("alarms.rampS", rampS, 0..120)
+        int("alarms.rampS", rampS, 0..300)
         int("alarms.maxRingMin", maxRingMin, 1..30)
     }
     return errors

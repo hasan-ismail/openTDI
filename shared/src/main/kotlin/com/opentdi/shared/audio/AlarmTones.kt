@@ -36,13 +36,15 @@ fun alarmLoop(tone: AlarmTone, sampleRate: Int): FloatArray {
                 b[k] = (sin(phase) * edge).toFloat()
             }
         }
+        // A low 520 Hz square-ish beep: the pitch and shape with the lowest waking thresholds (Bruck et al. 2009).
         AlarmTone.CLASSIC_BEEPS -> buffer(1.4).also { b ->
             for (beep in 0 until 4) {
                 val start = (beep * 0.2 * sampleRate).toInt()
                 val n = (0.1 * sampleRate).toInt()
                 for (k in 0 until n) {
                     val edge = min(1.0, min(k, n - k) / (0.005 * sampleRate))
-                    b[start + k] = (sin(2 * PI * 1000.0 * k / sampleRate) * edge).toFloat()
+                    val w = 2 * PI * 520.0 * k / sampleRate
+                    b[start + k] = ((sin(w) + sin(3 * w) / 3 + sin(5 * w) / 5) * edge).toFloat()
                 }
             }
         }

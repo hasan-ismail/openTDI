@@ -36,7 +36,14 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
     private var backToSleepAt: Long? = null
     private var csv: CsvWriter? = null
 
-    private class Ringing(val kind: String, val startMs: Long, var movedAtMs: Long? = null)
+    private class Ringing(
+        val kind: String,
+        val tone: AlarmTone,
+        val startMs: Long,
+        var movedAtMs: Long? = null,
+        var escalated: Boolean = false,
+        var rampFromMs: Long = startMs, // the escalation's melody rises from quiet again
+    )
 
     fun tick(nowMs: Long, stillness: Float?, hr: Float?) {
         val r = ringing
@@ -46,7 +53,15 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
                 log(nowMs, r.kind, "FIRST_MOVEMENT", stillness, hr, "after_ms=${nowMs - r.startMs}")
             }
             val elapsed = nowMs - r.startMs
-            player.setVolume(if (config.rampS == 0) 1f else (0.05f + 0.95f * elapsed / (config.rampS * 1000f)).coerceAtMost(1f))
+            // A vibration alone did not wake everyone in the studies: after 2 min the melody joins it.
+            if (r.tone == AlarmTone.VIBRATE_ONLY && !r.escalated && elapsed >= ESCALATE_MS) {
+                r.escalated = true
+                r.rampFromMs = nowMs
+                player.start(AlarmTone.MELODY, 0.05f, gentle = r.kind == "WBTB")
+                log(nowMs, r.kind, "ESCALATED", stillness, hr, "tone=${AlarmTone.MELODY}")
+            }
+            val rise = (nowMs - r.rampFromMs) / (config.rampS * 1000f)
+            player.setVolume(if (config.rampS == 0) 1f else (0.05f + 0.95f * rise).coerceAtMost(1f))
             if (elapsed >= config.maxRingMin * 60_000L) stop(nowMs, stillness, hr, "TIMED_OUT")
             return
         }
@@ -76,7 +91,8 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
         val moved = r.movedAtMs?.let { it - r.startMs }
         log(nowMs, r.kind, how, stillness, hr, "after_ms=${nowMs - r.startMs};first_movement_ms=${moved ?: ""}")
         val summary = if (r.kind == "WAKE") {
-            "Woke up: moved after ${clock(moved)}, stopped the alarm after ${clock(nowMs - r.startMs)}."
+            "Stay still with your eyes closed and replay your dream before you move. You moved after " +
+                "${clock(moved)} and stopped the alarm after ${clock(nowMs - r.startMs)}."
         } else {
             null
         }
@@ -94,7 +110,7 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
     }
 
     private fun ring(nowMs: Long, kind: String, tone: AlarmTone, gentle: Boolean, stillness: Float?, hr: Float?) {
-        ringing = Ringing(kind, nowMs)
+        ringing = Ringing(kind, tone, nowMs)
         player.start(tone, if (config.rampS == 0) 1f else 0.05f, gentle)
         log(nowMs, kind, "RING", stillness, hr, "tone=$tone;alarm_volume=${player.alarmVolumeIndex()}")
         SensingStateHolder.update { it.copy(alarmRinging = kind) }
@@ -133,6 +149,7 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
 
     companion object {
         private const val MOVING = 0.5f // AccelConfig.moveStillness: below it a second counts as moving
+        private const val ESCALATE_MS = 120_000L
         private const val CHANNEL_ID = "alarms"
         private const val NOTIFICATION_ID = 2
         private const val PREFS = "alarms"

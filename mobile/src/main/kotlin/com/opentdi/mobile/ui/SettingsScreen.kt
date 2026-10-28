@@ -282,8 +282,9 @@ private fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, onTe
         if (alarms.wbtbEnabled) {
             TimeRow("Wake briefly at", alarms.wbtbAtMin, enabled) { m -> change { it.copy(wbtbAtMin = m) } }
             Help(
-                "About 5 hours after you fall asleep. Stay up for a while, recall your last dream and repeat " +
-                    "\"next time I'm dreaming, I'll remember I'm dreaming\"; a buzz then says go back to sleep.",
+                "About 6 hours after you fall asleep. Stay up for a while, recall your last dream and repeat " +
+                    "\"next time I'm dreaming, I'll remember I'm dreaming\"; a buzz then says go back to sleep. " +
+                    "1 to 3 nights a week; set the wake-up alarm at least 30 min later.",
             )
             IntSetting(
                 "Stay up for", "Before the back-to-sleep buzz.", alarms.wbtbAwakeMin, 5..60, 5, "min", enabled,
@@ -293,7 +294,7 @@ private fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, onTe
         if (alarms.wakeEnabled || alarms.wbtbEnabled) {
             IntSetting(
                 "Volume rise", "The tone starts quiet and reaches the watch's alarm volume after this long.",
-                alarms.rampS, 0..120, 10, "s", enabled,
+                alarms.rampS, 0..300, 10, "s", enabled,
             ) { v -> change { it.copy(rampS = v) } }
         }
     }
@@ -354,7 +355,7 @@ private fun toneLabel(tone: AlarmTone) = when (tone) {
     AlarmTone.MELODY -> "Melody"
     AlarmTone.GENTLE_CHIMES -> "Soft chimes"
     AlarmTone.RISING_TONE -> "Rising tone"
-    AlarmTone.CLASSIC_BEEPS -> "Beeps"
+    AlarmTone.CLASSIC_BEEPS -> "Low beeps"
     AlarmTone.VIBRATE_ONLY -> "Vibrate only"
 }
 

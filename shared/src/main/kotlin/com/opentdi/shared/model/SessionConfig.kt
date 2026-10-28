@@ -145,9 +145,9 @@ data class AlarmConfig(
     val wakeAtMin: Int = 420, // 0..1439 (07:00)
     val wakeTone: AlarmTone = AlarmTone.MELODY,
     val wbtbEnabled: Boolean = false,
-    val wbtbAtMin: Int = 270, // 0..1439 (04:30), GUESSED: about 5 h after a 23:30 sleep onset
-    val wbtbTone: AlarmTone = AlarmTone.VIBRATE_ONLY, // a vibration rarely wakes anyone else
-    val wbtbAwakeMin: Int = 20, // 5..60, GUESSED: then a short vibration says go back to sleep
-    val rampS: Int = 30, // 0..120: the tone rises from quiet to the watch's alarm volume
+    val wbtbAtMin: Int = 330, // 0..1439 (05:30): about 6 h after a 23:30 sleep onset (lucid_induction.md §5)
+    val wbtbTone: AlarmTone = AlarmTone.VIBRATE_ONLY, // rarely wakes anyone else; adds sound after 2 min
+    val wbtbAwakeMin: Int = 30, // 5..60: 30+ min awake predicted success (LaBerge 2018); then a buzz says sleep
+    val rampS: Int = 30, // 0..300: the tone rises from quiet to the watch's alarm volume
     val maxRingMin: Int = 10, // 1..30: then it stops by itself
 )
