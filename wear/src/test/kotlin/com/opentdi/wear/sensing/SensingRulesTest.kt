@@ -67,7 +67,7 @@ class SensingRulesTest {
     @Test
     fun statusTexts_areTheSpecTexts() {
         assertEquals(
-            "This build has no Samsung sensor SDK. Using basic watch sensors (no EDA or beat-to-beat data).",
+            "No Samsung sensor kit yet: add it in the phone app (Watch tab). Basic watch sensors for now.",
             statusText(SensorStatus.AAR_NOT_BUNDLED),
         )
         assertEquals(

@@ -1,5 +1,7 @@
 package com.opentdi.mobile.ui
 
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -23,8 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.opentdi.mobile.link.SamsungKitTransfer
 import com.opentdi.mobile.link.WatchInstaller
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val KIT_AFTER_INSTALL_MS = 5_000L
 
 private val STEPS = listOf(
     "On the watch, connect to the same Wi-Fi as this phone: Settings > Connections > Wi-Fi.",
@@ -107,7 +113,13 @@ fun WatchSetupCard() {
                     busy = true
                     message = "Installing… this takes about a minute."
                     scope.launch {
-                        message = installer.install(target) ?: "Installed. OpenTDI is open on the watch, waiting for the phone."
+                        val problem = installer.install(target)
+                        message = problem ?: "Installed. OpenTDI is open on the watch, waiting for the phone."
+                        if (problem == null && SamsungKitTransfer.name(context) != null) {
+                            delay(KIT_AFTER_INSTALL_MS) // the new watch app has to start before it can receive
+                            message = SamsungKitTransfer.send(context)?.let { "Installed. Samsung's kit: $it" }
+                                ?: "Installed, with your Samsung kit. OpenTDI is open on the watch."
+                        }
                         busy = false
                     }
                 },
@@ -120,5 +132,62 @@ fun WatchSetupCard() {
             "Keep the watch screen awake (tap it) until Installed appears. When it is done you can turn Wireless " +
                 "debugging off. Already paired? Turn Wireless debugging on and tap Install.",
         )
+    }
+}
+
+/**
+ * Samsung's sensor kit (bring your own kit): the user downloads it from Samsung, picks the download here, and the phone
+ * converts it and sends it to the watch. Without it the watch uses its basic sensors (heart rate and movement).
+ */
+@Composable
+fun SamsungKitCard() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf(SamsungKitTransfer.name(context)) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        busy = true
+        message = "Converting Samsung's kit…"
+        scope.launch {
+            message = try {
+                name = SamsungKitTransfer.import(context, uri)
+                SamsungKitTransfer.send(context)?.let { "Kit ready on this phone. $it" }
+                    ?: "Kit ready and sent: the watch uses it from its next recording."
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                e.message ?: "Could not read that file."
+            }
+            busy = false
+        }
+    }
+    Section("Samsung's sensor kit") {
+        Help(
+            "Adds skin response, skin temperature, blood oxygen and the raw pulse signal on Galaxy Watches. Samsung " +
+                "only lets you download it yourself: sign in at developer.samsung.com > Health > Sensor SDK, " +
+                "accept Samsung's license, download it, then pick the downloaded zip here. Without it the watch " +
+                "uses its basic sensors (heart rate and movement), which is all the cues need.",
+        )
+        Text(name?.let { "On this phone: $it" } ?: "No kit added yet.", style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { pick.launch(arrayOf("*/*")) }, enabled = !busy, modifier = Modifier.weight(1f)) {
+                Text(if (name == null) "Add the kit" else "Replace")
+            }
+            OutlinedButton(
+                onClick = {
+                    busy = true
+                    message = "Sending to the watch…"
+                    scope.launch {
+                        message = SamsungKitTransfer.send(context)
+                            ?: "Sent: the watch uses it from its next recording."
+                        busy = false
+                    }
+                },
+                enabled = !busy && name != null,
+                modifier = Modifier.weight(1f),
+            ) { Text("Send to watch") }
+        }
+        message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     }
 }

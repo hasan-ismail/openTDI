@@ -28,6 +28,8 @@
     <!-- Health Sensor Service (Health Platform); the AAR's manifest adds the same entry, stub builds need it here -->
     <queries>
         <package android:name="com.samsung.android.service.health" />
+        <!-- What the Samsung SDK's own manifest asks for: Galaxy Store, to install Health Sensor Service. -->
+        <package android:name="com.sec.android.app.samsungapps" />
     </queries>
 
     <application
@@ -55,6 +57,19 @@
             android:name=".sensing.HealthTrackingForegroundService"
             android:exported="false"
             android:foregroundServiceType="health" />
+
+        <!-- The user's own Samsung kit, converted and sent by the phone (bring your own kit). -->
+        <service
+            android:name=".link.KitReceiverService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
+                <data
+                    android:host="*"
+                    android:path="/opentdi/samsung_kit"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
 
         <!-- The phone's Start session, Stop watch recording and status requests (sendRequest). -->
         <service

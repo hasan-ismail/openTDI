@@ -90,16 +90,11 @@ fun OnboardingScreen(viewModel: MainViewModel, onAllowBattery: () -> Unit, onDon
                 WatchSetupCard()
                 Help("Already have OpenTDI on the watch? Go on to the next step.")
             }
-            Step.SENSORS -> Section(null) {
-                Text("Samsung only lets approved apps read the watch's sensors, or any app in developer mode.")
-                Bullets(
-                    "On the watch: Settings > Apps > Health Platform (or Health Sensor Service).",
-                    "Tap the title at the top about 10 times, not the version number.",
-                    "Tap Developer mode, accept Samsung's terms and switch it on.",
-                )
-                Text("So Android does not stop a night's session:")
-                Button(onClick = onAllowBattery, modifier = Modifier.fillMaxWidth()) { Text("Allow unrestricted battery") }
+            Step.SENSORS -> {
+                SensorsStep(onAllowBattery)
+                SamsungKitCard()
             }
+
             Step.VOICE -> {
                 Help("Choose a voice, tap Prepare cues, then Test cue at the volume you will sleep with.")
                 VoiceCard(viewModel, ui, idle, volumeOff, cueProblem)
@@ -136,4 +131,20 @@ fun OnboardingScreen(viewModel: MainViewModel, onAllowBattery: () -> Unit, onDon
 @Composable
 private fun Bullets(vararg lines: String) {
     for (line in lines) Text("•  $line", style = MaterialTheme.typography.bodyMedium)
+}
+
+@Composable
+private fun SensorsStep(onAllowBattery: () -> Unit) {
+    Section(null) {
+        Text("Optional: Samsung's own sensors. The cues work with the watch's basic sensors too.")
+        Text("Samsung only lets approved apps read the watch's sensors, or any app in developer mode.")
+        Bullets(
+            "On the watch: Settings > Apps > Health Platform (or Health Sensor Service).",
+            "Tap the title at the top about 10 times, not the version number.",
+            "Tap Developer mode, accept Samsung's terms and switch it on.",
+        )
+        Text("Then add Samsung's kit below (it stays on your devices).")
+        Text("So Android does not stop a night's session:")
+        Button(onClick = onAllowBattery, modifier = Modifier.fillMaxWidth()) { Text("Allow unrestricted battery") }
+    }
 }

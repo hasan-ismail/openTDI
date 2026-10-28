@@ -112,5 +112,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(files(sherpaOnnxAar).builtBy(fetchSherpaOnnx))
     implementation(libs.kadb)
+    implementation(libs.r8)
     testImplementation(libs.junit)
 }

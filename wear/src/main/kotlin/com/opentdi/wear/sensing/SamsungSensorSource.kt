@@ -22,15 +22,16 @@ import com.samsung.android.service.health.tracking.data.PpgType
 import com.samsung.android.service.health.tracking.data.ValueKey
 
 /**
- * The Samsung Health Sensor SDK path (§11.2, §11.6). Created only when BuildConfig.SAMSUNG_SDK_BUNDLED, so stub
- * builds never load an SDK class; it implements no SDK interface itself for the same reason. Runs on the sensing
+ * The Samsung Health Sensor SDK path (§11.2, §11.6). Only [SamsungKit] creates it, by reflection, when an SDK is
+ * there: built in, or the user's own kit, whose classes it then loads through a loader of its own. It implements no SDK
+ * interface itself, so the app never loads an SDK class without it. Runs on the sensing
  * thread: every SDK callback is converted to `:shared` types where it arrives, then posted to [handler].
  */
 class SamsungSensorSource(
     private val context: Context,
     private val handler: Handler,
     private val session: LoggingSession,
-) : SensorPath {
+) : SamsungPath {
     private var service: HealthTrackingService? = null
     private val trackers = LinkedHashMap<Tracker, HealthTracker>()
     private val extras = LinkedHashMap<ExtraTracker, HealthTracker>() // logging only; SpO2 listens per spot check
@@ -41,7 +42,7 @@ class SamsungSensorSource(
     private val flushRefused = HashSet<Tracker>() // trackers whose last flush() returned false or threw
     private val reconnect = Runnable { connect() }
 
-    fun start() = connect()
+    override fun start() = connect()
 
     override fun flush() {
         for ((tracker, healthTracker) in trackers) {
@@ -61,7 +62,7 @@ class SamsungSensorSource(
     }
 
     /** Starts one SpO2 measurement; false while SpO2 is off. The session ends it with [stopSpo2]. */
-    fun startSpo2(): Boolean {
+    override fun startSpo2(): Boolean {
         val tracker = extras[ExtraTracker.SPO2] ?: return false
         return try {
             tracker.setEventListener(listener(ExtraTracker.SPO2))
@@ -74,12 +75,12 @@ class SamsungSensorSource(
         }
     }
 
-    fun stopSpo2() {
+    override fun stopSpo2() {
         extras[ExtraTracker.SPO2]?.let { runCatching { it.unsetEventListener() } }
     }
 
     /** Stops one logging-only tracker (its error, or STORAGE_LOW for PPG); the session runs on. */
-    fun stopExtra(extra: ExtraTracker) {
+    override fun stopExtra(extra: ExtraTracker) {
         extras.remove(extra)?.let { runCatching { it.unsetEventListener() } }
     }
 

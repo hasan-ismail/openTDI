@@ -101,7 +101,7 @@ fun statusText(
     message: String? = null,
 ): String = when (status) {
     SensorStatus.AAR_NOT_BUNDLED ->
-        "This build has no Samsung sensor SDK. Using basic watch sensors (no EDA or beat-to-beat data)."
+        "No Samsung sensor kit yet: add it in the phone app (Watch tab). Basic watch sensors for now."
     SensorStatus.HSS_NOT_INSTALLED -> "Health Sensor Service (Health Platform) is not installed. Tap to install it."
     SensorStatus.HSS_TOO_OLD ->
         "Health Sensor Service (Health Platform) is too old for OpenTDI (needs 1.6.5 or newer). Tap to update it."

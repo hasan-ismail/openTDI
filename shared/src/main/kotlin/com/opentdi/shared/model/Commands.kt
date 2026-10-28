@@ -77,4 +77,8 @@ enum class WatchState { IDLE, WAITING, RECORDING }
 
 /** The watch's answer to every `/opentdi/state_command` request (`MessageClient.sendRequest`). */
 @Serializable
-data class WatchStatus(val state: WatchState, val batteryPct: Int? = null)
+data class WatchStatus(
+    val state: WatchState,
+    val batteryPct: Int? = null,
+    val samsungKit: String? = null, // "built in", "your kit", or null: basic sensors only
+)

@@ -61,6 +61,14 @@ interface SensorPath {
     fun stop()
 }
 
+/** The Samsung SDK path, made by [SamsungKit] so that its SDK classes may come from the user's own kit. */
+interface SamsungPath : SensorPath {
+    fun start()
+    fun startSpo2(): Boolean
+    fun stopSpo2()
+    fun stopExtra(extra: ExtraTracker)
+}
+
 /**
  * One watch logging session (§12): owns the session directory, the CSV writers, the wake lock, the AccelProcessor,
  * the PacketAggregator and the active [SensorPath], and hands its packets to [telemetry] as TelemetryBatches. Every
@@ -131,7 +139,10 @@ class LoggingSession(
             if (config.sensors.ppgRawEnabled) ppgRawCsv = open(CsvFiles.W_PPG_RAW)
             writeConfig()
         }
-        logEvent("SESSION_START", "sessionId" to sessionId, "aar" to BuildConfig.SAMSUNG_SDK_AAR.ifEmpty { null })
+        logEvent(
+            "SESSION_START", "sessionId" to sessionId, "aar" to BuildConfig.SAMSUNG_SDK_AAR.ifEmpty { null },
+            "samsungKit" to SamsungKit.source(context),
+        )
 
         val hss = hssVersionName()
         configRow("hssVersionName", hss)
@@ -144,7 +155,7 @@ class LoggingSession(
         )
         when {
             androidSensorsOnly -> startAndroidSensors(cause = null)
-            !BuildConfig.SAMSUNG_SDK_BUNDLED -> {
+            SamsungKit.source(context) == null -> {
                 setStatus(SensorStatus.AAR_NOT_BUNDLED)
                 startAndroidSensors(SensorStatus.AAR_NOT_BUNDLED)
             }
@@ -155,7 +166,15 @@ class LoggingSession(
                 } else if (hss.isNotEmpty() && !hssVersionSupported(hss)) {
                     setStatus(SensorStatus.HSS_TOO_OLD)
                 }
-                path = SamsungSensorSource(context, handler, this).also { it.start() }
+                val samsung = SamsungKit.create(context, handler, this)
+                if (samsung == null) { // a kit that does not load: the wrong file or an SDK this code does not fit
+                    logEvent("SAMSUNG_KIT_UNUSABLE", "samsungKit" to SamsungKit.source(context))
+                    setStatus(SensorStatus.AAR_NOT_BUNDLED)
+                    startAndroidSensors(SensorStatus.AAR_NOT_BUNDLED)
+                } else {
+                    path = samsung
+                    samsung.start()
+                }
             }
         }
         flushFiles()
@@ -334,7 +353,7 @@ class LoggingSession(
 
     /** One spot check at a time; none while SpO2 is off (unsupported, no permission, disabled or failed). */
     private fun startSpo2Check(seconds: Long) {
-        if (spo2Check != null || (path as? SamsungSensorSource)?.startSpo2() != true) return
+        if (spo2Check != null || (path as? SamsungPath)?.startSpo2() != true) return
         spo2Check = Spo2Check(seconds, System.currentTimeMillis())
         logEvent("SPO2_START")
     }
@@ -343,7 +362,7 @@ class LoggingSession(
     fun endSpo2Check(event: String) {
         val check = spo2Check ?: return
         spo2Check = null
-        (path as? SamsungSensorSource)?.stopSpo2()
+        (path as? SamsungPath)?.stopSpo2()
         val now = System.currentTimeMillis()
         val last = check.last
         val spo2 = last?.spo2?.takeIf { event == "SPO2_RESULT" }
@@ -445,7 +464,7 @@ class LoggingSession(
         if (ppgRawCsv != null && free < MIN_FREE_BYTES_PPG) { // the biggest file stops first, with its tracker
             io { ppgRawCsv?.close() }
             ppgRawCsv = null
-            (path as? SamsungSensorSource)?.stopExtra(ExtraTracker.PPG)
+            (path as? SamsungPath)?.stopExtra(ExtraTracker.PPG)
             setExtraOff(ExtraTracker.PPG, "storage low")
             logEvent("STORAGE_LOW", "free_mb" to free / (1024 * 1024), "stopped" to CsvFiles.W_PPG_RAW.name)
         }
@@ -487,6 +506,7 @@ class LoggingSession(
             "androidVersion" to Build.VERSION.RELEASE,
             "androidSdkInt" to Build.VERSION.SDK_INT.toString(),
             "samsungSdkAar" to BuildConfig.SAMSUNG_SDK_AAR,
+            "samsungKit" to SamsungKit.source(context).orEmpty(),
         ) + config.toConfigRows() + config.detection.thresholds().toConfigRows() + StructuralConstants.configRows()
         rows.forEach { (key, value) -> configRow(key, value) }
         configRow("gravityMode", gravityMode)

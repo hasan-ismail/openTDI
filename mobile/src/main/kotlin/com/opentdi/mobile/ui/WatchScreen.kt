@@ -74,6 +74,7 @@ fun WatchScreen() {
             }
         }
         WatchSetupCard()
+        SamsungKitCard()
     }
 }
 

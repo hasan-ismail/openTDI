@@ -14,6 +14,7 @@ import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.WatchStatus
 import com.opentdi.wear.alarm.AlarmPlayer
 import com.opentdi.wear.alarm.WakeAlarms
+import com.opentdi.wear.sensing.SamsungKit
 import com.opentdi.wear.sensing.HealthTrackingForegroundService
 import com.opentdi.wear.sensing.SensingStateHolder
 
@@ -63,7 +64,8 @@ class PhoneCommandService : WearableListenerService() {
         Log.i(TAG, "PHONE_COMMAND command=${command?.javaClass?.simpleName} state=$now")
         val battery = getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return Tasks.forResult(
-            OpenTdiJson.encodeToString(WatchStatus.serializer(), WatchStatus(now, battery)).encodeToByteArray(),
+            OpenTdiJson.encodeToString(WatchStatus.serializer(), WatchStatus(now, battery, SamsungKit.source(this)))
+                .encodeToByteArray(),
         )
     }
 

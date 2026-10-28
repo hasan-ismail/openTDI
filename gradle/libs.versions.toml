@@ -24,6 +24,8 @@ playServicesWearable = "20.0.1"
 junit = "4.13.2"
 # Kadb (Apache-2.0): the phone installs the watch app over Wireless debugging (2.1.5, 2026-10-15).
 kadb = "2.1.5"
+# D8 (BSD-3-Clause) turns the user's own Samsung kit into Android code on the phone (bring your own kit).
+r8 = "9.5.23"
 
 [libraries]
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
@@ -46,6 +48,7 @@ androidx-wear-ongoing = { group = "androidx.wear", name = "wear-ongoing", versio
 play-services-wearable = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "playServicesWearable" }
 
 kadb = { group = "com.flyfishxu", name = "kadb", version.ref = "kadb" }
+r8 = { group = "com.android.tools", name = "r8", version.ref = "r8" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
