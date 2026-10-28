@@ -1,5 +1,6 @@
 package com.opentdi.mobile.link
 
+import kotlinx.coroutines.withTimeoutOrNull
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
@@ -9,7 +10,6 @@ import com.flyfishxu.kadb.cert.KadbCert
 import com.flyfishxu.kadb.cert.OkioFilePrivateKeyStore
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,10 +35,10 @@ class WatchInstaller(private val context: Context) {
     private val mutableFound = MutableStateFlow(AdbFound())
     val found: StateFlow<AdbFound> = mutableFound.asStateFlow()
     private val listeners = mutableListOf<NsdManager.DiscoveryListener>()
-    private val executor = Executors.newSingleThreadExecutor()
+    private val infoCallbacks = mutableListOf<NsdManager.ServiceInfoCallback>()
 
     init {
-        KadbCert.configure(OkioFilePrivateKeyStore(File(context.filesDir, "adb/adbkey.pem").path.toPath()))
+        configureIdentity(context)
     }
 
     /** Looks for the watch's pairing dialog and its connection on the local network until [stop]. */
@@ -65,6 +65,10 @@ class WatchInstaller(private val context: Context) {
     fun stop() {
         listeners.forEach { runCatching { nsd.stopServiceDiscovery(it) } }
         listeners.clear()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // registered only there
+            infoCallbacks.forEach { runCatching { nsd.unregisterServiceInfoCallback(it) } }
+        }
+        infoCallbacks.clear()
     }
 
     private fun resolve(info: NsdServiceInfo, type: String) {
@@ -76,14 +80,16 @@ class WatchInstaller(private val context: Context) {
             }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            nsd.registerServiceInfoCallback(info, executor, object : NsdManager.ServiceInfoCallback {
+            val callback = object : NsdManager.ServiceInfoCallback {
                 override fun onServiceUpdated(resolved: NsdServiceInfo) {
                     found(resolved.hostAddresses.firstOrNull { it is java.net.Inet4Address }?.hostAddress, resolved.port)
                 }
                 override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) = Unit
                 override fun onServiceLost() = Unit
                 override fun onServiceInfoCallbackUnregistered() = Unit
-            })
+            }
+            infoCallbacks += callback
+            nsd.registerServiceInfoCallback(info, context.mainExecutor, callback)
         } else {
             @Suppress("DEPRECATION")
             nsd.resolveService(info, object : NsdManager.ResolveListener {
@@ -93,9 +99,19 @@ class WatchInstaller(private val context: Context) {
         }
     }
 
-    /** Pairs this phone with the watch showing [code]; throws with the reason when the watch refuses it. */
-    suspend fun pair(endpoint: AdbEndpoint, code: String) =
-        withContext(Dispatchers.IO) { Kadb.pair(endpoint.host, endpoint.port, code) }
+    /**
+     * Pairs this phone with the watch showing [code]: null when it worked, otherwise why not. A watch whose Wi-Fi
+     * dozes never answers, so it gives up after 30 s.
+     */
+    suspend fun pair(endpoint: AdbEndpoint, code: String): String? = try {
+        withTimeoutOrNull(PAIR_TIMEOUT_MS) {
+            withContext(Dispatchers.IO) { Kadb.pair(endpoint.host, endpoint.port, code) }
+            null
+        } ?: "The watch did not answer. Tap its screen to keep it awake and try again."
+    } catch (e: Exception) {
+        if (e is kotlinx.coroutines.CancellationException) throw e
+        "Pairing failed: ${e.message}. Check the code and try once more."
+    }
 
     /**
      * Connects to [endpoint], refuses anything that is not a watch, installs the carried watch app (replacing an
@@ -103,7 +119,8 @@ class WatchInstaller(private val context: Context) {
      */
     suspend fun install(endpoint: AdbEndpoint): String? = withContext(Dispatchers.IO) {
         try {
-            Kadb.create(endpoint.host, endpoint.port).use { kadb ->
+            // connect within 10 s; then up to 2 min per read, for the watch's install and optimisation
+            Kadb.create(endpoint.host, endpoint.port, CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS).use { kadb ->
                 val kind = kadb.shell("getprop ro.build.characteristics").output
                 if ("watch" !in kind) return@withContext "That device is not a watch, so nothing was installed."
                 val apk = File(context.cacheDir, "watch.apk")
@@ -124,9 +141,21 @@ class WatchInstaller(private val context: Context) {
         }
     }
 
-    private companion object {
-        const val PAIRING = "_adb-tls-pairing._tcp"
-        const val CONNECT = "_adb-tls-connect._tcp"
-        const val WATCH_APK = "watch.apk"
+    companion object {
+        private const val PAIRING = "_adb-tls-pairing._tcp"
+        private const val CONNECT = "_adb-tls-connect._tcp"
+        private const val WATCH_APK = "watch.apk"
+        private const val PAIR_TIMEOUT_MS = 30_000L
+        private const val CONNECT_TIMEOUT_MS = 10_000
+        private const val SOCKET_TIMEOUT_MS = 120_000
+        private var identityReady = false
+
+        /** Once per process: the key that lets the watch recognise this phone, in the app's private storage. */
+        @Synchronized
+        fun configureIdentity(context: Context) {
+            if (identityReady) return
+            KadbCert.configure(OkioFilePrivateKeyStore(File(context.filesDir, "adb/adbkey.pem").path.toPath()))
+            identityReady = true
+        }
     }
 }

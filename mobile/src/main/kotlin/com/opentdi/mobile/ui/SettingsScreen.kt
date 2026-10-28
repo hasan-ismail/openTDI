@@ -419,7 +419,10 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        SwitchRow("Wake back to bed (WBTB)", alarms.wbtbEnabled, enabled) { on -> change { it.copy(wbtbEnabled = on) } }
+        SwitchRow("Wake back to bed (WBTB)", alarms.wbtbEnabled, enabled) { on ->
+            // Late cues follow a WBTB alarm, so they go off with it (else Start would be blocked by validation).
+            change { it.copy(wbtbEnabled = on, lateCues = if (on) it.lateCues else LateCueMode.OFF) }
+        }
         if (alarms.wbtbEnabled) {
             TimeRow("Wake briefly at", alarms.wbtbAtMin, enabled) { m -> change { it.copy(wbtbAtMin = m) } }
             Help(

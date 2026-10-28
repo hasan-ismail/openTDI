@@ -1,5 +1,6 @@
 package com.opentdi.mobile.ui
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,19 +41,21 @@ private val STEPS = listOf(
 fun WatchSetupCard() {
     val context = LocalContext.current
     val installer = remember { WatchInstaller(context.applicationContext) }
-    DisposableEffect(installer) {
-        installer.start()
+    var open by rememberSaveable { mutableStateOf(false) }
+    DisposableEffect(open) { // looks for the watch only while the steps are open
+        if (open) installer.start()
         onDispose { installer.stop() }
     }
     val found by installer.found.collectAsState()
     val scope = rememberCoroutineScope()
-    var open by rememberSaveable { mutableStateOf(false) }
+    val prefs = remember { context.getSharedPreferences("watch_setup", Context.MODE_PRIVATE) }
+    var pairedHost by remember { mutableStateOf(prefs.getString("host", null)) }
     var code by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    // The connection on the same address as the pairing dialog is the watch's; without a dialog, the only one found.
-    val connect = found.pairing?.let { p -> found.connect.values.firstOrNull { it.host == p.host } }
-        ?: found.connect.values.singleOrNull()
+    // Only the watch this phone paired with: the connection on the pairing dialog's address, or the one paired before.
+    val watchHost = found.pairing?.host ?: pairedHost
+    val connect = found.connect.values.firstOrNull { it.host == watchHost }
 
     Section("Install the watch app") {
         Help("Put OpenTDI on your Galaxy Watch from this phone, without a computer. Needed once, and after updates.")
@@ -64,7 +67,7 @@ fun WatchSetupCard() {
         Help(
             when {
                 found.pairing != null -> "Found the watch's pairing screen at ${found.pairing!!.host}."
-                connect != null -> "Found a device with Wireless debugging at ${connect.host}."
+                connect != null -> "Found your paired watch at ${connect.host}."
                 else -> "Looking for the watch on the Wi-Fi…"
             },
         )
@@ -86,13 +89,12 @@ fun WatchSetupCard() {
                     busy = true
                     message = "Pairing…"
                     scope.launch {
-                        message = try {
-                            installer.pair(pairing, code)
-                            "Paired. Close the code on the watch, then tap Install."
-                        } catch (e: Exception) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
-                            "Pairing failed: ${e.message}. Check the code and try once more."
+                        val problem = installer.pair(pairing, code)
+                        if (problem == null) {
+                            pairedHost = pairing.host
+                            prefs.edit().putString("host", pairing.host).apply()
                         }
+                        message = problem ?: "Paired. Close the code on the watch, then tap Install."
                         busy = false
                     }
                 },
@@ -114,6 +116,9 @@ fun WatchSetupCard() {
             ) { Text("Install") }
         }
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        Help("When it is done, you can turn Wireless debugging off on the watch. Already paired? Just tap Install.")
+        Help(
+            "Keep the watch screen awake (tap it) until Installed appears. When it is done you can turn Wireless " +
+                "debugging off. Already paired? Turn Wireless debugging on and tap Install.",
+        )
     }
 }

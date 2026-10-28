@@ -108,14 +108,16 @@ class HealthTrackingForegroundService : LifecycleService() {
     /** The alarms the phone sent last, rescheduled when it sends new ones (a Start session while recording). */
     private fun tickAlarms(s: LoggingSession) {
         val json = WakeAlarms.loadConfigJson(applicationContext)
-        if (alarms == null || json != alarmsJson) {
-            alarms?.close()
-            alarmsJson = json
+        val now = System.currentTimeMillis()
+        val current = alarms
+        if (current == null) {
             val dir = File(filesDir, "sessions/${s.sessionId}")
-            val now = System.currentTimeMillis()
             val recordingStart = now - (SystemClock.elapsedRealtime() - SensingStateHolder.state.value.startedElapsedMs)
             alarms = WakeAlarms(applicationContext, dir, now, WakeAlarms.parse(json), recordingStart)
+        } else if (json != alarmsJson) {
+            current.update(WakeAlarms.parse(json), now) // keeps the night's state
         }
+        alarmsJson = json
         val p = SensingStateHolder.state.value.lastPacket?.packet
         alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
     }

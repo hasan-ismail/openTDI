@@ -1,5 +1,6 @@
 package com.opentdi.wear.alarm
 
+import com.opentdi.shared.model.LateCueMode
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
@@ -22,10 +23,13 @@ import kotlin.random.Random
  */
 class LateCues(
     context: Context,
-    private val config: AlarmConfig,
-    val cueNight: Boolean,
+    private val config: () -> AlarmConfig,
     private val log: (event: String, stillness: Float?, hr: Float?, detail: String?) -> Unit,
 ) {
+    /** Tonight's arm: always cues when ON; EXPERIMENT tosses a coin at arming, unseen (§5.4). */
+    var cueNight = true
+        private set
+    private val playing = mutableSetOf<AudioTrack>() // held until done: an unreferenced track may be collected
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val cue = lucidCue(SAMPLE_RATE)
     private val recentMoving = ArrayDeque<Boolean>()
@@ -44,8 +48,23 @@ class LateCues(
 
     /** The back-to-sleep buzz: cues may start lateCueDelayMin from now. */
     fun arm(nowMs: Long) {
-        startAtMs = nowMs + config.lateCueDelayMin * 60_000L
-        log("ARMED", null, null, "night=${if (cueNight) "CUE" else "NO_CUE"};start_in_min=${config.lateCueDelayMin}")
+        val c = config()
+        cueNight = c.lateCues == LateCueMode.ON || (c.lateCues == LateCueMode.EXPERIMENT && Random.nextBoolean())
+        startAtMs = nowMs + c.lateCueDelayMin * 60_000L
+        log("ARMED", null, null, "night=${if (cueNight) "CUE" else "NO_CUE"};start_in_min=${c.lateCueDelayMin}")
+    }
+
+    /** The wake-up alarm: no lucidity cue during the ring, the dream replay or the report. */
+    fun disarm() {
+        if (startAtMs == null && trainingLeft == 0) return
+        startAtMs = null
+        trainingLeft = 0
+        log("ENDED", null, null, null)
+    }
+
+    fun close() {
+        playing.forEach { it.release() }
+        playing.clear()
     }
 
     fun tick(nowMs: Long, stillness: Float?, hr: Float?) {
@@ -69,7 +88,7 @@ class LateCues(
         if (nowMs < start || nowMs - still < STILL_MS || boutCues >= CUES_PER_BOUT || nowMs < nextCueAtMs) return
         boutCues++
         nextCueAtMs = nowMs + Random.nextLong(MIN_GAP_MS, MAX_GAP_MS + 1)
-        if (cueNight) play(config.lateCueVolume)
+        if (cueNight) play(config().lateCueVolume)
         log(if (cueNight) "CUE" else "WOULD_CUE", stillness, hr, "bout_cue=$boutCues")
     }
 
@@ -98,8 +117,13 @@ class LateCues(
             ?.let { track.setPreferredDevice(it) }
         track.setVolume(volume)
         track.setNotificationMarkerPosition(cue.size)
+        playing += track
         track.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
-            override fun onMarkerReached(t: AudioTrack) = t.release()
+            override fun onMarkerReached(t: AudioTrack) {
+                t.release()
+                playing -= t
+            }
+
             override fun onPeriodicNotification(t: AudioTrack) = Unit
         })
         track.play()

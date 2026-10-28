@@ -120,7 +120,14 @@ fun checklist(
     watch: WatchState?,
     onWatch: Boolean = false,
     watchBatteryPct: Int? = null, // null while the watch does not answer
+    alarmsOn: Boolean = false, // a wake-up or WBTB alarm, which rings on the watch
 ): List<CheckItem> = buildList {
+    val needed = onWatch || alarmsOn
+    val why = when {
+        onWatch -> " It plays tonight's cues."
+        alarmsOn -> " Your alarms ring on the watch."
+        else -> " (Optional: cues play on the phone.)"
+    }
     if (!onWatch) {
         add(
             CheckItem(
@@ -167,22 +174,16 @@ fun checklist(
     )
     add(
         when (watch) {
-            WatchState.RECORDING -> CheckItem(Check.WATCH, true, "Watch is recording", blocking = onWatch)
+            WatchState.RECORDING -> CheckItem(Check.WATCH, true, "Watch is recording", blocking = needed)
             WatchState.WAITING ->
-                CheckItem(Check.WATCH, true, "Watch is waiting: Start session starts it too", blocking = onWatch)
+                CheckItem(Check.WATCH, true, "Watch is waiting: Start session starts it too", blocking = needed)
             WatchState.IDLE -> CheckItem(
                 Check.WATCH,
                 false,
-                "Open OpenTDI on the watch so Start session starts its recording too." +
-                    if (onWatch) "" else " (Optional: cues play on the phone.)",
-                blocking = onWatch,
+                "Open OpenTDI on the watch so Start session starts its recording too.$why",
+                blocking = needed,
             )
-            null -> CheckItem(
-                Check.WATCH,
-                false,
-                "Watch not connected." + if (onWatch) " It plays tonight's cues." else " (Optional: cues play on the phone.)",
-                blocking = onWatch,
-            )
+            null -> CheckItem(Check.WATCH, false, "Watch not connected.$why", blocking = needed)
         },
     )
     if (watchBatteryPct != null) {

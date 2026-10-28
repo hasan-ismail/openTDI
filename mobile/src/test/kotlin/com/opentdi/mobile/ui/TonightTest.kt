@@ -111,6 +111,13 @@ class TonightTest {
     }
 
     @Test
+    fun checklist_withAlarmsOn_needsTheWatch() {
+        val item = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE, alarmsOn = true)
+            .single { it.check == Check.WATCH }
+        assertTrue(!item.ok && item.blocking && "alarms ring on the watch" in item.text)
+    }
+
+    @Test
     fun alarmsLine_namesTheAlarmsThatAreOn() {
         assertNull(alarmsLine(AlarmConfig()))
         assertEquals(

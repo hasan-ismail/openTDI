@@ -47,7 +47,7 @@ class PhoneCommandService : WearableListenerService() {
             }.start()
         }
         if (command is TdiCommand.TestLateCue) {
-            LateCues(applicationContext, AlarmConfig(), cueNight = true) { _, _, _, _ -> }.play(command.volume)
+            LateCues(applicationContext, { AlarmConfig() }) { _, _, _, _ -> }.play(command.volume)
         }
         try {
             if (command is TdiCommand.StartSession && now == WatchState.WAITING) {

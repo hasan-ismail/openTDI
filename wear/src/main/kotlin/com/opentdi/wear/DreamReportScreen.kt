@@ -1,5 +1,6 @@
 package com.opentdi.wear
 
+import androidx.compose.ui.platform.LocalView
 import android.content.Context
 import android.media.MediaRecorder
 import android.os.Build
@@ -71,6 +72,12 @@ fun DreamReportScreen(after: String, dir: File, requestMic: (then: () -> Unit) -
         }
     }
     DisposableEffect(Unit) { onDispose { recorder?.let { stopRecorder(it) } } }
+    // A watch screen that times out can take the microphone from a recording app: keep it on while recording.
+    val view = LocalView.current
+    DisposableEffect(recorder != null) {
+        view.keepScreenOn = recorder != null
+        onDispose { view.keepScreenOn = false }
+    }
     val listState = rememberTransformingLazyColumnState()
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {

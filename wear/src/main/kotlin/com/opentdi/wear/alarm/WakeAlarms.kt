@@ -1,6 +1,6 @@
 package com.opentdi.wear.alarm
 
-import kotlin.random.Random
+import com.opentdi.shared.csv.csvLine
 import com.opentdi.shared.model.LateCueMode
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -33,7 +33,7 @@ class WakeAlarms(
     private val context: Context,
     private val dir: File,
     startMs: Long,
-    private val config: AlarmConfig,
+    private var config: AlarmConfig,
     private val recordingStartMs: Long = startMs,
 ) {
     private val zone = ZoneId.systemDefault()
@@ -43,14 +43,37 @@ class WakeAlarms(
     private val player = AlarmPlayer(context)
     private var ringing: Ringing? = null
     private var backToSleepAt: Long? = null
-    private var csv: CsvWriter? = null
     private var snoozes = 0
-    private val lateCues = if (config.wbtbEnabled && config.lateCues != LateCueMode.OFF) {
-        // EXPERIMENT: a coin decides tonight, unseen, so cue and no-cue nights can be compared (§5.4).
-        val cueNight = config.lateCues == LateCueMode.ON || Random.nextBoolean()
-        LateCues(context, config, cueNight) { event, still, hr, detail -> log(System.currentTimeMillis(), "CUES", event, still, hr, detail) }
+    private var lateCues = makeLateCues()
+
+    private fun makeLateCues(): LateCues? = if (config.wbtbEnabled && config.lateCues != LateCueMode.OFF) {
+        LateCues(context, { config }) { event, still, hr, detail ->
+            log(System.currentTimeMillis(), "CUES", event, still, hr, detail)
+        }
     } else {
         null
+    }
+
+    /**
+     * New settings from a Start session during the recording: the night's state (a pending snooze, the back-to-sleep
+     * buzz, armed cues and tonight's experiment coin) is kept; only an alarm whose time or switch changed is moved.
+     */
+    fun update(next: AlarmConfig, nowMs: Long) {
+        val old = config
+        config = next
+        if (next.wakeEnabled != old.wakeEnabled || next.wakeAtMin != old.wakeAtMin) {
+            wakeAt = if (next.wakeEnabled) nextAlarmAt(next.wakeAtMin, nowMs, zone) else null
+        }
+        if (next.wbtbEnabled != old.wbtbEnabled || next.wbtbAtMin != old.wbtbAtMin) {
+            wbtbAt = if (next.wbtbEnabled) nextAlarmAt(next.wbtbAtMin, nowMs, zone) else null
+        }
+        if (!next.wbtbEnabled || next.lateCues == LateCueMode.OFF) {
+            lateCues?.close()
+            lateCues = null
+        } else if (lateCues == null) {
+            lateCues = makeLateCues()
+        }
+        log(nowMs, "CONFIG", "UPDATED", null, null, null)
     }
 
     private class Ringing(
@@ -93,7 +116,7 @@ class WakeAlarms(
             }
         }
         if (wbtbAt?.let { nowMs >= it } == true) {
-            wbtbAt = null
+            wbtbAt = nextAlarmAt(config.wbtbAtMin, nowMs, zone) // tomorrow, if the recording runs on
             // Too early a WBTB cuts the first, deep half of the night and did worse (4.5 h vs 6 h, Erlacher 2022).
             if (nowMs - recordingStartMs < MIN_SLEEP_BEFORE_WBTB_MS) {
                 log(nowMs, "WBTB", "SKIPPED", stillness, hr, "recording_ms=${nowMs - recordingStartMs}")
@@ -101,7 +124,7 @@ class WakeAlarms(
                 ring(nowMs, "WBTB", config.wbtbTone, gentle = true, stillness, hr)
             }
         } else if (wakeAt?.let { nowMs >= it } == true) {
-            wakeAt = null
+            wakeAt = nextAlarmAt(config.wakeAtMin, nowMs, zone) // tomorrow; a snooze sets it sooner
             ring(nowMs, "WAKE", config.wakeTone, gentle = false, stillness, hr)
         }
     }
@@ -141,6 +164,10 @@ class WakeAlarms(
             backToSleepAt = nowMs + config.wbtbAwakeMin * 60_000L
             lateCues?.train(nowMs)
         }
+        if (r.kind == "WAKE") { // the morning is over: the next wake-up starts its own count
+            snoozes = 0
+            firstRingAt = null
+        }
         SensingStateHolder.update {
             it.copy(
                 alarmRinging = null,
@@ -155,11 +182,12 @@ class WakeAlarms(
     fun close() {
         player.stop()
         if (ringing != null) context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+        lateCues?.close()
         SensingStateHolder.update { it.copy(alarmRinging = null, wbtbBackToSleepAtMs = null, lateCuesTraining = false) }
-        csv?.close()
     }
 
     private fun ring(nowMs: Long, kind: String, tone: AlarmTone, gentle: Boolean, stillness: Float?, hr: Float?) {
+        if (kind == "WAKE") lateCues?.disarm()
         ringing = Ringing(kind, tone, nowMs)
         player.start(tone, if (config.rampS == 0) 1f else 0.05f, gentle)
         log(nowMs, kind, "RING", stillness, hr, "tone=$tone;alarm_volume=${player.alarmVolumeIndex()}")
@@ -199,11 +227,15 @@ class WakeAlarms(
         nm.notify(NOTIFICATION_ID, notification)
     }
 
+    /** One w_alarm.csv row, appended at once: a handful a night, each must survive a battery that dies at dawn. */
     private fun log(nowMs: Long, kind: String, event: String, stillness: Float?, hr: Float?, detail: String?) {
-        val w = csv ?: CsvWriter(File(dir, CsvFiles.W_ALARM.name).bufferedWriter(), CsvFiles.W_ALARM.columns)
-            .also { csv = it }
-        w.row(nowMs, kind, event, stillness, hr, detail)
-        w.flush() // a handful of rows a night: each must survive a battery that dies at dawn
+        val row = listOf<Any?>(nowMs, kind, event, stillness, hr, detail)
+        val file = File(dir.apply { mkdirs() }, CsvFiles.W_ALARM.name)
+        if (file.exists()) {
+            file.appendText(csvLine(row))
+        } else {
+            CsvWriter(file.bufferedWriter(), CsvFiles.W_ALARM.columns).use { it.row(*row.toTypedArray<Any?>()) }
+        }
     }
 
     companion object {

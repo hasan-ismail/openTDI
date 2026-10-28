@@ -74,6 +74,7 @@ fun TonightScreen(
         volumeOff, dnd, ui.batteryUnrestricted, cueProblem,
         if (onWatch) ui.watchTested else ui.calibratedIndex != null, watch, onWatch,
         watchStatus?.batteryPct ?: live.watchBatteryPct.takeIf { streaming },
+        alarmsOn = config.alarms.wakeEnabled || config.alarms.wbtbEnabled,
     )
     val ready = errors.isEmpty() && checks.none { it.blocking && !it.ok }
     val idle = !status.running && !ui.preparing && !ui.testing
