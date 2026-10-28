@@ -131,6 +131,14 @@ data class CueSet(
     val fingerprint: String = "",
 )
 
+/**
+ * One WAV in filesDir/cues/ as [RENDER_CACHE] records it: the [key] of the words, voice and settings it was rendered
+ * from, and the format the engine reported, so Prepare cues renders only what changed (owner, 2026-10-28: the guide
+ * took minutes on every Prepare, and closing the app lost all of it).
+ */
+@Serializable
+private data class CachedRender(val key: String, val sampleRate: Int, val encoding: Int, val channels: Int)
+
 /** The decoded cue WAVs of [set] and each file's SHA-256 (hex). */
 class PreparedCues(val set: CueSet, val audio: Map<PromptCue, WavAudio>, val sha256: Map<PromptCue, String>)
 
@@ -139,6 +147,8 @@ class CueException(message: String) : Exception(message)
 
 private const val CUES_DIR = "cues"
 private const val MANIFEST = "cues.json"
+private const val RENDER_CACHE = "rendered.json"
+private const val RENDER_VERSION = 1 // bump when trimming, joining or normalising changes, so every WAV renders anew
 private const val INIT_TIMEOUT_MS = 15_000L
 private const val SYNTHESIS_TIMEOUT_MS = 60_000L
 private const val NO_CUES = "No cues are prepared yet. Tap Prepare cues."
@@ -195,10 +205,16 @@ fun loadPreparedCues(context: Context, config: SessionConfig): PreparedCues {
  * phrase, each trimmed of leading and trailing silence, joined with exactly phrasePauseMs of silence after a lead of
  * ¾ fadeInMs, peak-normalised to −3 dBFS and stored as PCM16 mono WAVs; with [guideOn], the guide's clips likewise
  * ([loadGuideClip]). NEURAL renders with the on-device Kokoro model; when it is not installed, does not load or fails
- * while rendering, [onFallback] gets the reason and the system voice renders instead. Call from the main thread, never
- * during a session. Throws [CueException] or IOException.
+ * while rendering, [onFallback] gets the reason and the system voice renders instead. A WAV already rendered from the
+ * same words, voice and settings is kept, and [onProgress] counts the cues and clips done. Call from the main thread,
+ * never during a session. Throws [CueException] or IOException.
  */
-suspend fun renderCues(context: Context, config: SessionConfig, onFallback: (String) -> Unit = {}): CueSet {
+suspend fun renderCues(
+    context: Context,
+    config: SessionConfig,
+    onFallback: (String) -> Unit = {},
+    onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+): CueSet {
     if (config.audio.ttsEngine == TtsEngine.NEURAL) {
         val speaker = config.audio.neuralSpeaker
         val sid = neuralSpeakerId(speaker)
@@ -211,7 +227,7 @@ suspend fun renderCues(context: Context, config: SessionConfig, onFallback: (Str
         }
         if (tts != null) {
             try {
-                return storeCues(context, config, NEURAL_ENGINE, speaker) { _, text ->
+                return storeCues(context, config, NEURAL_ENGINE, speaker, onProgress) { _, text ->
                     // Kokoro's speed and setSpeechRate both take 1 as normal, so the rate passes through unchanged.
                     val audio = withContext(Dispatchers.Default) { tts.generate(text, sid, config.audio.ttsSpeechRate) }
                     TtsFormat(audio.sampleRate, AudioFormat.ENCODING_PCM_FLOAT, 1) to audio.samples
@@ -226,11 +242,15 @@ suspend fun renderCues(context: Context, config: SessionConfig, onFallback: (Str
             }
         }
     }
-    return renderSystemCues(context, config)
+    return renderSystemCues(context, config, onProgress)
 }
 
 /** [renderCues] with an offline English Android TextToSpeech voice; formats from onBeginSynthesis. */
-private suspend fun renderSystemCues(context: Context, config: SessionConfig): CueSet {
+private suspend fun renderSystemCues(
+    context: Context,
+    config: SessionConfig,
+    onProgress: (done: Int, total: Int) -> Unit,
+): CueSet {
     val ready = CompletableDeferred<Int>()
     val tts = TextToSpeech(context) { ready.complete(it) }
     try {
@@ -264,7 +284,7 @@ private suspend fun renderSystemCues(context: Context, config: SessionConfig): C
 
             override fun onError(utteranceId: String?, errorCode: Int) = finish(utteranceId, false)
         })
-        return storeCues(context, config, tts.defaultEngine.orEmpty(), voice.name) { id, text ->
+        return storeCues(context, config, tts.defaultEngine.orEmpty(), voice.name, onProgress) { id, text ->
             val raw = File(File(context.filesDir, CUES_DIR), "$id.tts.wav")
             val done = CompletableDeferred<Boolean>().also { pending[id] = it }
             val queued = tts.synthesizeToFile(text, Bundle(), raw, id) == TextToSpeech.SUCCESS
@@ -282,22 +302,40 @@ private suspend fun renderSystemCues(context: Context, config: SessionConfig): C
 /**
  * Renders every phrase of every cue, and of the guide's clips when it is on, with [phrase] (its format and samples for
  * an utterance id "<cue or clip>-<phrase index>"), one utterance per phrase so each one's silence can be trimmed and
- * every pause is exact, then stores the cues, the clips and the cues' manifest.
+ * every pause is exact, then stores the cues, the clips and the cues' manifest. A WAV whose [RENDER_CACHE] key still
+ * matches is kept; the cache is written after each WAV, so an interrupted Prepare resumes where it stopped.
  */
 private suspend fun storeCues(
     context: Context,
     config: SessionConfig,
     engine: String,
     voice: String,
+    onProgress: (done: Int, total: Int) -> Unit,
     phrase: suspend (id: String, text: String) -> Pair<TtsFormat, FloatArray>,
 ): CueSet {
     val dir = File(context.filesDir, CUES_DIR)
-    withContext(Dispatchers.IO) {
+    val cacheFile = File(dir, RENDER_CACHE)
+    val cache = withContext(Dispatchers.IO) {
         dir.mkdirs()
         File(dir, MANIFEST).delete() // until the new set is complete, no cues count as prepared
-    }
+        try {
+            OpenTdiJson.decodeFromString<Map<String, CachedRender>>(cacheFile.readText())
+        } catch (e: IOException) {
+            emptyMap()
+        } catch (e: IllegalArgumentException) {
+            emptyMap()
+        }
+    }.toMutableMap()
+    val total = PHASE1_CUES.size + if (guideOn(config)) GuideClip.entries.size else 0
+    var done = 0
+    onProgress(done, total)
     // Trimmed speech would start at sample 0, where the §7.4 fade swallows a short first phrase.
     val leadMs = (config.audio.fadeInMs * StructuralConstants.SPEECH_LEAD_FADE_FRACTION).toInt()
+
+    suspend fun remember(name: String, entry: CachedRender?) = withContext(Dispatchers.IO) {
+        if (entry == null) cache.remove(name) else cache[name] = entry
+        cacheFile.writeText(OpenTdiJson.encodeToString(cache.toMap()))
+    }
 
     suspend fun speak(name: String, text: String): Pair<TtsFormat, FloatArray> {
         val phrases = splitPhrases(text).mapIndexed { i, words ->
@@ -314,6 +352,24 @@ private suspend fun storeCues(
         return format to joined
     }
 
+    /** [text] spoken into [file] as [name], unless the cache shows it was rendered from exactly these inputs. */
+    suspend fun render(name: String, file: File, text: String): TtsFormat {
+        val inputs = listOf("$RENDER_VERSION", engine, voice, "${config.audio.ttsSpeechRate}",
+            "${config.audio.phrasePauseMs}", "$leadMs", text)
+        val key = sha256Hex(OpenTdiJson.encodeToString(inputs).toByteArray())
+        val kept = cache[name]?.takeIf { it.key == key && withContext(Dispatchers.IO) { file.isFile } }
+        val format = if (kept != null) {
+            TtsFormat(kept.sampleRate, kept.encoding, kept.channels)
+        } else {
+            val (format, samples) = speak(name, text)
+            withContext(Dispatchers.IO) { storeCue(file, samples, format.sampleRate) }
+            remember(name, CachedRender(key, format.sampleRate, format.encoding, format.channels))
+            format
+        }
+        onProgress(++done, total)
+        return format
+    }
+
     val rendered = PHASE1_CUES.map { cue ->
         val ownSha = config.audio.ownVoice[cue]
         if (ownSha != null) { // the user's own recording, trimmed and led in like speech (OwnVoice.kt)
@@ -322,17 +378,15 @@ private suspend fun storeCues(
             if (samples.isEmpty()) throw CueException("Your recording for \"${cue.name}\" is silent. Record it again.")
             val padded = joinWithPauses(listOf(samples), own.sampleRate, config.audio.phrasePauseMs, leadMs)
             withContext(Dispatchers.IO) { storeCue(cueFile(context, cue), padded, own.sampleRate) }
+            remember(cue.name, null) // the WAV is the recording now, not a rendering
+            onProgress(++done, total)
             return@map RenderedCue(cue, own.sampleRate, AudioFormat.ENCODING_PCM_16BIT, 1)
         }
-        val (format, samples) = speak(cue.name, cueText(cue, config))
-        withContext(Dispatchers.IO) { storeCue(cueFile(context, cue), samples, format.sampleRate) }
+        val format = render(cue.name, cueFile(context, cue), cueText(cue, config))
         RenderedCue(cue, format.sampleRate, format.encoding, format.channels)
     }
     if (guideOn(config)) {
-        for (clip in GuideClip.entries) {
-            val (format, samples) = speak(clip.file, guideText(clip, config))
-            withContext(Dispatchers.IO) { storeCue(guideFile(context, clip), samples, format.sampleRate) }
-        }
+        for (clip in GuideClip.entries) render(clip.file, guideFile(context, clip), guideText(clip, config))
     }
     val set = CueSet(config.theme, engine, voice, rendered, cueFingerprint(config, voice))
     withContext(Dispatchers.IO) { File(dir, MANIFEST).writeText(OpenTdiJson.encodeToString(set)) }

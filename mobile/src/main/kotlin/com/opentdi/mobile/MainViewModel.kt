@@ -67,6 +67,7 @@ data class UiState(
     val config: SessionConfig,
     val cues: CueSet?,
     val preparing: Boolean = false,
+    val prepareStatus: String = PREPARING, // what Prepare cues is doing, while [preparing]
     val testing: Boolean = false,
     val cueMessage: String? = null,
     val calibratedIndex: Int? = null, // media volume step of the last full test cue (§7.7 calibration)
@@ -76,6 +77,7 @@ data class UiState(
     val batteryManual: Boolean = false, // no battery settings screen opened: show the path instead
 )
 
+const val PREPARING = "Preparing the voice cues…"
 private const val GUIDE_NOT_SENT =
     "The watch did not get the guided back-to-sleep. Connect it, then tap Prepare cues again."
 
@@ -246,12 +248,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun prepareCues() {
         if (ui.value.preparing) return
         val config = ui.value.config
-        mutableUi.update { it.copy(preparing = true, cueMessage = null) }
+        mutableUi.update { it.copy(preparing = true, prepareStatus = PREPARING, cueMessage = null) }
+        fun status(text: String) = mutableUi.update { it.copy(prepareStatus = text) }
         viewModelScope.launch {
             var fallback: String? = null
             val error = try {
-                Transcriber.withoutTranscription { renderCues(app, config) { fallback = it } }
-                val guideMissed = guideOn(config) && !sendGuide(config)
+                Transcriber.withoutTranscription {
+                    renderCues(app, config, { fallback = it }) { done, total ->
+                        // The guide's clips are long: the first Prepare with the natural voice takes a few minutes.
+                        status("Preparing the voice cues: $done of $total done…")
+                    }
+                }
+                val guideMissed = guideOn(config) && !sendGuide(config) { sent, total ->
+                    status("Sending the guided back-to-sleep to the watch: $sent of $total…")
+                }
                 listOfNotNull(fallback, GUIDE_NOT_SENT.takeIf { guideMissed }).joinToString(" ").ifEmpty { null }
             } catch (e: CueException) {
                 e.message
@@ -266,9 +276,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Sends the guide's clips to the watch, faded in at the cue volume as a cue sent there would be (the watch plays
      * them at full track volume); false as soon as the watch does not keep one.
      */
-    private suspend fun sendGuide(config: SessionConfig): Boolean {
+    private suspend fun sendGuide(config: SessionConfig, onSent: (sent: Int, total: Int) -> Unit): Boolean {
         val player = CuePlayer(app)
-        return GuideClip.entries.all { clip ->
+        return GuideClip.entries.withIndex().all { (i, clip) ->
+            onSent(i, GuideClip.entries.size)
             val clipAudio = withContext(Dispatchers.IO) { loadGuideClip(app, clip) }
             val faded = FadeEnvelope(clipAudio.sampleRate, config.audio.fadeInMs)
                 .applyTo(clipAudio.samples, config.audio.targetGain())

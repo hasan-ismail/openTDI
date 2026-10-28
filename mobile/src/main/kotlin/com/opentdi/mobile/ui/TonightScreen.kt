@@ -195,7 +195,7 @@ fun TonightScreen(
                     Help("Settings > Apps > OpenTDI > Battery > Unrestricted")
                 }
                 when {
-                    ui.preparing -> Help("Preparing the voice cues…")
+                    ui.preparing -> Help(ui.prepareStatus)
                     ui.testing -> Help("Playing the test cue…")
                 }
                 ui.cueMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
