@@ -1,7 +1,7 @@
 # Tests, builds and lints both apps on every push to main and every pull request (owner, 2026-10-28: "use github actions
 # to publish builds"; docs/SETUP.md §12). Builds use the stub instead of Samsung's SDK, and dexcheck.py confirms that no
-# Samsung code is inside. No APK is uploaded: the APKs combine GPL code with Play services, and publishing builds waits
-# for the owner's decision on that (docs/SETUP.md §12). Signed releases come from release.yml.
+# Samsung code is inside. No APK is uploaded: OpenTDI is source-only, because the APKs combine GPL code with Play
+# services (owner's decision, 2026-10-28; docs/SETUP.md §12).
 name: CI
 
 on:
