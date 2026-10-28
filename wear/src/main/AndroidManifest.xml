@@ -96,5 +96,18 @@
                     android:scheme="wear" />
             </intent-filter>
         </service>
+
+        <!-- The night files, copied to the phone when the phone opens the session files channel. -->
+        <service
+            android:name=".link.SessionFilesService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
+                <data
+                    android:host="*"
+                    android:path="/opentdi/session_files"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
