@@ -224,6 +224,9 @@ class LoggingSession(
             logEvent("GRAVITY_MODE", "mode" to gravityMode)
             SensingStateHolder.update { it.copy(gravityMode = gravityMode) }
         }
+        if (processor.gravityProgress != SensingStateHolder.state.value.gravityProgress) {
+            SensingStateHolder.update { it.copy(gravityProgress = processor.gravityProgress) }
+        }
         onDelivered(Tracker.ACCEL)
     }
 

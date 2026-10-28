@@ -1,11 +1,18 @@
 package com.opentdi.wear
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,10 +37,13 @@ import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.SwipeToDismissBox
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
+import com.opentdi.shared.model.GravityMode
 import com.opentdi.shared.model.SensorSource
 import com.opentdi.shared.model.SensorStatus
+import com.opentdi.shared.sensing.AccelProcessor
 import com.opentdi.wear.sensing.HealthTrackingForegroundService
 import com.opentdi.wear.sensing.SensingState
 import com.opentdi.wear.sensing.SensingStateHolder
@@ -52,26 +62,74 @@ class MainActivity : ComponentActivity() {
         afterPermissions = null
     }
 
+    private var batteryUnrestricted by mutableStateOf(true) // as checked at the last resume
+    private var batteryManual by mutableStateOf(false) // no battery settings screen opened: show the path instead
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Once per launch, never over a running session (the ongoing chip opens a new instance); resume re-checks.
+        if (savedInstanceState == null && !SensingStateHolder.state.value.running && !isBatteryUnrestricted()) {
+            allowBattery(askOnly = true)
+        }
         setContent {
             val state by SensingStateHolder.state.collectAsStateWithLifecycle()
             var logRawAccelChoice by rememberSaveable { mutableStateOf(false) }
+            var sessionsOpen by rememberSaveable { mutableStateOf(false) }
             val logRawAccel = if (state.running) state.logRawAccel else logRawAccelChoice
             MaterialTheme(colorScheme = NightColors) {
                 AppScaffold {
-                    SessionScreen(
-                        state = state,
-                        logRawAccel = logRawAccel,
-                        onLogRawAccelChange = { logRawAccelChoice = it },
-                        onStart = { startSession(logRawAccel, androidSensorsOnly = false) },
-                        onStop = { HealthTrackingForegroundService.stop(this@MainActivity) },
-                        onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
-                        onStatusTap = ::onStatusTap,
-                    )
+                    BackHandler(enabled = sessionsOpen) { sessionsOpen = false }
+                    SwipeToDismissBox(
+                        onDismissed = { sessionsOpen = false },
+                        userSwipeEnabled = sessionsOpen,
+                    ) { isBackground ->
+                        if (sessionsOpen && !isBackground) {
+                            SessionsScreen(runningId = state.sessionId.takeIf { state.running })
+                        } else {
+                            SessionScreen(
+                                state = state,
+                                logRawAccel = logRawAccel,
+                                batteryUnrestricted = batteryUnrestricted,
+                                batteryManual = batteryManual,
+                                onLogRawAccelChange = { logRawAccelChoice = it },
+                                onStart = { startSession(logRawAccel, androidSensorsOnly = false) },
+                                onStop = { HealthTrackingForegroundService.stop(this@MainActivity) },
+                                onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
+                                onStatusTap = ::onStatusTap,
+                                onBatteryTap = ::allowBattery,
+                                onSessions = { sessionsOpen = true },
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private fun isBatteryUnrestricted() =
+        getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
+    /**
+     * Opens the first screen that can make battery use "Unrestricted" (Wear OS may lack some); else shows the path.
+     * [askOnly], the ask at launch, tries only the system dialog, so opening the app never lands in Settings.
+     */
+    @SuppressLint("BatteryLife") // a night-long health session is the use this exemption is for
+    private fun allowBattery(askOnly: Boolean = false) {
+        val app = Uri.fromParts("package", packageName, null)
+        val screens = listOf(
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, app),
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, app),
+        )
+        val opened = (if (askOnly) screens.take(1) else screens).any { intent ->
+            try {
+                startActivity(intent)
+                true
+            } catch (e: ActivityNotFoundException) {
+                false
+            }
+        }
+        if (!opened) batteryManual = true
     }
 
     private fun missingPermissions() = runtimePermissions(Build.VERSION.SDK_INT).filter {
@@ -101,6 +159,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        batteryUnrestricted = isBatteryUnrestricted()
         if (!resolving) return
         resolving = false
         // Back from Galaxy Store: only a new session reconnects to Health Sensor Service; still missing, it falls back.
@@ -150,11 +209,15 @@ private val NightColors = ColorScheme(
 private fun SessionScreen(
     state: SensingState,
     logRawAccel: Boolean,
+    batteryUnrestricted: Boolean,
+    batteryManual: Boolean,
     onLogRawAccelChange: (Boolean) -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onBasicSensors: () -> Unit,
     onStatusTap: (SensorStatus) -> Unit,
+    onBatteryTap: () -> Unit,
+    onSessions: () -> Unit,
 ) {
     var nowMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     if (state.running) {
@@ -194,6 +257,19 @@ private fun SessionScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Log raw accelerometer") }
             }
+            item {
+                if (batteryUnrestricted) {
+                    Line("Battery: unrestricted")
+                } else {
+                    Card(onClick = onBatteryTap, modifier = Modifier.fillMaxWidth()) {
+                        Text("Battery: optimized. Tap to allow unrestricted so sensing isn't stopped.")
+                        if (batteryManual) Text("Settings > Apps > OpenTDI > Battery > Unrestricted")
+                    }
+                }
+            }
+            item {
+                FilledTonalButton(onClick = onSessions, modifier = Modifier.fillMaxWidth()) { Text("Sessions") }
+            }
             for (value in values) item { Line(value) }
         }
     }
@@ -212,7 +288,7 @@ private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (Sensor
 }
 
 @Composable
-private fun Line(text: String) {
+internal fun Line(text: String) {
     Text(text, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
 }
 
@@ -229,7 +305,11 @@ private fun liveValues(state: SensingState, nowMs: Long): List<String> {
         "EDA ${format("%.3f", packet?.skinConductance)} µS, status ${packet?.edaStatus ?: "—"}",
         "Stillness ${format("%.2f", packet?.stillnessScore)}",
         "Accel ${state.lastPacket?.accelSampleCount ?: 0} samples/s",
-        "Gravity ${state.gravityMode}",
+        if (state.gravityMode == GravityMode.UNKNOWN) {
+            "Gravity: deciding (${state.gravityProgress}/${AccelProcessor.GRAVITY_MODE_STILL_SECONDS} calm s)"
+        } else {
+            "Gravity ${state.gravityMode}"
+        },
         "Packets ${state.packetsWritten}",
     )
 }

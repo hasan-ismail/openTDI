@@ -15,7 +15,7 @@ object StructuralConstants {
     const val MAJOR_MOVEMENT_WINDOW_S = 5 // ... within the last 5 s
     const val HOLD_RESET_GAP_MS = 1500L // §8.3: a longer packet gap resets hold
     const val ACCEL_MIN_SAMPLES_PER_S = 20 // §8.1: of the nominal 25 Hz
-    const val GRAVITY_MODE_STILL_S = 30 // §8.1
+    const val GRAVITY_MODE_STILL_S = 10 // §8.1: calm seconds (stillness >= moveStillness)
     const val WITH_GRAVITY_MIN_G = 0.8f
     const val WITH_GRAVITY_MAX_G = 1.2f
     const val LINEAR_ONLY_MAX_G = 0.3f

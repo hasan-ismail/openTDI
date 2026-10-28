@@ -730,9 +730,11 @@ u_s            = normalize(mean_i a_i)                              // orientati
 ```
 
 **Gravity mode.** Samsung's javadoc says "Accelerometer data doesn't include gravity" (FACT, [S] §0 item 6); CLAUDE.md's
-magnitude formula assumes the opposite. VERIFY ON DEVICE (§15). The processor decides from the data: once 30 seconds
-with stillness ≥ 0.8 exist, median `accelMean` ∈ [0.8, 1.2] g → `WITH_GRAVITY`; < 0.3 g → `LINEAR_ONLY`; otherwise
-`AMBIGUOUS`. Stillness and the jerk detector work in every mode (they use d). The limp detector runs only in
+magnitude formula assumes the opposite. **Measured on the SM-L500 (2026-10-27, [DA]): the stream includes gravity**
+(`accelMean` 0.995–1.004 g in every second). The processor still decides from the data: once 10 calm seconds
+(stillness ≥ θ_move = 0.5) exist, median `accelMean` ∈ [0.8, 1.2] g → `WITH_GRAVITY`; < 0.3 g → `LINEAR_ONLY`;
+otherwise `AMBIGUOUS` (GUESSED; it was 30 seconds at ≥ 0.8 until the first device run, where a worn watch reached only
+17 such seconds in 134 s and the mode stayed `UNKNOWN`). Stillness and the jerk detector work in every mode (they use d). The limp detector runs only in
 `WITH_GRAVITY`; in the other modes `limpEvent` is always false and `LIMP_UNAVAILABLE` is logged once. The mode is
 written to `w_config.csv`.
 
@@ -990,7 +992,7 @@ These are GUESSED but are not config values (label rule, top of document). The t
 | Moving seconds allowed in the gate / major movement | ≤ 2 of the gate window / ≥ 3 of the last 5 s | §8.6, §8.10 |
 | Packet gap that resets `hold` | > 1500 ms | §8.3 |
 | Accel samples for a valid second | ≥ 20 of 25 | §8.1 |
-| Gravity-mode rule | 30 still s; median `accelMean` ∈ [0.8, 1.2] g / < 0.3 g | §8.1 |
+| Gravity-mode rule | 10 calm s (stillness ≥ θ_move); median `accelMean` ∈ [0.8, 1.2] g / < 0.3 g | §8.1 |
 | Jerk/limp stillness levels | ≥ 0.8 (still), < 0.5 (clears the limp reference) | §8.1 |
 | Baseline validity / extension | motion-free and HR frames ≥ 0.5·W; RMSSD n ≥ 30; one extension to 2W | §8.4 |
 | σ floors | σ_HR ≥ 1.0 bpm, σ_E ≥ 0.005 µS | §8.4 |

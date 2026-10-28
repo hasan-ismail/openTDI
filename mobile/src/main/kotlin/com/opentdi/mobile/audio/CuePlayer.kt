@@ -58,7 +58,8 @@ fun AudioEvent.toLogLine(route: AudioRouteMode, cycle: Int?): String = logLine(
 /**
  * Plays rendered cues on the phone's built-in speaker, the only Phase 1 route (§7.4, §7.6, §7.7): a float
  * MODE_STREAM AudioTrack with the fade-in and G_target in the samples (the track volume stays 1.0), audio focus per
- * cue, a routed-device check, the DND rule and the volume-raised correction. It never changes a stream volume.
+ * cue, a routed-device check, the DND and zero-volume rules and the volume-raised correction. It never changes a
+ * stream volume.
  */
 class CuePlayer(context: Context) {
     private val audioManager = context.getSystemService(AudioManager::class.java)
@@ -84,6 +85,10 @@ class CuePlayer(context: Context) {
         }
         if (!streamOnSpeaker()) {
             log(AudioEvent("CUE_SKIPPED", cue, streamIndex = index, detail = "stream_device_not_speaker"))
+            return@withContext false
+        }
+        if (index == 0) { // media volume off: the cue would "play" in silence, as on the owner's first night
+            log(AudioEvent("VOLUME_ZERO", cue, streamIndex = index))
             return@withContext false
         }
         var gain = config.targetGain()

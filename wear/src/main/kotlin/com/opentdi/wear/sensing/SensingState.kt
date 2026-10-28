@@ -28,6 +28,7 @@ data class SensingState(
     val packetsWritten: Long = 0,
     val ibisAccepted: Long = 0,
     val gravityMode: GravityMode = GravityMode.UNKNOWN,
+    val gravityProgress: Int = 0, // calm seconds collected toward the gravity decision
 )
 
 /** Process-wide holder of [SensingState]: the service writes it, the activity collects it. */

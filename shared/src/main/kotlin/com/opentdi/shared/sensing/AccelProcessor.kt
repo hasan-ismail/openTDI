@@ -81,7 +81,7 @@ data class AccelOutput(val seconds: List<AccelSecond>, val events: List<AccelEve
  * so the output is contiguous and a closed second means the tracker delivered a sample past its end.
  */
 class AccelProcessor(private val config: AccelConfig) {
-    /** Decided once, after [GRAVITY_MODE_STILL_SECONDS] still seconds; goes to `w_config.csv`. */
+    /** Decided once, after [GRAVITY_MODE_STILL_SECONDS] calm seconds; goes to `w_config.csv`. */
     var gravityMode: GravityMode = GravityMode.UNKNOWN
         private set
 
@@ -105,7 +105,10 @@ class AccelProcessor(private val config: AccelConfig) {
     private var sumA = Vec3.ZERO
 
     private var stillRun = 0 // consecutive still seconds up to the last closed one
-    private val stillMeans = ArrayList<Double>() // accelMean of still seconds, until the gravity mode is decided
+    private val stillMeans = ArrayList<Double>() // accelMean of calm seconds, until the gravity mode is decided
+
+    /** Calm seconds collected toward the gravity decision (0..[GRAVITY_MODE_STILL_SECONDS]), for the watch screen. */
+    val gravityProgress: Int get() = if (gravityMode == GravityMode.UNKNOWN) stillMeans.size else GRAVITY_MODE_STILL_SECONDS
     private val recentStill = ArrayDeque<Vec3>() // u_s of the latest consecutive still seconds
     private var limpRef: Vec3? = null
     private var limpRefSetMs = 0L
@@ -199,7 +202,9 @@ class AccelProcessor(private val config: AccelConfig) {
         val stillness = if (valid) stillnessScore(rms, config) else null
         val still = stillness != null && stillness >= STILL_LEVEL
         stillRun = if (still) stillRun + 1 else 0
-        if (still && gravityMode == GravityMode.UNKNOWN) decideGravityMode(start, mean, events)
+        // Any calm second (not "moving") counts: worn on the wrist, seconds at >= 0.8 were too rare (device_audit.md).
+        val calm = stillness != null && stillness >= config.moveStillness
+        if (calm && gravityMode == GravityMode.UNKNOWN) decideGravityMode(start, mean, events)
         val jerk = checkPendingJerk(start, still, events)
         val (tilt, limp) = updateLimp(start, stillness, orientation, events)
         return if (valid) {
@@ -296,7 +301,7 @@ class AccelProcessor(private val config: AccelConfig) {
         const val MIN_SAMPLES_PER_SECOND = 20
         const val STILL_LEVEL = 0.8
         const val LIMP_CLEAR_LEVEL = 0.5
-        const val GRAVITY_MODE_STILL_SECONDS = 30
+        const val GRAVITY_MODE_STILL_SECONDS = 10
         const val GRAVITY_MIN_G = 0.8
         const val GRAVITY_MAX_G = 1.2
         const val LINEAR_ONLY_MAX_G = 0.3

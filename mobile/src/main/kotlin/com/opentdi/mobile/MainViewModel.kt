@@ -14,13 +14,27 @@ import com.opentdi.mobile.cues.CueSet
 import com.opentdi.mobile.cues.loadCueSet
 import com.opentdi.mobile.cues.loadPreparedCues
 import com.opentdi.mobile.cues.renderCues
+import com.opentdi.mobile.session.SESSIONS_DIR
+import com.opentdi.mobile.session.SessionMonitor
+import com.opentdi.shared.csv.CsvFiles
+import com.opentdi.shared.csv.PhoneSessionSummary
+import com.opentdi.shared.csv.deleteSessionDirs
+import com.opentdi.shared.csv.phoneSessionSummary
+import com.opentdi.shared.csv.sessionDirs
+import com.opentdi.shared.csv.sessionStartMs
+import com.opentdi.shared.csv.sizeOnDisk
 import com.opentdi.shared.model.PromptCue
 import com.opentdi.shared.model.SessionConfig
+import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,13 +48,29 @@ data class UiState(
     val cueMessage: String? = null,
     val dnd: DndEffect = DndEffect.PLAYS, // as checked at the last Start tap
     val calibratedIndex: Int? = null, // media volume step of the last full test cue (§7.7 calibration)
+    val batteryUnrestricted: Boolean = true, // as checked at the last resume
+    val batteryManual: Boolean = false, // no battery settings screen opened: show the path instead
 )
+
+/** One row of the Sessions screen: a filesDir/sessions directory (§12.1) and its p_transitions.csv summary. */
+data class SessionItem(val id: String, val startMs: Long, val bytes: Long, val summary: PhoneSessionSummary?)
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
     private val mutableUi =
         MutableStateFlow(UiState(loadConfig(app), loadCueSet(app), calibratedIndex = loadCalibratedIndex(app)))
     val ui: StateFlow<UiState> = mutableUi.asStateFlow()
+    private val mutableSessions = MutableStateFlow<List<SessionItem>?>(null) // null until listed
+    val sessions: StateFlow<List<SessionItem>?> = mutableSessions.asStateFlow()
+
+    /** STREAM_MUSIC at index 0, which plays every cue silently; polled while the screen collects it. */
+    val mediaVolumeOff: Flow<Boolean> = flow {
+        val audioManager = app.getSystemService(AudioManager::class.java)
+        while (true) {
+            emit(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0)
+            delay(1000)
+        }
+    }.distinctUntilChanged()
 
     /** Applies and saves a settings change. */
     fun edit(transform: (SessionConfig) -> SessionConfig) {
@@ -50,6 +80,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun showDnd(effect: DndEffect) = mutableUi.update { it.copy(dnd = effect) }
+
+    fun showBattery(unrestricted: Boolean) = mutableUi.update { it.copy(batteryUnrestricted = unrestricted) }
+
+    fun showBatteryManual() = mutableUi.update { it.copy(batteryManual = true) }
+
+    fun loadSessions() {
+        viewModelScope.launch {
+            mutableSessions.value = withContext(Dispatchers.IO) {
+                sessionDirs(sessionsRoot()).map { dir ->
+                    val summary = try {
+                        File(dir, CsvFiles.P_TRANSITIONS.name).useLines(block = ::phoneSessionSummary)
+                    } catch (e: IOException) { // a session refused before its CSVs existed
+                        null
+                    }
+                    SessionItem(dir.name, sessionStartMs(dir.name) ?: dir.lastModified(), sizeOnDisk(dir), summary)
+                }
+            }
+        }
+    }
+
+    /** Deletes the session directories [ids], never the running session's, then lists them again. */
+    fun deleteSessions(ids: Collection<String>) {
+        viewModelScope.launch {
+            val status = SessionMonitor.status.value
+            val count = withContext(Dispatchers.IO) {
+                deleteSessionDirs(sessionsRoot(), ids, runningId = status.sessionId.takeIf { status.running })
+            }
+            Log.i(TAG_SESSION, logLine("SESSIONS_DELETED", "count" to count))
+            loadSessions()
+        }
+    }
+
+    private fun sessionsRoot() = File(app.filesDir, SESSIONS_DIR)
 
     /** The Prepare step: renders the cues for the current theme (§7.3), never during a session. */
     fun prepareCues() {

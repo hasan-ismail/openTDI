@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -18,15 +19,19 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +43,7 @@ import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.config.validate
 import com.opentdi.shared.config.warnings
 import com.opentdi.shared.model.AudioRouteMode
+import com.opentdi.shared.model.EndAlarm
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.TdiState
 import java.util.Locale
@@ -72,9 +78,16 @@ private val Type = Typography().let { base ->
 fun OpenTdiTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = Colors, typography = Type, content = content)
 
 @Composable
-fun SessionScreen(viewModel: MainViewModel, onStart: () -> Unit, onStop: () -> Unit) {
+fun SessionScreen(
+    viewModel: MainViewModel,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onAllowBattery: () -> Unit,
+    onSessions: () -> Unit,
+) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val status by SessionMonitor.status.collectAsStateWithLifecycle()
+    val volumeOff by viewModel.mediaVolumeOff.collectAsStateWithLifecycle(initialValue = false)
     val config = ui.config
     val cues = ui.cues
     val errors = remember(config) { config.validate() }
@@ -92,11 +105,27 @@ fun SessionScreen(viewModel: MainViewModel, onStart: () -> Unit, onStop: () -> U
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("OpenTDI", style = MaterialTheme.typography.headlineMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("OpenTDI", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = onSessions) { Text("Sessions") }
+            }
+            if (ui.batteryUnrestricted) {
+                Text("Battery: unrestricted", style = MaterialTheme.typography.bodyMedium)
+            } else {
+                BatteryCard(ui.batteryManual, onAllowBattery)
+            }
             StatusCard(status)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onStart, enabled = idle && cuesReady && errors.isEmpty()) { Text("Start session") }
+                Button(onClick = onStart, enabled = idle && cuesReady && errors.isEmpty() && !volumeOff) {
+                    Text("Start session")
+                }
                 OutlinedButton(onClick = onStop, enabled = status.running) { Text("Stop session") }
+            }
+            if (volumeOff) {
+                Text(
+                    "Media volume is off, so cues will be silent. Turn the volume up.",
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
             ui.dnd.message?.let {
                 val color = if (ui.dnd == DndEffect.TOTAL_SILENCE) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
@@ -124,7 +153,9 @@ fun SessionScreen(viewModel: MainViewModel, onStart: () -> Unit, onStop: () -> U
                 Button(onClick = viewModel::prepareCues, enabled = idle && config.theme.isNotBlank() && config.theme.length <= 60) {
                     Text("Prepare cues")
                 }
-                OutlinedButton(onClick = viewModel::testCue, enabled = idle && cuesReady) { Text("Test cue") }
+                OutlinedButton(onClick = viewModel::testCue, enabled = idle && cuesReady && !volumeOff) {
+                    Text("Test cue")
+                }
             }
             Text(
                 when {
@@ -151,6 +182,23 @@ fun SessionScreen(viewModel: MainViewModel, onStart: () -> Unit, onStop: () -> U
             Text(instructions(config.theme), style = MaterialTheme.typography.bodyMedium)
             Text("Not a medical device.", fontWeight = FontWeight.Bold)
             Text(WELLNESS_STATEMENT, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun BatteryCard(manual: Boolean, onAllow: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF111111)), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "Allow unrestricted battery so Android doesn't stop a session while you sleep. Your phone is usually " +
+                    "charging overnight, so this costs nothing.",
+            )
+            if (manual) {
+                Text("Settings > Apps > OpenTDI > Battery > Unrestricted", color = MaterialTheme.colorScheme.tertiary)
+            } else {
+                Button(onClick = onAllow) { Text("Allow") }
+            }
         }
     }
 }
@@ -225,6 +273,18 @@ private fun SoundSettings(config: SessionConfig, enabled: Boolean, edit: ((Sessi
     }
     IntSetting("Fade-in", config.audio.fadeInMs, 0..5000, 100, "ms", enabled) { v ->
         edit { it.copy(audio = it.audio.copy(fadeInMs = v)) }
+    }
+    val chime = config.audio.endAlarm == EndAlarm.CHIME
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = chime, enabled = enabled, role = Role.Switch) { on ->
+                edit { it.copy(audio = it.audio.copy(endAlarm = if (on) EndAlarm.CHIME else EndAlarm.NONE)) }
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("End chime", modifier = Modifier.weight(1f))
+        Switch(checked = chime, onCheckedChange = null, enabled = enabled)
     }
     Text("Route: Nightstand speaker")
 }
