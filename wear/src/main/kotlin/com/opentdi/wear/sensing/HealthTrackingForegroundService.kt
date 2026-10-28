@@ -19,6 +19,7 @@ import com.opentdi.shared.model.AccelConfig
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.wear.MainActivity
 import com.opentdi.wear.R
+import com.opentdi.wear.link.TelemetrySender
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.android.asCoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -34,6 +35,7 @@ class HealthTrackingForegroundService : LifecycleService() {
     private val sensing = handler.asCoroutineDispatcher()
     private var session: LoggingSession? = null // sensing thread only
     private var ticker: Job? = null
+    private val telemetry by lazy { TelemetrySender(applicationContext, lifecycleScope) } // outlives a session
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
@@ -44,7 +46,7 @@ class HealthTrackingForegroundService : LifecycleService() {
         } else {
             startInForeground()
             stopSession()
-            val logRawAccel = intent?.getBooleanExtra(EXTRA_LOG_RAW_ACCEL, false) == true
+            val logRawAccel = intent?.getBooleanExtra(EXTRA_LOG_RAW_ACCEL, AccelConfig().logRawAccel) == true
             startSession(
                 SessionConfig(accel = AccelConfig(logRawAccel = logRawAccel)),
                 androidSensorsOnly = intent?.getBooleanExtra(EXTRA_ANDROID_SENSORS, false) == true,
@@ -62,7 +64,7 @@ class HealthTrackingForegroundService : LifecycleService() {
 
     private fun startSession(config: SessionConfig, androidSensorsOnly: Boolean) {
         ticker = lifecycleScope.launch(sensing) {
-            val s = LoggingSession(applicationContext, handler, config, androidSensorsOnly)
+            val s = LoggingSession(applicationContext, handler, config, androidSensorsOnly, telemetry)
             session = s
             s.start()
             // Scheduled on SystemClock.elapsedRealtime(); the wake lock keeps the uptime-based delay on time (§14.4).

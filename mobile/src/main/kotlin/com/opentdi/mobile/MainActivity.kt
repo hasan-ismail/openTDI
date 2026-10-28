@@ -27,6 +27,7 @@ import androidx.lifecycle.lifecycleScope
 import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.audio.dndEffect
 import com.opentdi.mobile.audio.dndState
+import com.opentdi.mobile.link.WatchStreamListener
 import com.opentdi.mobile.session.NapSessionService
 import com.opentdi.mobile.session.closeKilledSession
 import com.opentdi.mobile.session.deleteOldSessions
@@ -40,6 +41,8 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
     // The session runs whether or not notifications are allowed; the FGS notice then shows in Task Manager only.
+    // Lint sees the androidx.fragment 1.1 that play-services pulls in; its bug is in FragmentActivity, not used here.
+    @SuppressLint("InvalidFragmentVersionForActivityResult")
     private val askNotifications =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { startSessionService() }
 
@@ -53,6 +56,7 @@ class MainActivity : ComponentActivity() {
             }
             if (!batteryUnrestricted()) allowBattery() // once per launch; onResume only re-checks
         }
+        lifecycle.addObserver(WatchStreamListener(applicationContext))
         setContent {
             OpenTdiTheme {
                 var sessions by rememberSaveable { mutableStateOf(false) }

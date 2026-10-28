@@ -95,7 +95,7 @@ class NapSessionService : LifecycleService() {
             )
         }
         val cues = try {
-            loadPreparedCues(this, config.theme)
+            loadPreparedCues(this, config)
         } catch (e: CueException) {
             return refuse(e.message.orEmpty())
         }

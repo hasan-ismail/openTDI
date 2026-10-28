@@ -44,5 +44,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.core)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.play.services.wearable)
+    implementation(libs.kotlinx.coroutines.play.services)
     testImplementation(libs.junit)
 }

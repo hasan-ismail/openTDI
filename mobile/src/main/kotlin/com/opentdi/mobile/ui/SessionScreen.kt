@@ -38,12 +38,17 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opentdi.mobile.MainViewModel
 import com.opentdi.mobile.audio.DndEffect
+import com.opentdi.mobile.cues.PHASE1_CUES
+import com.opentdi.mobile.cues.THEME_PLACEHOLDER
+import com.opentdi.mobile.cues.cueSetProblem
+import com.opentdi.mobile.cues.cueText
 import com.opentdi.mobile.session.SessionMonitor
 import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.config.validate
 import com.opentdi.shared.config.warnings
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.model.EndAlarm
+import com.opentdi.shared.model.PromptCue
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.TdiState
 import java.util.Locale
@@ -92,7 +97,8 @@ fun SessionScreen(
     val cues = ui.cues
     val errors = remember(config) { config.validate() }
     val warnings = remember(config) { config.warnings() }
-    val cuesReady = cues?.theme == config.theme
+    val cueProblem = remember(config, cues) { cueSetProblem(cues, config) }
+    val cuesReady = cueProblem == null
     val idle = !status.running && !ui.preparing && !ui.testing
     val edit = viewModel::edit
 
@@ -139,6 +145,7 @@ fun SessionScreen(
                     color = MaterialTheme.colorScheme.tertiary,
                 )
             }
+            WatchCard()
 
             HorizontalDivider()
             OutlinedTextField(
@@ -161,9 +168,8 @@ fun SessionScreen(
                 when {
                     ui.preparing -> "Preparing the cues with text-to-speech…"
                     ui.testing -> "Playing the test cue…"
-                    cuesReady -> "Cues ready (voice ${cues.voice})."
-                    cues != null -> "The cues are for \"${cues.theme}\". Prepare them again for this theme."
-                    else -> "No cues yet: tap Prepare cues."
+                    cueProblem == null -> "Cues ready (voice ${cues?.voice})."
+                    else -> cueProblem
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -287,6 +293,50 @@ private fun SoundSettings(config: SessionConfig, enabled: Boolean, edit: ((Sessi
         Switch(checked = chime, onCheckedChange = null, enabled = enabled)
     }
     Text("Route: Nightstand speaker")
+    // These apply when the cues are prepared; after a change the cue status line asks for Prepare cues.
+    IntSetting("Speaking speed", (config.audio.ttsSpeechRate * 100).roundToInt(), 50..120, 5, "%", enabled) { v ->
+        edit { it.copy(audio = it.audio.copy(ttsSpeechRate = v / 100f)) }
+    }
+    IntSetting("Pause between phrases", config.audio.phrasePauseMs, 0..2000, 100, "ms", enabled) { v ->
+        edit { it.copy(audio = it.audio.copy(phrasePauseMs = v)) }
+    }
+    Text("Cue words", style = MaterialTheme.typography.titleMedium)
+    Text("$THEME_PLACEHOLDER is replaced by the theme.", style = MaterialTheme.typography.bodyMedium)
+    for (cue in PHASE1_CUES) CueWords(cue, config, enabled, edit)
+}
+
+/** One cue's words: the user's own once edited, else the §7.1 wording with the theme placeholder. */
+@Composable
+private fun CueWords(
+    cue: PromptCue,
+    config: SessionConfig,
+    enabled: Boolean,
+    edit: ((SessionConfig) -> SessionConfig) -> Unit,
+) {
+    val template = cueText(cue, THEME_PLACEHOLDER) // so an edit keeps the placeholder, not today's theme
+    val own = config.audio.cueTexts[cue]
+    Column {
+        OutlinedTextField(
+            value = own ?: template,
+            onValueChange = { text -> edit { it.copy(audio = it.audio.copy(cueTexts = it.audio.cueTexts + (cue to text))) } },
+            label = { Text(cueLabel(cue)) },
+            placeholder = { Text(template) }, // an emptied field is rendered with these words
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        TextButton(
+            onClick = { edit { it.copy(audio = it.audio.copy(cueTexts = it.audio.cueTexts - cue)) } },
+            enabled = enabled && own != null,
+        ) { Text("Reset to default") }
+    }
+}
+
+private fun cueLabel(cue: PromptCue) = when (cue) {
+    PromptCue.INITIAL_INCUBATION -> "Initial incubation cue"
+    PromptCue.WAKE_PROMPT -> "Wake prompt"
+    PromptCue.SLEEP_STATE_QUESTION -> "Sleep-state question"
+    PromptCue.RE_INCUBATION -> "Re-incubation cue"
+    PromptCue.SESSION_END -> "Session end, after the chime"
 }
 
 @Composable

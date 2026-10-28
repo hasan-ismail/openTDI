@@ -19,6 +19,9 @@ import com.opentdi.shared.model.GravityMode
 import com.opentdi.shared.model.SensorSource
 import com.opentdi.shared.model.SensorStatus
 import com.opentdi.shared.model.SessionConfig
+import com.opentdi.shared.model.TdiState
+import com.opentdi.shared.model.TelemetryBatch
+import com.opentdi.shared.model.TelemetryFrame
 import com.opentdi.shared.model.newSessionId
 import com.opentdi.shared.sensing.AccelProcessor
 import com.opentdi.shared.sensing.AccelSample
@@ -27,6 +30,7 @@ import com.opentdi.shared.sensing.HrDataPoint
 import com.opentdi.shared.sensing.PacketAggregator
 import com.opentdi.shared.sensing.Tracker
 import com.opentdi.wear.BuildConfig
+import com.opentdi.wear.link.TelemetrySender
 import java.io.File
 import java.io.IOException
 import kotlin.random.Random
@@ -42,13 +46,15 @@ interface SensorPath {
 
 /**
  * One watch logging session (§12): owns the session directory, the CSV writers, the wake lock, the AccelProcessor,
- * the PacketAggregator and the active [SensorPath]. Every method runs on the sensing thread ([handler]).
+ * the PacketAggregator and the active [SensorPath], and hands its packets to [telemetry] as TelemetryBatches. Every
+ * method runs on the sensing thread ([handler]).
  */
 class LoggingSession(
     private val context: Context,
     private val handler: Handler,
     private val config: SessionConfig,
     private val androidSensorsOnly: Boolean,
+    private val telemetry: TelemetrySender,
 ) {
     val sessionId = newSessionId(System.currentTimeMillis(), Random.Default)
     private val dir = File(context.filesDir, "sessions/$sessionId")
@@ -75,6 +81,8 @@ class LoggingSession(
     private var storageLow = false
     private var accelCallbacks = 0L
     private var lastAccelBatchSize = -1
+    private val frames = ArrayList<TelemetryFrame>() // emitted since the last telemetry batch
+    private var batches = 0L
 
     fun start() {
         SensingStateHolder.update {
@@ -126,10 +134,14 @@ class LoggingSession(
         flushFiles()
     }
 
-    /** Called every second by the service: packet deadline, tracker flush every sdkFlushS, files every 5 s. */
+    /**
+     * Called every second by the service: packet deadline, tracker flush every sdkFlushS, telemetry every
+     * telemetryFlushS, files every 5 s.
+     */
     fun tick(seconds: Long) {
         poll()
         if (seconds % config.link.sdkFlushS == 0L) path?.flush()
+        if (seconds % config.link.telemetryFlushS == 0L) sendTelemetry()
         if (seconds % FILE_FLUSH_S == 0L) flushFiles()
     }
 
@@ -266,6 +278,8 @@ class LoggingSession(
         if (emitted.isEmpty()) return
         for (e in emitted) {
             val p = e.packet
+            // No engine runs yet: every frame is IDLE, without a score. Its seq is the packet's w_packets.csv seq.
+            frames += TelemetryFrame(packets, p, TdiState.IDLE, stateReason = null, completedCycles = 0, score = null)
             io {
                 packetsCsv?.row(
                     p.timestamp, packets++, p.source, p.hr, p.hrStatus, p.ibiList, p.rmssd, p.skinConductance,
@@ -278,6 +292,29 @@ class LoggingSession(
         SensingStateHolder.update {
             it.copy(lastPacket = emitted.last(), packetsWritten = packets, ibisAccepted = ibis)
         }
+    }
+
+    /** The frames since the last batch, as one TelemetryBatch (§9.3); the sender drops it if the phone is away. */
+    private fun sendTelemetry() {
+        val src = source
+        if (frames.isEmpty() || src == null) return
+        // Packets flow before every tracker has delivered, when there is no status yet: the source's own stands in.
+        val sensorStatus = status?.first ?: if (src == SensorSource.SAMSUNG_SDK) {
+            SensorStatus.CONNECTED_SAMSUNG
+        } else {
+            SensorStatus.FALLBACK_ANDROID_SENSORS
+        }
+        telemetry.send(
+            TelemetryBatch(
+                sessionId = sessionId,
+                batchSeq = batches++,
+                sensorStatus = sensorStatus,
+                gravityMode = gravityMode,
+                frames = frames.toList(),
+                sentAtWallMs = System.currentTimeMillis(),
+            ),
+        )
+        frames.clear()
     }
 
     // The live path uses the logged integers, so the AccelConfig replay of w_accel_raw.csv is bit-exact (§12.6).

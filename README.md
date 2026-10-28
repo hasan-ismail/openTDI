@@ -30,13 +30,15 @@ Phase 1 is under construction:
 
 - **Watch:** connection to the Samsung Health Sensor SDK with on-watch status messages; heart rate, IBI, EDA and
   accelerometer tracking in a health foreground service; a fallback to Android's basic sensors; 25 Hz motion
-  processing and 1 Hz data packets; CSV logging of each session, which is started and stopped on the watch.
-- **Phone:** `TIMED_CUES` sessions on the Dormio Light timeline, with text-to-speech cues on the phone's speaker, a
-  2-second fade-in, a hard volume cap, a Do Not Disturb check and audio focus; a fixed 60-second report window
-  (nothing is recorded yet); CSV logging.
+  processing and 1 Hz data packets; CSV logging of each session (raw 25 Hz accelerometer included unless switched
+  off), which is started and stopped on the watch; while a session runs, its packets stream to the phone every 2 s.
+- **Phone:** `TIMED_CUES` sessions on the Dormio Light timeline, with text-to-speech cues on the phone's speaker
+  (spoken slowly phrase by phrase, with adjustable speed, pauses and your own words), a 2-second fade-in, a hard
+  volume cap, a Do Not Disturb check and audio focus; a fixed 60-second report window (nothing is recorded yet); CSV
+  logging; a live card with the watch's values and 3-minute sparklines while the app is open.
 
-In Phase 1 the watch and the phone do not talk to each other, and sleep-onset detection does not run yet. Later
-phases (spec §0):
+In Phase 1 the watch only streams its data to the phone for display, and sleep-onset detection does not run yet.
+Later phases (spec §0):
 
 | Phase | Planned |
 |---|---|

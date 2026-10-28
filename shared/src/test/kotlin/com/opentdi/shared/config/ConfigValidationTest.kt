@@ -8,6 +8,7 @@ import com.opentdi.shared.model.AudioConfig
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.model.DetectionConfig
 import com.opentdi.shared.model.LinkConfig
+import com.opentdi.shared.model.PromptCue
 import com.opentdi.shared.model.RecordingConfig
 import com.opentdi.shared.model.SensitivityPreset
 import com.opentdi.shared.model.SessionConfig
@@ -82,6 +83,12 @@ class ConfigValidationTest {
             SessionConfig(audio = AudioConfig(carrierLevelDbfs = -77)) to "audio.carrierLevelDbfs",
             SessionConfig(audio = AudioConfig(carrierLeadS = 61)) to "audio.carrierLeadS",
             SessionConfig(audio = AudioConfig(endChimeCount = 0)) to "audio.endChimeCount",
+            SessionConfig(audio = AudioConfig(ttsSpeechRate = 0.45f)) to "audio.ttsSpeechRate",
+            SessionConfig(audio = AudioConfig(ttsSpeechRate = 1.25f)) to "audio.ttsSpeechRate",
+            SessionConfig(audio = AudioConfig(phrasePauseMs = -1)) to "audio.phrasePauseMs",
+            SessionConfig(audio = AudioConfig(phrasePauseMs = 2001)) to "audio.phrasePauseMs",
+            SessionConfig(audio = AudioConfig(cueTexts = mapOf(PromptCue.WAKE_PROMPT to "x".repeat(301)))) to
+                "audio.cueTexts.WAKE_PROMPT",
             SessionConfig(recording = RecordingConfig(marginDb = 2f)) to "recording.marginDb",
             SessionConfig(recording = RecordingConfig(hangoverMs = 999)) to "recording.hangoverMs",
             SessionConfig(recording = RecordingConfig(noSpeechTimeoutMs = 60_001)) to "recording.noSpeechTimeoutMs",
@@ -101,6 +108,16 @@ class ConfigValidationTest {
         assertValid(detection(DetectionConfig(holdS = 30, holdShortS = 30, stillWindowS = 30)))
         assertValid(SessionConfig(timed = TimedCueConfig(firstSleepMinMin = 60, firstSleepMaxMin = 90)))
         assertValid(SessionConfig(audio = AudioConfig(userGain = 0f, fadeInMs = 0, carrierLevelDbfs = -50)))
+        assertValid(SessionConfig(audio = AudioConfig(ttsSpeechRate = 0.5f, phrasePauseMs = 0)))
+        assertValid(
+            SessionConfig(
+                audio = AudioConfig(
+                    ttsSpeechRate = 1.2f,
+                    phrasePauseMs = 2000,
+                    cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to "x".repeat(300), PromptCue.SESSION_END to ""),
+                ),
+            ),
+        )
     }
 
     @Test
@@ -214,17 +231,27 @@ class ConfigValidationTest {
         assertEquals("", map["detection.hrDropFraction"]) // null = empty field
         assertEquals("0.3", map["detection.priorHrWeight"])
         assertEquals("0.003", map["accel.noiseFloorG"])
-        assertEquals("0", map["accel.logRawAccel"])
+        assertEquals("1", map["accel.logRawAccel"])
         assertEquals("1", map["timed.autoFallbackToTimed"])
         assertEquals("0.6", map["audio.routeCapGain.NIGHTSTAND_SPEAKER"])
         assertEquals("0.3", map["audio.routeCapGain.BLUETOOTH_SLEEP_AUDIO"])
         assertEquals("", map["audio.carrierMode"])
         assertEquals("-75", map["audio.carrierLevelDbfs"])
+        assertEquals("0.75", map["audio.ttsSpeechRate"])
+        assertEquals("700", map["audio.phrasePauseMs"])
+        assertEquals("", map["audio.cueTexts"]) // no overrides: one empty row
         assertEquals("en-US", map["recording.sttLanguage"])
+        assertEquals("2", map["link.telemetryFlushS"])
         assertEquals("1", map["link.watchWakeLock"])
         assertEquals("", map["simulation"])
-        // One row per leaf: 7 top-level, 21 detection, 12 accel, 6 timed, 12 audio (2 caps), 12 recording, 3 link.
-        assertEquals(73, rows.size)
+        // One row per leaf: 7 top-level, 21 detection, 12 accel, 6 timed, 15 audio (2 caps), 12 recording, 3 link.
+        assertEquals(76, rows.size)
+
+        val words = "You are dreaming. You are in control."
+        val custom = SessionConfig(audio = AudioConfig(cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to words)))
+            .toConfigRows().toMap()
+        assertEquals(words, custom["audio.cueTexts.INITIAL_INCUBATION"])
+        assertEquals(null, custom["audio.cueTexts"])
     }
 
     @Test
@@ -247,5 +274,6 @@ class ConfigValidationTest {
         assertEquals("1500", consts["const.HOLD_RESET_GAP_MS"])
         assertEquals("0;2000;4000;8000", consts["const.TRIGGER_ATTEMPT_OFFSETS_MS"])
         assertEquals("-3.0", consts["const.CUE_PEAK_DBFS"])
+        assertEquals("-50.0", consts["const.PHRASE_SILENCE_DBFS"])
     }
 }

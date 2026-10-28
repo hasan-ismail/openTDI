@@ -40,6 +40,8 @@ class SerializationTest {
             route = AudioRouteMode.BLUETOOTH_SLEEP_AUDIO,
             routeCapGain = AudioRouteMode.entries.associateWith { (it.ordinal + 1) / 10f },
             carrierMode = CarrierMode.NOISE,
+            ttsSpeechRate = 0.6f,
+            cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to "You are dreaming. You are in control."),
         ),
         simulation = SimulationMode.FAST_HYPNAGOGIA,
     )
@@ -148,6 +150,17 @@ class SerializationTest {
         assertEquals("0.2", caps["BLUETOOTH_SLEEP_AUDIO"]!!.jsonPrimitive.content)
         val decoded = OpenTdiJson.decodeFromString<AudioConfig>("""{"routeCapGain":{"NIGHTSTAND_SPEAKER":0.45}}""")
         assertEquals(mapOf(AudioRouteMode.NIGHTSTAND_SPEAKER to 0.45f), decoded.routeCapGain)
+        val words = audio["cueTexts"]!!.jsonObject
+        assertEquals("You are dreaming. You are in control.", words["INITIAL_INCUBATION"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun configSavedBeforeTheCueSettings_decodesWithTheirDefaults() {
+        val audio = OpenTdiJson.decodeFromString<AudioConfig>("""{"route":"NIGHTSTAND_SPEAKER","fadeInMs":1500}""")
+        assertEquals(AudioConfig(fadeInMs = 1500), audio)
+        assertEquals(0.75f, audio.ttsSpeechRate, 0f)
+        assertEquals(700, audio.phrasePauseMs)
+        assertEquals(emptyMap<PromptCue, String>(), audio.cueTexts)
     }
 
     @Test

@@ -32,7 +32,12 @@ fun ResolvedThresholds.toConfigRows(): List<Pair<String, String>> = listOf(
 )
 
 private fun flatten(key: String, element: JsonElement): List<Pair<String, String>> = when (element) {
-    is JsonObject -> element.flatMap { (k, v) -> flatten(if (key.isEmpty()) k else "$key.$k", v) }
+    // An empty map (audio.cueTexts by default) still gets its row, like a null.
+    is JsonObject -> if (element.isEmpty()) {
+        listOf(key to "")
+    } else {
+        element.flatMap { (k, v) -> flatten(if (key.isEmpty()) k else "$key.$k", v) }
+    }
     is JsonArray -> listOf(key to element.joinToString(";") { it.jsonPrimitive.content })
     is JsonNull -> listOf(key to "")
     is JsonPrimitive -> listOf(

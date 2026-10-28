@@ -101,6 +101,11 @@ fun SessionConfig.validate(): List<String> {
         int("audio.carrierLevelDbfs", carrierLevelDbfs, -90..-50, step = 5)
         int("audio.carrierLeadS", carrierLeadS, 0..60)
         int("audio.endChimeCount", endChimeCount, 1..3)
+        float("audio.ttsSpeechRate", ttsSpeechRate, 0.5f..1.2f)
+        int("audio.phrasePauseMs", phrasePauseMs, 0..2000)
+        cueTexts.forEach { (cue, text) ->
+            rule(text.length <= 300) { "audio.cueTexts.$cue must be at most 300 characters, is ${text.length}" }
+        }
     }
 
     with(recording) {

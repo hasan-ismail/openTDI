@@ -114,14 +114,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun sessionsRoot() = File(app.filesDir, SESSIONS_DIR)
 
-    /** The Prepare step: renders the cues for the current theme (§7.3), never during a session. */
+    /** The Prepare step: renders the cues for the current theme and cue settings (§7.3), never during a session. */
     fun prepareCues() {
         if (ui.value.preparing) return
-        val theme = ui.value.config.theme
+        val config = ui.value.config
         mutableUi.update { it.copy(preparing = true, cueMessage = null) }
         viewModelScope.launch {
             val error = try {
-                renderCues(app, theme)
+                renderCues(app, config)
                 null
             } catch (e: CueException) {
                 e.message
@@ -143,7 +143,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val message = try {
                 val cue = PromptCue.INITIAL_INCUBATION
-                val audio = withContext(Dispatchers.IO) { loadPreparedCues(app, config.theme) }.audio.getValue(cue)
+                val audio = withContext(Dispatchers.IO) { loadPreparedCues(app, config) }.audio.getValue(cue)
                 val index = app.getSystemService(AudioManager::class.java).getStreamVolume(AudioManager.STREAM_MUSIC)
                 var last: AudioEvent? = null
                 val played = CuePlayer(app).play(cue, audio, config.audio, calibratedIndex = index) { event ->

@@ -444,6 +444,10 @@ There is no movement abort, no refractory and no missed-cycle rule in `TIMED_CUE
 The session-start screen shows the SR23 instruction text adapted to the theme (verbatim source in [P] §5.2), and the
 FS24 screening advice ([P] §3.2, Safety) next to the wellness statement (§17.4).
 
+**[EXT]** (owner, 2026-10-27) The user can replace the words of any cue (`audio.cueTexts`); the texts above are the
+prefilled defaults and come back with "Reset to default" or a blank field. The defaults are prefilled with the literal
+`[THEME]`, which is replaced by the theme when the cues are prepared, so edited cues follow a later theme change.
+
 ### 7.2 When each cue plays
 
 | Moment | DETECTION | TIMED_CUES |
@@ -462,6 +466,15 @@ FS24 screening advice ([P] §3.2, Safety) next to the wellness statement (§17.4
 - The sample rate and encoding are read from `UtteranceProgressListener.onBeginSynthesis` (API 24) or the WAV header,
   never hard-coded. A TTS file with format tag 1 and 32 bits per sample holds float data when `onBeginSynthesis`
   reported `ENCODING_PCM_FLOAT` (FACT: `FileSynthesisCallback.java:285-312` writes tag 1 for every encoding, [U] §7).
+- **[EXT]** (owner, 2026-10-27: the first cues spoke "way too fast") Slow, separated phrases: each cue's text is split
+  after `.` `?` `!` `;` `:` or a comma followed by a space, and at line breaks, keeping the punctuation for prosody.
+  Each phrase is one utterance at `TextToSpeech.setSpeechRate(audio.ttsSpeechRate)` (default 0.75); its leading and
+  trailing samples below −50 dBFS are trimmed, and the phrases are joined with exactly `audio.phrasePauseMs` (default
+  700 ms) of digital silence. Trimmed speech would start at the cue's first sample, where the §7.4 fade makes a short
+  first phrase ("You are dreaming.") inaudible, so the first phrase follows ¾ · `fadeInMs` of digital silence
+  (`const.SPEECH_LEAD_FADE_FRACTION`): the speech enters where `G_fade` reaches −15 dB (1.5 s by default).
+- The cue set stores a fingerprint (SHA-256) of the theme, voice, rate, pause, fade-in and every cue's text; when any of
+  them changes, the app asks for Prepare cues again and refuses to start with the old set.
 - Every cue is peak-normalised to −3 dBFS at creation ([U] §3.4 step 1), then stored as a PCM16 mono WAV.
 - Phase 3 theme studio: own-voice recordings for every cue (experimenter voice and own voice were both used "without a
   significant change in efficacy", PhD22 p.56, [P] §5.1), normalised the same way.
@@ -489,9 +502,11 @@ out[n]     = clamp(x[n] * G_fade(tn) * G_target, -1.0, 1.0)
 | G_fade | 0 | 0.00100 (−59.97 dB) | 0.00562 (−45 dB) | 0.0316 (−30 dB) | 0.178 (−15 dB) | 1.0 |
 
 `track.setVolume()` stays at 1.0; all gain is in the samples. `VolumeShaper` is not used (it would also work, [U] §2.5,
-but the in-sample curve is easier to test). Consequence (INFERENCE): the first ≈ 1 s of speech plays below −30 dB, so
-"You're falling asleep" is very quiet and "Please tell me…" is at full level. That is the anti-startle intent; the fade
-length stays configurable (0–5000 ms) and the effect is checked on hardware (§15, open decision O6).
+but the in-sample curve is easier to test). Consequence (INFERENCE): speech from the first sample would play its first
+≈ 1 s below −30 dB, so a short first phrase would be lost. Since 2026-10-27 the rendered cue starts with ¾ T of
+silence (§7.3), so the envelope still rises from true zero but the speech enters at −15 dB and reaches full level ¼ T
+later (0.5 s by default). The fade length stays configurable (0–5000 ms) and the effect is checked on hardware (§15,
+open decision O6).
 
 ### 7.5 Keep-alive carrier (Phase 3, `BLUETOOTH_SLEEP_AUDIO` only)
 
@@ -1004,6 +1019,8 @@ These are GUESSED but are not config values (label rule, top of document). The t
 | Command retry | 3× at 2 s if no reply in 5 s | §10.2 |
 | Trigger retry | attempts at +0, 2, 4, 8 s, 2 s reply timeout each | §10.2 |
 | Cue normalisation | −3 dBFS peak | §7.3 |
+| Phrase silence trim | samples below −50 dBFS at a phrase's start and end | §7.3 |
+| Speech lead-in | ¾ of `fadeInMs` of silence before a cue's first phrase (speech enters at −15 dB) | §7.3, §7.4 |
 
 ---
 
@@ -1122,7 +1139,7 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
     val batchSeq: Long,
     val sensorStatus: SensorStatus,                // [EXT] so the phone can show it
     val gravityMode: GravityMode,
-    val frames: List<TelemetryFrame>,              // default 5 (one flush period)
+    val frames: List<TelemetryFrame>,              // one flush period: 2 by default
     val sentAtWallMs: Long,
 )
 
@@ -1202,7 +1219,7 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
     val gravityAlpha: Float = 0.04f, val jerkThresholdG: Float = 0.30f, val jerkMaxBurstMs: Int = 500,
     val jerkPreStillS: Int = 10, val jerkPostStillS: Int = 3, val limpDriftDeg: Float = 3.0f,
     val limpRefStillS: Int = 10, val limpRefMaxAgeS: Int = 60,
-    val logRawAccel: Boolean = false,               // writes w_accel_raw.csv (§12.2) for AccelConfig replay tuning
+    val logRawAccel: Boolean = true,                // writes w_accel_raw.csv (§12.2) for AccelConfig replay tuning
 )                                                   // all GUESSED (§8.1)
 
 @Serializable data class TimedCueConfig(
@@ -1227,6 +1244,9 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
     val routeLossPolicy: RouteLossPolicy = RouteLossPolicy.PAUSE_CUES,
     val endAlarm: EndAlarm = EndAlarm.CHIME,
     val endChimeCount: Int = 3,                     // 1..3; "off" is endAlarm = NONE
+    val ttsSpeechRate: Float = 0.75f,               // 0.5..1.2; TextToSpeech.setSpeechRate at Prepare cues (§7.3) [EXT]
+    val phrasePauseMs: Int = 700,                   // 0..2000; silence between the phrases of a cue (§7.3) [EXT]
+    val cueTexts: Map<PromptCue, String> = emptyMap(), // ≤ 300 chars each; missing or blank = the §7.1 text [EXT]
 )
 
 @Serializable data class RecordingConfig(
@@ -1238,7 +1258,7 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
 )
 
 @Serializable data class LinkConfig(
-    val telemetryFlushS: Int = 5,                   // 1..30 (D3)
+    val telemetryFlushS: Int = 2,                   // 1..30 (D3); 2 s for a live phone display (owner, 2026-10-27)
     val sdkFlushS: Int = 5,                         // 1..30
     val watchWakeLock: Boolean = true,              // measure and possibly turn off (§14.4)
 )
@@ -1308,7 +1328,7 @@ Consequences:
 |---|---|---|---|---|
 | `/opentdi/state_command` | both | `MessageClient.sendRequest` | `TdiCommand` | `Ack`; retry 3× at 2 s if no reply in 5 s; the receiver de-duplicates by (sessionId, type, cycle, stage) |
 | `/opentdi/hypnagogia_trigger` | watch → phone | `MessageClient.sendRequest` | `HypnagogiaTrigger` | `Ack(ok, code)`: `Ack(true, ACCEPTED)`, `Ack(true, DUPLICATE)` (already accepted; the watch treats it as accepted), `Ack(false, MODE_TIMED)`, `Ack(false, NOT_AWAKE_INCUBATING)`. Attempts at +0, +2, +4, +8 s from the first send, each with a 2 s app-level reply timeout, stopping at the missed-cycle deadline. A new attempt does not cancel the earlier `sendRequest` Task (it cannot be cancelled); the first `Ack` from any attempt wins and later replies are logged and ignored. The phone de-duplicates by (sessionId, cycle, onsetTimestampMs) |
-| `/opentdi/sensor_stream` | watch → phone | batched `MessageClient`: `sendMessage` for routine batches (dropped on `TARGET_NODE_NOT_CONNECTED` = 4000), `sendRequest` + up to 3 retries for a batch that contains a state change **[EXT]** | `TelemetryBatch`, flushed every `telemetryFlushS` (5 s) and immediately on any state change | none / `Ack` |
+| `/opentdi/sensor_stream` | watch → phone | batched `MessageClient`: `sendMessage` for routine batches (dropped on `TARGET_NODE_NOT_CONNECTED` = 4000), `sendRequest` + up to 3 retries for a batch that contains a state change **[EXT]** | `TelemetryBatch`, flushed every `telemetryFlushS` (2 s) and immediately on any state change | none / `Ack` |
 | `/opentdi/session_files` **[EXT]** | watch → phone | `ChannelClient.openChannel` + `sendFile` at session end (Phase 2) | each watch CSV of the session | channel close reason |
 | `/opentdi/wrist_audio_channel` | — | `ChannelClient` | reserved for the deferred wrist speaker / mic | — |
 
@@ -1327,8 +1347,14 @@ registered" never arises (the docs do not define it: INFERENCE):
 | `/opentdi/state_command` (requests, both devices) | the manifest `OpenTdiListenerService` only (`android:path="/opentdi/state_command"`, action `REQUEST_RECEIVED` only, §14.1). Its `onRequest` checks a process-wide flag set by the session FGS (`SessionServiceRegistry.running`): if the FGS runs, it hands the command to the FGS's handler and returns that handler's `Ack`; if not, a `StartSession` posts "Tap to start OpenTDI" and every command is answered `Ack(false, "WATCH_SERVICE_NOT_RUNNING")` (on the phone `"PHONE_SERVICE_NOT_RUNNING"`), since a background FGS start is not allowed ([A] §2.6, §4.4) |
 | `/opentdi/hypnagogia_trigger`, `/opentdi/sensor_stream` (phone) | live listeners inside the phone FGS: `addRpcService` for the requests, `MessageClient.addListener` (`wear://*/opentdi/sensor_stream`, `FILTER_LITERAL`) for routine batches, on a background `Looper` (`Wearable.WearableOptions`), registered only while the FGS runs |
 
-So the manifest service is never bound for the 5 s telemetry batches, in line with "If you only need to listen for
+So the manifest service is never bound for the telemetry batches, in line with "If you only need to listen for
 events when your app is already running … register a live listener" ([A] §4.4). §15 #23 checks it on the devices.
+
+Live display before Phase 2 **[EXT]** (owner, 2026-10-27): a running watch logging session already sends its packets
+as `TelemetryBatch`es (state `IDLE`, no score) with `sendMessage` to the reachable `opentdi_phone` node (nearby
+first), dropping a batch it cannot send and logging `LINK_DOWN` / `LINK_UP` once per change. Until the phone FGS
+takes the stream, the phone's session screen registers the same live listener while it is visible (started) and
+shows the last 180 frames; the phone logs nothing of them yet.
 
 Clock offset: each device logs its wall clock on send and receive; the phone estimates the offset from `sendRequest`
 round trips (log only, Phase 2).
@@ -1598,7 +1624,7 @@ simulation receiver (§13) covers only the algorithm and the audio loop (owner 3
 | File | One row per | Columns (units) |
 |---|---|---|
 | `w_config.csv` | key | `key,value`: app version, `applicationId`, device model, SDK `getVersion()`, Health Sensor Service `versionName`, `sensorStatus`, `gravityMode`, every `SessionConfig` field (dotted keys, e.g. `detection.baselineWindowS`), the resolved thresholds, every structural constant of §8.15 (`const.*`), the bundled AAR name (`BuildConfig.SAMSUNG_SDK_AAR`), and every `BaselineStats` field once ready |
-| `w_accel_raw.csv` (optional, `accel.logRawAccel`, default off) | raw 25 Hz accelerometer sample | `sdk_ts_ms,x,y,z` (raw counts, or m/s² × 1000 as integers for `ANDROID_SENSORS`), about 90 000 rows ≈ 2–3 MB per hour (INFERENCE). Input of the AccelConfig replay (§12.6) |
+| `w_accel_raw.csv` (optional, `accel.logRawAccel`, default on) | raw 25 Hz accelerometer sample | `sdk_ts_ms,x,y,z` (raw counts, or m/s² × 1000 as integers for `ANDROID_SENSORS`), about 90 000 rows ≈ 2–3 MB per hour (INFERENCE). Input of the AccelConfig replay (§12.6) |
 | `w_sensor_raw.csv` | SDK HR or EDA data point (the raw 1 Hz data) | `arrival_wall_ms,sdk_ts_ms,tracker(HR/EDA),hr_bpm,hr_status,ibi_ms(;),ibi_status(;),eda_us,eda_status,batch_size,late(0/1)` |
 | `w_packets.csv` (**replay input**) | emitted 1 Hz packet | `ts_ms,seq,source,hr_bpm,hr_status,ibi_ms(;),rmssd_ms,eda_us,eda_status,accel_mean_g,accel_rms_g,accel_peak_g,stillness,jerk,limp,tilt_deg,n_accel_samples,emitted_wall_ms` |
 | `w_accel_events.csv` (25 Hz-derived flags) | event | `sample_ts_ms,event,value1,value2,detail` with events `JERK_BURST_OPEN`, `JERK_CONFIRMED` (burst ms, peak g), `JERK_REJECTED_LONG`, `JERK_REJECTED_POST_MOVE`, `LIMP_REF_SET`, `LIMP_REF_CLEARED`, `LIMP_CONFIRMED` (tilt °), `GRAVITY_MODE`, `LIMP_UNAVAILABLE` |
@@ -2172,8 +2198,10 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 | 20 | §4, §5.3 T1, §9.1, §9.6 | EXT | `CycleStageType.DWELL_START` (phone → watch, TIMED_CUES only) and `startSession(sessionId, mode)`, so a watch in a TIMED_CUES session can mirror the dwell start; D3 lists only four stages |
 | 21 | §13.1 | EXT | The simulation receiver pins the detection config to defaults (plus an optional `preset` extra, D11 lists only `mode`), so the §13.4 proof and the HIL pass criteria hold whatever the user saved |
 | 22 | §8.1 | EXT | Gravity low-pass frozen during a jerk burst, so a ≤ 500 ms jerk leaves ≤ 2 moving seconds |
-| 23 | §12.2, §12.6 | EXT | Optional `w_accel_raw.csv` (raw 25 Hz) and an AccelConfig replay mode; off by default. Raw accel is logged locally only, never sent over the wire (D6) |
+| 23 | §12.2, §12.6 | EXT | Optional `w_accel_raw.csv` (raw 25 Hz) and an AccelConfig replay mode; on by default since 2026-10-27 (owner), the watch toggle still turns it off. Raw accel is logged locally only, never sent over the wire (D6) |
 | 24 | §10.2, §14.1 | clarification | The manifest `WearableListenerService` takes only `/opentdi/state_command` requests and forwards them to the running FGS; telemetry and triggers go to live listeners only |
+| 25 | §0, §10.2, §9.5 | Phase (owner, 2026-10-27) | Routine telemetry (display only) is pulled forward from Phase 2: a watch logging session streams `TelemetryBatch`es every `telemetryFlushS`, now 2 s instead of 5 s, and the visible phone screen shows them live with 3-minute sparklines (1 Hz redraws, not the deferred 60 fps charts) |
+| 26 | §7.1, §7.3, §7.4, §9.5 | EXT (owner, 2026-10-27) | Own words per cue (`audio.cueTexts`, `[THEME]` for the theme), a slower default speaking speed (`ttsSpeechRate` 0.75) and phrase-by-phrase rendering with `phrasePauseMs` pauses, so cues are slow and clearly separated; the speech enters ¾ of the way into the fade (at −15 dB) so the first phrase is heard |
 
 **Loud flags: decisions that research shows cannot work as literally written**
 - **D11 "registered in the manifest … so the exact command without `-p` works":** the manifest receiver can never get
@@ -2196,7 +2224,7 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 | O3 | `SDK_POLICY_ERROR` text | Samsung: "Do not share the developer mode guide with app users" vs owner A2. Current text names developer mode and points to the developer guide |
 | O4 | Fixed vs random countdown | P20's lab protocol drew 1–5 min at random per loop ([P] §1.2 #5); the app presets were fixed (1 / 1.5 / 3 min). Current: fixed 180 s; a "random 60–300 s per cycle" option is cheap to add |
 | O5 | Cue at the detected onset | Dormio web wearable plays the incubation prompt at onset ([C] §4); P20 does not say. Current: no cue |
-| O6 | Fade-in vs intelligibility | With −60 → 0 dB over 2 s, the first ≈ 1 s of speech is below −30 dB. Options: keep; shorten to ~1 s; or prepend a soft chime under the fade |
+| O6 | Fade-in vs intelligibility | With −60 → 0 dB over 2 s, speech from the first sample spends ≈ 1 s below −30 dB. Current (2026-10-27): ¾ T of silence under the fade, so the speech enters at −15 dB (§7.3). Other options: speech from the first sample; shorten to ~1 s; or prepend a soft chime under the fade |
 | O7 | Recording source | D12 `UNPROCESSED` else `MIC`; research recommends `VOICE_RECOGNITION` as the fallback (no AGC/NR by CDD) ([U] §5.1). Decide after §15 #17 |
 | O8 | Arm-raised limp task | Closest analogue of Dormio's hand task ([D] §10.6); changes the user protocol |
 | O9 | Real nap data as test fixtures | Packets only, with the person's written consent; or keep them out of the public repo |

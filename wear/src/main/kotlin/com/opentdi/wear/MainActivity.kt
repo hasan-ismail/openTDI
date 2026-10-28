@@ -40,6 +40,7 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SwipeToDismissBox
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
+import com.opentdi.shared.model.AccelConfig
 import com.opentdi.shared.model.GravityMode
 import com.opentdi.shared.model.SensorSource
 import com.opentdi.shared.model.SensorStatus
@@ -57,6 +58,9 @@ import kotlinx.coroutines.delay
 class MainActivity : ComponentActivity() {
     private var afterPermissions: (() -> Unit)? = null
     private var resolving = false // Galaxy Store was opened to install or update Health Sensor Service
+
+    // Lint sees the androidx.fragment 1.1 that play-services pulls in; its bug is in FragmentActivity, not used here.
+    @SuppressLint("InvalidFragmentVersionForActivityResult")
     private val permissionRequest = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         afterPermissions?.invoke()
         afterPermissions = null
@@ -73,7 +77,7 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             val state by SensingStateHolder.state.collectAsStateWithLifecycle()
-            var logRawAccelChoice by rememberSaveable { mutableStateOf(false) }
+            var logRawAccelChoice by rememberSaveable { mutableStateOf(AccelConfig().logRawAccel) }
             var sessionsOpen by rememberSaveable { mutableStateOf(false) }
             val logRawAccel = if (state.running) state.logRawAccel else logRawAccelChoice
             MaterialTheme(colorScheme = NightColors) {
