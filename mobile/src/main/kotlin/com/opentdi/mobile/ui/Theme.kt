@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -48,6 +49,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -94,7 +96,7 @@ private val Type = Typography().let { base ->
 @Composable
 fun OpenTdiTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = Colors, typography = Type, content = content)
 
-val TABS = listOf("Tonight", "Watch", "Sessions", "Settings")
+val TABS = listOf("Tonight", "Watch", "Stats", "Sessions", "Settings")
 
 @Composable
 fun BottomTabs(selected: Int, onSelect: (Int) -> Unit) {
@@ -106,12 +108,13 @@ fun BottomTabs(selected: Int, onSelect: (Int) -> Unit) {
             modifier = Modifier.navigationBarsPadding(),
         ) {
             TABS.forEachIndexed { i, name ->
+                // The content form has no 16 dp side padding, so five one-line names fit a 360 dp wide phone.
                 Tab(
                     selected = i == selected,
                     onClick = { onSelect(i) },
-                    text = { Text(name, style = MaterialTheme.typography.titleSmall) },
+                    modifier = Modifier.height(48.dp),
                     unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                ) { Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }

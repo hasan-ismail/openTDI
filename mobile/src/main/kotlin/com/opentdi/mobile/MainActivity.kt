@@ -50,11 +50,14 @@ import com.opentdi.mobile.ui.SessionsScreen
 import com.opentdi.mobile.ui.SettingsScreen
 import com.opentdi.mobile.ui.TonightScreen
 import com.opentdi.mobile.ui.WatchScreen
+import com.opentdi.mobile.ui.stats.StatsScreen
+import com.opentdi.mobile.ui.stats.StatsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    private val stats: StatsViewModel by viewModels()
 
     // The session runs whether or not notifications are allowed; the FGS notice then shows in Task Manager only.
     // Lint sees the androidx.fragment 1.1 that play-services pulls in; its bug is in FragmentActivity, not used here.
@@ -102,7 +105,8 @@ class MainActivity : ComponentActivity() {
                                     onOpenDnd = ::openDndSettings,
                                 )
                                 1 -> WatchScreen()
-                                2 -> SessionsScreen(viewModel)
+                                2 -> StatsScreen(stats)
+                                3 -> SessionsScreen(viewModel)
                                 else -> SettingsScreen(viewModel)
                             }
                         }
