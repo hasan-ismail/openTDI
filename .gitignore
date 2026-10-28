@@ -15,9 +15,11 @@ captures/
 # Samsung Health Sensor SDK: proprietary AAR, downloaded per developer (see wear/libs/README.md)
 /wear/libs/*.aar
 
-# sherpa-onnx AAR (fetched by :mobile's fetchSherpaOnnx) and the neural voice model (tools/voice/fetch_voice_model.sh)
+# sherpa-onnx AAR (fetched by :mobile's fetchSherpaOnnx), the neural voice model (tools/voice/fetch_voice_model.sh) and
+# the transcription model (tools/stt/fetch_stt_model.sh)
 /mobile/libs/*.aar
 /tools/voice/models/
+/tools/stt/models/
 
 # IDE / OS
 .idea/

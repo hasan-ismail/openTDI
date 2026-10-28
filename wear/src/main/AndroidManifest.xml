@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature android:name="android.hardware.type.watch" />
 
@@ -32,11 +33,15 @@
         <package android:name="com.sec.android.app.samsungapps" />
     </queries>
 
+    <!-- Session logs and dream recordings are personal: no cloud backup, no device-to-device transfer. On API 30
+         allowBackup="false" alone does that, so no fullBackupContent file is needed. -->
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@android:style/Theme.DeviceDefault">
+        android:theme="@android:style/Theme.DeviceDefault"
+        tools:ignore="DataExtractionRules">
 
         <!-- Phase 1 runs without the phone -->
         <meta-data

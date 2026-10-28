@@ -154,6 +154,7 @@ object NightsRepository {
                 } finally {
                     channels.close(channel)
                 }
+                com.opentdi.mobile.journal.Transcriber.transcribeInBackground(context)
                 null
             }
         } catch (e: IOException) {

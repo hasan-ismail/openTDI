@@ -266,3 +266,28 @@ python3 tools/release/dexcheck.py wear/build/outputs/apk/release/wear-release.ap
 Without these values a release build is unsigned (`*-release-unsigned.apk`) and debug builds keep the machine's debug
 key, as before. The phone APK carries the watch APK of the same build type, so a signed release phone app installs a
 watch app signed with the same key.
+
+## 13. Offline transcription (optional)
+
+After each copy from the watch (opening **Stats**, or the end of a phone session), the phone app turns new dream
+recordings into text: `w_dream_HHmmss.txt` beside each `w_dream_HHmmss.m4a` in `files/watch/<session>/`, where an empty
+file means no speech was found. It runs sherpa-onnx with the Silero VAD and a speech model on the phone, never during a
+session and never while **Prepare cues** uses the natural voice. Transcription itself uses no network; how recordings
+reach the phone is in the README ("Your data stays with you"). A transcript is a written copy of your dream report,
+unchecked: speech recognition has not been tested on sleepy speech, so the recording stays the record. The model is in
+neither the APK nor the repository: download it once from the sherpa-onnx releases on GitHub (an ordinary download, so
+GitHub sees the request) and copy it into the app's private storage.
+
+```bash
+tools/stt/fetch_stt_model.sh        # into tools/stt/models/ (gitignored), checked against pinned SHA-256s
+tools/stt/push_stt_model.sh $P      # into files/stt/ of com.opentdi on the phone
+```
+
+The default model is NVIDIA Parakeet TDT-CTC 110M int8 (104 MB download, 132 MB installed, CC-BY-4.0, see NOTICE).
+Add `moonshine` to both commands for the smaller fallback, Moonshine tiny English (30 MB download, 44 MB installed,
+MIT); when both are installed the app uses Parakeet. The push script works like the voice one (section 11): through
+`/data/local/tmp` and `run-as com.opentdi --user 0`, touching nothing else. Uninstalling the app deletes the model, so
+run the push script again after a reinstall (`install -r` keeps it). Without a model the app reports "Transcription
+model not installed"; once one is pushed, the next copy transcribes the recordings that are waiting. Each recording is
+transcribed once: delete its `.txt` to redo it, for example with the other model. `adb -s $P logcat -s OTDI.Stt` shows
+which model loaded and each file's timings, never the text.

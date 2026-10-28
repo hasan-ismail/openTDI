@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sleep data and dream recordings stay out of cloud backups and device-to-device transfers. root covers files,
+     databases and shared preferences; device_root is the device-protected storage. Android 12+ reads these rules:
+     android:allowBackup="false" alone does not stop transfers there on some devices (Auto Backup docs). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="device_root" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="device_root" path="." />
+    </device-transfer>
+</data-extraction-rules>

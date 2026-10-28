@@ -32,6 +32,7 @@ import com.opentdi.mobile.cues.loadCueSet
 import com.opentdi.mobile.cues.loadGuideClip
 import com.opentdi.mobile.cues.loadPreparedCues
 import com.opentdi.mobile.cues.renderCues
+import com.opentdi.mobile.journal.Transcriber
 import com.opentdi.shared.audio.FadeEnvelope
 import com.opentdi.shared.audio.GuideClip
 import com.opentdi.shared.audio.WavAudio
@@ -249,7 +250,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             var fallback: String? = null
             val error = try {
-                renderCues(app, config) { fallback = it }
+                Transcriber.withoutTranscription { renderCues(app, config) { fallback = it } }
                 val guideMissed = guideOn(config) && !sendGuide(config)
                 listOfNotNull(fallback, GUIDE_NOT_SENT.takeIf { guideMissed }).joinToString(" ").ifEmpty { null }
             } catch (e: CueException) {

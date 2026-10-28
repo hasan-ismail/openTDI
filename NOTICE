@@ -62,6 +62,15 @@ The optional neural voice model is in neither this repository nor the apps: tool
 Kokoro-82M (Apache-2.0) with espeak-ng data (GPL-3.0) from their publishers, and tools/voice/push_voice_model.sh
 copies it to your own phone.
 
+The optional offline transcription model is likewise in neither this repository nor the apps:
+tools/stt/fetch_stt_model.sh downloads it from the sherpa-onnx project's releases, and tools/stt/push_stt_model.sh
+copies it to your own phone, where the phone app runs it with sherpa-onnx (above). It is NVIDIA Parakeet TDT-CTC 110M
+(https://huggingface.co/nvidia/parakeet-tdt_ctc-110m), (c) NVIDIA, licensed under CC-BY-4.0
+(https://creativecommons.org/licenses/by/4.0/), converted to ONNX int8 by the sherpa-onnx project; with Silero VAD
+(https://github.com/snakers4/silero-vad), Copyright (c) 2020-present Silero Team, MIT. The optional smaller model is
+Moonshine tiny English (https://github.com/moonshine-ai/moonshine), Copyright (c) 2025 Useful Sensors, Inc. (dba
+Moonshine AI), MIT.
+
 The MIT-licensed components above are
   Copyright (c) Microsoft Corporation (ONNX Runtime)
   Copyright (c) 2019 Jack Grigg (curve25519-elisabeth, ed25519-elisabeth)
