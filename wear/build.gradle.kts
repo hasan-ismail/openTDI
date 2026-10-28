@@ -14,6 +14,10 @@ check(samsungAars.size <= 1) { "More than one Samsung AAR in wear/libs: $samsung
 val samsungAar: File? = samsungAars.singleOrNull()?.takeUnless { forceSamsungStub }
 logger.lifecycle("Samsung Health Sensor SDK: ${samsungAar?.name ?: "not bundled (stub)"}")
 
+// Release key: the same four settings as :mobile (see there), so both apps carry one signature (spec §10.1).
+fun releaseSigning(name: String): String? =
+    providers.gradleProperty(name).orElse(providers.environmentVariable(name)).orNull
+
 android {
     namespace = "com.opentdi.wear"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -23,8 +27,8 @@ android {
         applicationId = "com.opentdi" // same as the phone: the Data Layer needs one application ID (spec §10.1)
         minSdk = libs.versions.wearMinSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         buildConfigField("boolean", "SAMSUNG_SDK_BUNDLED", (samsungAar != null).toString())
         buildConfigField("String", "SAMSUNG_SDK_AAR", "\"${samsungAar?.name ?: ""}\"")
     }
@@ -34,10 +38,22 @@ android {
         buildConfig = true // off by default since AGP 8.0
     }
 
+    signingConfigs {
+        releaseSigning("OPENTDI_KEYSTORE_FILE")?.let { keystore ->
+            create("release") {
+                storeFile = rootProject.file(keystore)
+                storePassword = releaseSigning("OPENTDI_KEYSTORE_PASSWORD")
+                keyAlias = releaseSigning("OPENTDI_KEY_ALIAS")
+                keyPassword = releaseSigning("OPENTDI_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

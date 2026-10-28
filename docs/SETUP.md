@@ -37,12 +37,12 @@ Build everything and run the unit tests:
 ## 2. Samsung Health Sensor SDK
 
 The watch app reads heart rate, inter-beat intervals (IBI), EDA and the accelerometer through Samsung's Health Sensor
+SDK 1.4.1. OpenTDI contains no Samsung code. Samsung's Health Sensor SDK is optional; each user downloads it from
+Samsung, under Samsung's own terms, and adds it in the app. For a build of your own you can instead put it in
+`wear/libs/` ([wear/libs/README.md](../wear/libs/README.md) has the same steps):
 
-downloads their own copy ([wear/libs/README.md](../wear/libs/README.md) has the same steps).
-
-1. Sign in with a Samsung account at <https://developer.samsung.com/health/sensor/overview.html>, choose
-   **Download**, and accept the Samsung Health Partner Service & SDK License Agreement. Among other terms, it limits
-
+1. Sign in with a Samsung account at <https://developer.samsung.com/health/sensor/overview.html> and choose
+   **Download**.
 2. Unzip `samsung-health-sensor-sdk-v1.4.1.zip` and copy `1.4.1/libs/samsung-health-sensor-api-1.4.1.aar` into
    `wear/libs/`.
 3. Check the file against the copy OpenTDI was built with:
@@ -54,7 +54,8 @@ downloads their own copy ([wear/libs/README.md](../wear/libs/README.md) has the 
 4. Keep exactly one `samsung-health-sensor-api*.aar` in `wear/libs/`. The build stops with an error if it finds more
    than one.
 
-Never commit the AAR (`.gitignore` excludes `wear/libs/*.aar`), and do not share APKs built with it.
+Never commit the AAR (`.gitignore` excludes `wear/libs/*.aar`). A watch APK built with it contains Samsung's code, and
+so does a phone APK built with it (inside its copy of the watch app); OpenTDI's published builds contain none (§12).
 
 Without the AAR, or with `-Popentdi.forceSamsungStub=true` on the Gradle command line, `:wear` compiles against
 `:samsung-health-stub` and the watch uses Android's basic heart-rate and accelerometer sensors (no EDA, no IBI). It
@@ -66,8 +67,8 @@ watch or later.
 ## 3. Health Sensor Service developer mode (watch)
 
 Samsung's SDK delivers data only to apps registered with Samsung (package name, signing-key SHA-256 and tracker
-types), or to any app while developer mode is on in Health Sensor Service. Builds from source are not registered, so
-turn developer mode on. Without it the trackers fail with `SDK_POLICY_ERROR`, and the watch app reports "Samsung
+types), or to any app while developer mode is on in Health Sensor Service. OpenTDI is not registered, so turn
+developer mode on. Without it the trackers fail with `SDK_POLICY_ERROR`, and the watch app reports "Samsung
 blocked sensor access (SDK_POLICY_ERROR)". Samsung lists a missing or poor network connection as another cause of the
 same error, so also check that the watch is online.
 
@@ -75,13 +76,8 @@ Samsung's page is the authority for the steps:
 <https://developer.samsung.com/health/sensor/guide/developer-mode.html>. In short: on the watch, open Settings > Apps >
 Health Sensor Service (on the Galaxy Watch8 Classic with One UI 8 Watch the entry reads "Health Platform"), quickly
 tap the **title** at the top about 10 times (the title, not the version number: tapping the version does nothing)
-until a "Developer mode" row appears below the version, tap it, agree to the Samsung Health Partner Service & SDK
-License, and turn developer mode on. The README's "Device setup" section has the same steps with the phone's and the
-watch's own developer options.
-
-Samsung says developer mode "is intended only for testing or debugging your app" and asks developers not to share its
-developer-mode guide with app users. This section is for developers building from source; do not present it as a step
-for end users. Registering the app with Samsung (partner registration) is needed only for public distribution.
+until a "Developer mode" row appears below the version, tap it, accept Samsung's terms when asked, and turn developer
+mode on. The README's "Device setup" section has the same steps with the phone's and the watch's own developer options.
 
 ## 4. Health Sensor Service version
 
@@ -224,3 +220,49 @@ the push script again after a reinstall (`install -r` keeps it).
 Then, in the cue sound settings, turn on **Natural voice**, choose a voice and tap **Prepare cues**. If the model is
 missing, does not load or fails while rendering, the app says so and prepares the cues with the phone's own voice. The
 build fetches the sherpa-onnx AAR (`mobile/libs/`, gitignored, pinned SHA-256) by itself.
+
+## 12. Making a release (maintainers)
+
+GitHub Actions runs the unit tests, both debug builds and lint on every push to `main` and every pull request
+(`.github/workflows/ci.yml`; the debug APKs stay downloadable from the run for 7 days). Pushing a tag `v<versionName>`
+runs `.github/workflows/release.yml`: it builds both release APKs signed with one release key, checks with
+`tools/release/dexcheck.py` that neither APK (nor the phone's `assets/watch.apk`) contains Samsung code, and publishes
+`OpenTDI-phone.apk`, `OpenTDI-watch.apk` and `SHA256SUMS` as a GitHub Release whose notes are the tag's message. Both
+workflows build without Samsung's SDK (`-Popentdi.forceSamsungStub=true`).
+
+1. Create the release key once. With the default PKCS12 keystore the key password is the keystore password:
+   ```bash
+   keytool -genkeypair -v -keystore opentdi-release.jks -alias opentdi -keyalg RSA -keysize 4096 -validity 10000
+   ```
+   Keep `opentdi-release.jks` and its password private and backed up, outside the repository. Released apps can only
+   be updated by apps signed with the same key: without it, users must uninstall (losing their data) to update.
+2. Store it as four repository secrets. `gh secret set` reads a value from stdin or asks for it:
+   ```bash
+   base64 -w0 opentdi-release.jks | gh secret set OPENTDI_KEYSTORE_BASE64    # macOS: base64 -i opentdi-release.jks
+   gh secret set OPENTDI_KEYSTORE_PASSWORD
+   gh secret set OPENTDI_KEY_ALIAS                                           # opentdi
+   gh secret set OPENTDI_KEY_PASSWORD                                        # the same as the keystore password
+   ```
+3. Raise `versionCode` by one and set `versionName` in both `mobile/build.gradle.kts` and `wear/build.gradle.kts`,
+   then merge to `main` and wait for CI to pass.
+4. Tag that commit with the release notes as the message, and push the tag. The release workflow stops if the tag is
+   not `v` followed by the `versionName`:
+   ```bash
+   git tag -a v0.3.0 -m "OpenTDI 0.3.0" -m "What changed, in a few lines."
+   git push origin v0.3.0
+   ```
+
+To sign a release build locally, set the same values as environment variables or Gradle properties, with
+`OPENTDI_KEYSTORE_FILE` the path to the keystore (a relative path starts at the repository root):
+
+```bash
+OPENTDI_KEYSTORE_FILE=/path/to/opentdi-release.jks OPENTDI_KEY_ALIAS=opentdi \
+OPENTDI_KEYSTORE_PASSWORD='...' OPENTDI_KEY_PASSWORD='...' \
+  ./gradlew :wear:assembleRelease :mobile:assembleRelease -Popentdi.forceSamsungStub=true
+python3 tools/release/dexcheck.py wear/build/outputs/apk/release/wear-release.apk \
+  mobile/build/outputs/apk/release/mobile-release.apk
+```
+
+Without these values a release build is unsigned (`*-release-unsigned.apk`) and debug builds keep the machine's debug
+key, as before. The phone APK carries the watch APK of the same build type, so a signed release phone app installs a
+watch app signed with the same key.

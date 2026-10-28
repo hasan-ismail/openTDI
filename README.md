@@ -14,10 +14,9 @@ on its sensor-free version that uses timed cues only
 
 > **Please read: this is not a medical device.** OpenTDI is wellness and research software. It does not diagnose,
 > treat, cure or prevent any illness, and it is not a sleep tracker you can rely on: its sleep estimates use untested
-> settings and may be wrong. Samsung's sensor data is "for fitness and wellness information only, not for the
-> diagnosis or treatment of any medical condition." **Talk to a doctor first** if you have ever had a psychotic
-> disorder, narcolepsy, frequent sleep paralysis, sleepwalking or another sleep disorder. OpenTDI is not made by,
-> or endorsed by, MIT or Samsung.
+> settings and may be wrong. Its sensor readings are for general wellness information only. **Talk to a doctor first**
+> if you have ever had a psychotic disorder, narcolepsy, frequent sleep paralysis, sleepwalking or another sleep
+> disorder. OpenTDI is not made by, or endorsed by, MIT or Samsung.
 
 ## How a session goes
 
@@ -44,12 +43,26 @@ The phone shows these live.
   **Android phone** with Android 13 or newer, on the same Wi-Fi.
 - That's all for the cues, the alarms and the dream report: they use the watch's heart rate and movement.
 - **Optional: Samsung's sensor kit**, for skin response, skin temperature, blood oxygen and the raw pulse signal. OpenTDI
-  contains no Samsung code: you download the kit yourself from Samsung and add it in the phone app, which passes it to
-  your watch. Samsung's sensors then also need the watch's developer mode, which Samsung explains on its
-  [developer-mode page](https://developer.samsung.com/health/sensor/guide/developer-mode.html).
+  contains no Samsung code: you download the kit yourself from Samsung, under Samsung's own terms, and add it in the
+  phone app, which passes it to your watch. Samsung's sensors then also need the watch's developer mode, which Samsung
+  explains on its [developer-mode page](https://developer.samsung.com/health/sensor/guide/developer-mode.html).
 
-**Installing:** download `OpenTDI-phone.apk` from the [Releases](../../releases) page and open it on the phone. Its set-up
-guide walks you through the rest, including putting OpenTDI on the watch over Wi-Fi.
+## Download
+
+1. On the [Releases](../../releases) page, download `OpenTDI-phone.apk`. (`OpenTDI-watch.apk` is the watch app the
+   phone app already carries; you only need it to install the watch app yourself with `adb`.)
+2. To check the download on a computer, put the release's `SHA256SUMS` next to it and run
+   `sha256sum -c --ignore-missing SHA256SUMS`; it should print `OpenTDI-phone.apk: OK`.
+3. Open `OpenTDI-phone.apk` on the phone to install it. Android asks you to allow installs from your browser or files
+   app.
+4. Install the watch app from the phone: the phone app's set-up guide puts OpenTDI on the watch over Wi-Fi.
+
+Released apps are signed with OpenTDI's release key, so they cannot replace a copy you built yourself: uninstall that
+copy first, which deletes its data on that device.
+
+**Builds:** GitHub Actions tests and builds every push to `main` and every pull request
+([ci.yml](.github/workflows/ci.yml)). Each version tag builds the signed apps for the Releases page
+([release.yml](.github/workflows/release.yml)). Both check that no Samsung code is inside the apps.
 
 ## What works today
 
@@ -122,17 +135,17 @@ on the same network. Menu names are from a Samsung phone and a Galaxy Watch8 Cla
 
 **Turn on Samsung's sensor developer mode (on the watch)**
 
-Samsung's sensors only talk to apps Samsung has approved, or to any app while **developer mode** is on. Without it the
-watch says "Samsung blocked sensor access (SDK_POLICY_ERROR)".
+Samsung's sensors only talk to apps registered with Samsung, or to any app while **developer mode** is on. Without it
+the watch says "Samsung blocked sensor access (SDK_POLICY_ERROR)".
 
 1. **Settings > Apps > Health Platform** (newer watches call it **Health Sensor Service**).
 2. Quickly tap the **title** at the top, "Health Platform", about 10 times. Tap the title, not the version number.
-3. Tap the **Developer mode** row that appears below the version, accept Samsung's license, and switch it **On**.
+3. Tap the **Developer mode** row that appears below the version, accept Samsung's terms when asked, and switch it
+   **On**.
 4. Keep the watch online.
 
 The watch needs Health Platform / Health Sensor Service **1.6.5 or newer**. Samsung's own
-[developer-mode page](https://developer.samsung.com/health/sensor/guide/developer-mode.html) is the authority. Samsung
-asks that this guide is not given to ordinary app users: it is a developer step for people building OpenTDI themselves.
+[developer-mode page](https://developer.samsung.com/health/sensor/guide/developer-mode.html) is the authority.
 
 ### Where things are
 
@@ -155,9 +168,9 @@ asks that this guide is not given to ordinary app users: it is a developer step 
 OpenTDI is free software under the **GNU General Public License, version 3** ([LICENSE](LICENSE)). In short: you may
 use, study, change and share it, and anything you share that is built from it must stay open under the same license.
 
-[NOTICE](NOTICE) adds one exception so OpenTDI can work with Samsung's sensor kit. The kit is Samsung's own property
-under Samsung's license, which each user accepts when downloading it from Samsung; it is never part of this
-repository or of OpenTDI's apps. Read Samsung's license before you use the kit. (This is not legal advice.)
+[NOTICE](NOTICE) adds one exception so OpenTDI can work with Samsung's sensor kit, and lists the other projects the
+apps include. OpenTDI contains no Samsung code. Samsung's Health Sensor SDK is optional; each user downloads it from
+Samsung, under Samsung's own terms, and adds it in the app.
 
 ## Thanks
 

@@ -22,10 +22,10 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 /**
- * Bring your own Samsung kit (owner, 2026-10-28). OpenTDI's published apps carry no Samsung code: Samsung's license
-
- * picks the download from Samsung (its zip, or the .aar inside), the phone turns the SDK's Java classes into Android
- * code with D8 (the same step every Android build does) and sends that to the watch, which loads it (SamsungKit).
+ * Bring your own Samsung kit (owner, 2026-10-28). OpenTDI contains no Samsung code: Samsung's Health Sensor SDK is
+ * optional, and each user downloads it from Samsung, under Samsung's own terms, and adds it here. The user picks the
+ * download (its zip, or the .aar inside), the phone turns the SDK's Java classes into Android code with D8 (the same
+ * step every Android build does) and sends that to the watch, which loads it (SamsungKit).
  */
 object SamsungKitTransfer {
     private const val KIT_FILE = "samsung-sdk.dex"

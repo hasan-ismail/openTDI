@@ -42,7 +42,7 @@ Phases follow owner requirements G20 and G21 and decision D17.
 | Feature | Phase | Notes |
 |---|---|---|
 | Multi-module build (`:shared`, `:wear`, `:mobile`, `:samsung-health-stub`), shared `applicationId` `com.opentdi` | 1 | §10.1 |
-| README: wellness / not-a-medical-device statement, developer setup (Health Sensor Service developer mode, version check, AAR download + license note) | 1 | §17.4, §11.7 |
+| README: wellness / not-a-medical-device statement, developer setup (Health Sensor Service developer mode, version check, AAR download note) | 1 | §17.4, §11.7 |
 | Watch: Samsung SDK connection + status checker (AAR missing, service missing, too old, SDK_POLICY_ERROR, permission, unsupported) with on-watch messages | 1 | §11.6 |
 | Watch: HR/IBI/EDA/accelerometer trackers, `flush()` timer, health FGS + Ongoing Activity | 1 | §11, §14 |
 | Watch: 25 Hz accelerometer processing (stillness, jerk, limp) and 1 Hz `BiosignalPacket` aggregation: `:shared` `AccelProcessor` + `PacketAggregator` with `AccelProcessorTest` + `PacketAggregatorTest` | 1 | §8.1–8.2, §16. Computed in Phase 1 so the very first logs carry the fields |
@@ -86,7 +86,7 @@ Phases follow owner requirements G20 and G21 and decision D17.
 | Haar Horowitz et al. 2026, *Front Sleep* (PMC13341471) | Interval between sleep onsets | [P] §1.2 |
 | `tomasero/openSleep` @efad39f, `christinatchen/dormio` @7c00cc3 | Timer and wearable session logic, defaults, detection code | [C] |
 | `ThingEngineer/Dormio-Device-Duo-Wearable` @baeede4 | Hardware and packet design only; it has no detection code | [D] |
-| Samsung Health Sensor SDK 1.4.1 docs, javadoc, license | API, units, rates, batching, permissions, policy errors, license | [S] |
+| Samsung Health Sensor SDK 1.4.1 docs and javadoc | API, units, rates, batching, permissions, policy errors | [S] |
 | developer.android.com + AOSP android-16.0.0_r1 | Permissions, FGS rules, Doze, broadcasts, Data Layer | [A] |
 | Wear Compose 1.7.1 sources and Maven metadata | Rotary input, versions | [W] |
 | developer.android.com media/speech, AOSP audio, Android 16 CDD | Routing, focus, DND, standby, recording, STT, TTS | [U] |
@@ -101,7 +101,7 @@ Could not be obtained (FACT, [P] §0): P20 Appendix A (PMC proof-of-work page), 
 | `openSleep` | No LICENSE file; GitHub reports `license: null`; Swift headers say "Copyright © 2017-2019 Tomas Vega. All rights reserved." | FACT [C] §7 |
 | `dormio` | No LICENSE file; `license: null`; author Christina Chen | FACT [C] §7 |
 | Dormio Device Duo Wearable | "MIT license", stated only as a README line (`README.md:9-11`); no LICENSE file, no copyright line | FACT [D] §1 |
-| Samsung Health Sensor SDK | Proprietary, under Samsung's license, which each user accepts when downloading it from Samsung | FACT [S] §6 |
+| Samsung Health Sensor SDK | Samsung's own software, under Samsung's own terms; optional, and each user downloads it from Samsung | FACT [S] §6 |
 
 ### 1.3 What that implies (INFERENCE, not legal advice)
 
@@ -109,17 +109,18 @@ Could not be obtained (FACT, [P] §0): P20 Appendix A (PMC proof-of-work page), 
    (the 23 word files and `gong.wav`) from `openSleep` or `dormio`. It reimplements the behaviour described in [C] in
    Kotlin and records or synthesises its own audio. Cue wording comes from the published papers (§7.1), not from the repos.
 2. **Samsung AAR never in the repository.** `.gitignore` already contains `/wear/libs/*.aar`. Each developer downloads
-   `samsung-health-sensor-sdk-v1.4.1.zip` (70.8 KB download, [S] §7) from developer.samsung.com, which also makes them
-   accept the license, and copies `1.4.1/libs/samsung-health-sensor-api-1.4.1.aar` into `wear/libs/` (FACT, [V] "SDK
+   `samsung-health-sensor-sdk-v1.4.1.zip` (70.8 KB download, [S] §7) from developer.samsung.com, under Samsung's own
+   terms, and copies `1.4.1/libs/samsung-health-sensor-api-1.4.1.aar` into `wear/libs/` (FACT, [V] "SDK
    package facts"; `wear/libs/README.md` step 2; the file in `wear/libs/` is 61 063 bytes). Samsung's own pages call it
    `samsung-health-sensor-api.aar` ([S] §7), so the build matches both names (§11.5). `wear/libs/README.md` documents
    the step and records the file name and SHA-256 (`893cd5d6…0344c`).
 3. **Published apps carry no Samsung code** (owner, 2026-10-28: bring your own kit). The user downloads the SDK from
-   Samsung and adds it to the phone app, which converts it (D8) and sends it to the watch app (`SamsungKit`). Samsung's
-   pages describe registering an app with Samsung before distributing it; until then its sensors work in developer
-   mode only. Checked per release: no `com.samsung` class is defined in either APK or in the phone's `assets/watch.apk`.
+   Samsung, under Samsung's own terms, and adds it to the phone app, which converts it (D8) and sends it to the watch
+   app (`SamsungKit`). Samsung's sensor service serves an unregistered app only in the watch's developer mode (§11.6).
+   Checked by CI and per release (`tools/release/dexcheck.py`): no `com.samsung` class is defined in either APK or in
+   the phone's `assets/watch.apk`.
 4. **The compile stub** `:samsung-health-stub` is written only from the public javadoc signatures in [S] §2, with no
-   copied javadoc text, and contains only the members OpenTDI calls ([S] §2.2 license caution).
+   copied javadoc text, and contains only the members OpenTDI calls ([S] §2.2).
 5. **OpenTDI's own license is decided: GPL-3.0** (FACT: `LICENSE` line 1 "GNU GENERAL PUBLIC LICENSE Version 3"; commit
    9901e3d "Scaffold OpenTDI: … GPL-3.0") **with a GPL §7 additional permission for linking with the Samsung SDK**
    (`NOTICE`: "… linking or combining it with the Samsung Health Sensor SDK … the Samsung Health Sensor SDK is not made
@@ -1624,17 +1625,16 @@ the `:wear` application module ([S] §7). R8: `-keep class com.samsung.android.s
 | `SIMULATION` | simulation running | "SIMULATION — not real sensor data." | — |
 | `NO_SENSORS` | neither path delivers HR + motion | "No usable sensors. You can still run a timed-cues session from the phone." | DETECTION refused |
 
-The `SDK_POLICY_ERROR` text names developer mode and points to the setup guide but does not reproduce Samsung's steps on
-the watch, because Samsung says "Do not share the developer mode guide with app users" ([S] §4). See O3.
+The `SDK_POLICY_ERROR` text names developer mode and points to the setup guide; it does not reproduce Samsung's steps on
+the watch, whose authority is Samsung's own page ([S] §4). See O3.
 
 ### 11.7 Developer setup prerequisite (owner 1; README and `docs/SETUP.md`)
 
 For developers building from source (not an end-user step): enable Health Sensor Service developer mode. Steps per
 Samsung's page ([S] §4, https://developer.samsung.com/health/sensor/guide/developer-mode.html): Settings > Apps >
 Health Sensor Service (may still read "Health Platform") > tap the title area about 10 times > a "Developer mode"
-button appears below the version (older builds may show "[Dev mode]": UNVERIFIED) > tap it > agree to the Samsung
-Health Partner Service & SDK License > turn it on. Partner registration (package name + signing SHA-256) is needed only
-for public distribution ([S] §4). The setup doc links to Samsung's page as the authority.
+button appears below the version (older builds may show "[Dev mode]": UNVERIFIED) > tap it > accept Samsung's terms
+when asked > turn it on. The setup doc links to Samsung's page as the authority.
 
 ### 11.8 SensorManager fallback (`ANDROID_SENSORS`)
 
@@ -2274,7 +2274,7 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 |---|---|---|
 | O1 | OpenTDI license | **Decided** (closed): GPL-3.0 with a GPL §7 additional permission for linking with the Samsung SDK (`LICENSE`, `NOTICE`), which keeps the SDK out of the GPL's terms (INFERENCE, not legal advice) |
 | O2 | Enum name `MIT_STANDARD` | Keep (D10) with the "Standard" label, or rename to `STANDARD` before Phase 2 freezes the wire format |
-| O3 | `SDK_POLICY_ERROR` text | Samsung: "Do not share the developer mode guide with app users" vs owner A2. Current text names developer mode and points to the developer guide |
+| O3 | `SDK_POLICY_ERROR` text | Owner A2 vs leaving Samsung's developer-mode steps on Samsung's own page. Current text names developer mode and points to the developer guide |
 | O4 | Fixed vs random countdown | P20's lab protocol drew 1–5 min at random per loop ([P] §1.2 #5); the app presets were fixed (1 / 1.5 / 3 min). Current: fixed 180 s; a "random 60–300 s per cycle" option is cheap to add |
 | O5 | Cue at the detected onset | Dormio web wearable plays the incubation prompt at onset ([C] §4); P20 does not say. Current: no cue |
 | O6 | Fade-in vs intelligibility | With −60 → 0 dB over 2 s, speech from the first sample spends ≈ 1 s below −30 dB. Current (2026-10-27): ¾ T of silence under the fade, so the speech enters at −15 dB (§7.3). Other options: speech from the first sample; shorten to ~1 s; or prepend a soft chime under the fade |
@@ -2302,15 +2302,15 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 | Integer HR quantisation (1 bpm ≈ 1.4 % at 70 bpm) | jitter near the threshold | 15 s moving average; hold |
 | Always-on dimmed watch screen in a dark room | sleep disturbance | near-black ambient layout; §15 #25 |
 | Dorsal-wrist EDA differs from Dormio's ventral wrist | EDA bonus may be noise | bonus only; relative to the baseline |
-
+| Samsung's sensor service refuses an unregistered app unless the watch is in developer mode | no EDA, IBI, skin temperature or blood oxygen without developer mode | published apps carry no Samsung code (bring your own kit); basic Android sensors otherwise (§11.8) |
 
 ### 17.4 README statement (ready to paste)
 
 > **Not a medical device.** OpenTDI is open-source wellness and research software for exploring targeted dream
 > incubation at sleep onset. It does not diagnose, treat, cure, mitigate or prevent any disease or condition, and it is
 > not a sleep-staging or medical device. Its sleep-onset estimates come from unvalidated thresholds and may be wrong.
-> Heart rate, inter-beat interval, skin conductance and motion data from the Samsung Health Sensor SDK are "for fitness
-> and wellness information only, not for the diagnosis or treatment of any medical condition" (Samsung). Do not use
+> Its heart rate, inter-beat interval, skin conductance and motion readings are for general wellness information only,
+> not for diagnosing or treating any condition. Do not use
 > OpenTDI if you have a history of psychotic disorders, narcolepsy, recurrent sleep paralysis, parasomnias or other
 > sleep disorders without talking to a clinician first. This project is not affiliated with or endorsed by the MIT Media
 > Lab or Samsung.

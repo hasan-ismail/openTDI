@@ -20,35 +20,120 @@ such a combination shall not include the source code for the parts of the Samsun
 used, and the Samsung Health Sensor SDK is not made subject to the terms of this License.
 
 
-Third-party component not covered by this License
--------------------------------------------------
+Samsung Health Sensor SDK
+-------------------------
 
-The Samsung Health Sensor SDK (samsung-health-sensor-api-*.aar) is proprietary to Samsung Electronics
-and is NOT part of this repository or of OpenTDI's published apps. Each user downloads it from Samsung under
-Samsung's own license, which governs it, and adds it to their own devices (the phone app converts it and passes
-it to the watch app). A developer may also place it in wear/libs/ for a local build (see wear/libs/README.md);
-such builds are for that developer's own devices and must not be distributed.
+OpenTDI contains no Samsung code. Samsung's Health Sensor SDK is optional; each user downloads it from Samsung, under
+Samsung's own terms, and adds it in the app (the phone app converts it and passes it to the watch app). A developer may
+instead put it in wear/libs/ for a local build (see wear/libs/README.md); such a build contains Samsung's code, and so
+does a phone app built with it, inside its copy of the watch app. OpenTDI's published builds contain none:
+tools/release/dexcheck.py checks every CI and release build for classes defined under com.samsung, in both APKs and in
+the phone's assets/watch.apk.
 
-The phone app includes sherpa-onnx (Apache-2.0, https://github.com/k2-fsa/sherpa-onnx) and the ONNX Runtime it
-bundles (MIT). The optional neural voice model is not in this repository or the app: tools/voice/fetch_voice_model.sh
-downloads Kokoro-82M (Apache-2.0) with espeak-ng data (GPL-3.0).
+The :samsung-health-stub module is original OpenTDI code that mirrors the SDK's public API (as documented in Samsung's
+public API reference) so the project compiles without the SDK; it contains no Samsung code and is in neither app.
 
-To install the watch app from the phone, the phone app includes Kadb (Apache-2.0,
-https://github.com/flyfishxu/Kadb), spake2-java (GPL-3.0, https://github.com/Flyfish233/spake2-java), Bouncy Castle
-(MIT, https://www.bouncycastle.org) and Okio (Apache-2.0, https://github.com/square/okio). A phone app built with the
-Samsung SDK in wear/libs/ also carries the watch app, and with it the SDK, so the rule above applies to it too.
-To check a release: no class under com.samsung may be defined in either APK or in the phone's assets/watch.apk.
-The phone app also includes D8 from R8 (BSD-3-Clause, https://r8.googlesource.com/r8), which converts the user's
-own Samsung kit on the phone.
 
-The :samsung-health-stub module is original OpenTDI code that mirrors the SDK's public API (as
-documented in Samsung's public API reference) so the project compiles without the SDK; it contains
-no Samsung code.
+Third-party software in the apps
+--------------------------------
+
+Both apps include, under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0): AndroidX and Jetpack
+Compose, including Wear Compose (The Android Open Source Project); the Kotlin standard library, kotlinx.coroutines and
+kotlinx.serialization (JetBrains s.r.o. and contributors); JetBrains Java Annotations; JSpecify; and Guava's
+listenablefuture (The Guava Authors). Both also include Google Play services client libraries for the watch-phone link
+(play-services-wearable, -base, -basement and -tasks), which Google licenses under the Android Software Development Kit
+License (https://developer.android.com/studio/terms.html), not under the GPL.
+
+The phone app also includes:
+- sherpa-onnx (Apache-2.0, https://github.com/k2-fsa/sherpa-onnx), which renders the cue voice. Its native libraries
+  contain ONNX Runtime (MIT, https://github.com/microsoft/onnxruntime) and the espeak-ng speech engine
+  (GPL-3.0-or-later, https://github.com/espeak-ng/espeak-ng), among the other components that the cmake/ folder of
+  sherpa-onnx v1.13.7 lists.
+- To install the watch app from the phone: Kadb (Apache-2.0, https://github.com/flyfishxu/Kadb), spake2-java (GPL-3.0,
+  https://github.com/Flyfish233/spake2-java), curve25519-elisabeth and ed25519-elisabeth (MIT, with BSD-3-Clause code
+  that curve25519-elisabeth ported from curve25519-dalek; https://github.com/cryptography-cafe), Bouncy Castle (MIT,
+  https://www.bouncycastle.org), Okio (Apache-2.0, https://github.com/square/okio) and AndroidHiddenApiBypass
+  (Apache-2.0, https://github.com/LSPosed/AndroidHiddenApiBypass).
+- D8 from R8 (BSD-3-Clause, https://r8.googlesource.com/r8), which converts the user's own Samsung kit on the phone.
+  R8 also carries third-party code, each part listed with its license in the LICENSE file inside r8-9.5.23.jar
+  (https://dl.google.com/android/maven2/com/android/tools/r8/9.5.23/r8-9.5.23.jar).
+
+The optional neural voice model is in neither this repository nor the apps: tools/voice/fetch_voice_model.sh downloads
+Kokoro-82M (Apache-2.0) with espeak-ng data (GPL-3.0) from their publishers, and tools/voice/push_voice_model.sh
+copies it to your own phone.
+
+The MIT-licensed components above are
+  Copyright (c) Microsoft Corporation (ONNX Runtime)
+  Copyright (c) 2019 Jack Grigg (curve25519-elisabeth, ed25519-elisabeth)
+  Copyright (c) 2000-2026 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org) (Bouncy Castle)
+and each is distributed under this license:
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+  documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+  persons to whom the Software is furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+  Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+  WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+  COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+R8:
+
+  Copyright (c) 2016, the R8 project authors.
+  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+  following conditions are met:
+
+  * Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+    disclaimer.
+
+  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
+    disclaimer in the documentation and/or other materials provided with the distribution.
+
+  * Neither the name of Google Inc. nor the names of its contributors may be used to endorse or promote products
+    derived from this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+The code in curve25519-elisabeth ported from curve25519-dalek:
+
+  Copyright (c) 2016-2018 Isis Agora Lovecruft, Henry de Valence. All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+  following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+  disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
+  disclaimer in the documentation and/or other materials provided with the distribution.
+
+  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+  products derived from this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 Not a medical device
 --------------------
 
 OpenTDI is wellness and research software. It is not a medical device and is not intended to
-diagnose, treat, cure, mitigate or prevent any disease or condition. Data from the Samsung Health
-Sensor SDK is for fitness and wellness information only.
+diagnose, treat, cure, mitigate or prevent any disease or condition. Its sensor readings, from any
+source, are for general wellness information only.

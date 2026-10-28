@@ -8,6 +8,13 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Release key (owner, 2026-10-28: "use github actions to publish builds"; docs/SETUP.md §12). The release workflow sets
+// these from repository secrets; a maintainer can set them as Gradle properties instead. :wear reads the same four, so
+// both apps carry one signature. Without them a release build stays unsigned; debug builds keep the debug key.
+fun releaseSigning(name: String): String? =
+    providers.gradleProperty(name).orElse(providers.environmentVariable(name)).orNull
+val releaseKeystore: String? = releaseSigning("OPENTDI_KEYSTORE_FILE")
+
 android {
     namespace = "com.opentdi.mobile"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -18,10 +25,25 @@ android {
         applicationId = "com.opentdi"
         minSdk = libs.versions.mobileMinSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         // The owner's phone is arm64-v8a; the other three ABIs would add about 90 MB of sherpa-onnx native code.
         ndk { abiFilters += "arm64-v8a" }
+    }
+
+    signingConfigs {
+        releaseKeystore?.let { keystore ->
+            create("release") {
+                storeFile = rootProject.file(keystore)
+                storePassword = releaseSigning("OPENTDI_KEYSTORE_PASSWORD")
+                keyAlias = releaseSigning("OPENTDI_KEY_ALIAS")
+                keyPassword = releaseSigning("OPENTDI_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release { signingConfig = signingConfigs.findByName("release") }
     }
 
     compileOptions {
@@ -74,7 +96,8 @@ val fetchSherpaOnnx = tasks.register("fetchSherpaOnnx") {
     }
 }
 
-// The phone carries the watch app as assets/watch.apk, so it can install it on the watch itself (WatchInstaller).
+// The phone carries the watch app of its own build type as assets/watch.apk, so it can install it on the watch itself
+// (WatchInstaller); a release phone carries the release watch app, signed with the same key (spec §10.1).
 abstract class CopyWatchApk : DefaultTask() {
     @get:InputFile
     abstract val apk: RegularFileProperty
@@ -89,13 +112,18 @@ abstract class CopyWatchApk : DefaultTask() {
     }
 }
 
-val copyWatchApk = tasks.register<CopyWatchApk>("copyWatchApk") {
-    dependsOn(":wear:assembleDebug")
-    apk.set(rootProject.layout.projectDirectory.file("wear/build/outputs/apk/debug/wear-debug.apk"))
-}
-
 androidComponents {
-    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(copyWatchApk, CopyWatchApk::outputDir) }
+    onVariants { variant ->
+        val type = variant.name // debug or release: neither app has product flavors
+        val title = type.replaceFirstChar(Char::uppercase)
+        // AGP names an APK built without a signing config "-unsigned"; :wear signs exactly when this module does.
+        val watchApk = if (type == "release" && releaseKeystore == null) "wear-release-unsigned.apk" else "wear-$type.apk"
+        val copyWatchApk = tasks.register<CopyWatchApk>("copy${title}WatchApk") {
+            dependsOn(":wear:assemble$title")
+            apk.set(rootProject.layout.projectDirectory.file("wear/build/outputs/apk/$type/$watchApk"))
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(copyWatchApk, CopyWatchApk::outputDir)
+    }
 }
 
 dependencies {
