@@ -196,10 +196,14 @@ object NightsRepository {
         val cache = readCache(dir)?.takeIf { it.pruned || it.version == SUMMARY_VERSION && it.files == files }
             ?: SummaryCache(SUMMARY_VERSION, files, summarize(dir, zone)).also { writeCache(dir, it) }
         if (prune) {
-            // shortcut: copies older than KEEP_CSV_NIGHTS keep only the summary and the recordings, so a new
-            // SUMMARY_VERSION cannot recompute them; keep their CSVs (zipped) when old nights must be recomputed.
+            // shortcut: copies older than KEEP_CSV_NIGHTS keep only the summary, the recordings and their transcripts,
+            // so a new SUMMARY_VERSION cannot recompute them; keep their CSVs (zipped) when old nights must be recomputed.
             if (!cache.pruned) writeCache(dir, cache.copy(pruned = true))
-            for (file in dir.listFiles().orEmpty()) if (file.name != SUMMARY_FILE && !isRecording(file.name)) file.delete()
+            for (file in dir.listFiles().orEmpty()) {
+                val keep = file.name == SUMMARY_FILE || isRecording(file.name) ||
+                    file.name.endsWith(".txt") && isRecording(file.name.removeSuffix(".txt") + ".m4a")
+                if (!keep) file.delete()
+            }
         }
         return cache.summary
     }
