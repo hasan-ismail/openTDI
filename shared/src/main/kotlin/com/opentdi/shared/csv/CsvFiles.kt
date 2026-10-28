@@ -30,7 +30,12 @@ object CsvFiles {
         "w_skin_temp.csv",
         "arrival_wall_ms,sdk_ts_ms,object_temp_c,ambient_temp_c,status,batch_size",
     )
-    val W_ALARM = file("w_alarm.csv", "wall_ms,alarm(WAKE/WBTB),event,stillness,hr_bpm,detail")
+    val W_ALARM = file("w_alarm.csv", "wall_ms,alarm(WAKE/WBTB/CUES),event,stillness,hr_bpm,detail")
+    val W_MORNING = file(
+        "w_morning.csv",
+        "wall_ms,after(WAKE/WBTB),recording,recalled(YES/VAGUE/NO),lucid(YES/NO/UNSURE),cue_heard(YES/NO)," +
+            "cue_woke(YES/NO),refreshed(1-5),sleep_paralysis(YES/NO)",
+    )
     val W_SPO2 = file(
         "w_spo2.csv",
         "arrival_wall_ms,sdk_ts_ms,spo2_pct,hr_bpm,status," +

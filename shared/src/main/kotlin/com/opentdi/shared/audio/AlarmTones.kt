@@ -48,10 +48,27 @@ fun alarmLoop(tone: AlarmTone, sampleRate: Int): FloatArray {
                 }
             }
         }
-        AlarmTone.VIBRATE_ONLY -> FloatArray(0)
+        AlarmTone.VIBRATE_ONLY, AlarmTone.SPOKEN -> FloatArray(0) // SPOKEN: the player loads the phone's voice
     }
     val peak = out.maxOfOrNull { abs(it) } ?: 0f
     if (peak > 0f) for (k in out.indices) out[k] = out[k] / peak * 0.9f
+    return out
+}
+
+/**
+ * The late-night lucidity cue: three soft rising tones (400, 600, 800 Hz, ~650 ms in all), the cue of the Northwestern
+ * home TLR study (Konkoly et al. 2024), peak 0.9. Distinct from every wake-up tone, so it never means "get up".
+ */
+fun lucidCue(sampleRate: Int): FloatArray {
+    val out = FloatArray((0.65 * sampleRate).toInt())
+    for ((i, f) in listOf(400.0, 600.0, 800.0).withIndex()) {
+        val from = (i * 0.217 * sampleRate).toInt()
+        val n = (0.2 * sampleRate).toInt()
+        for (k in 0 until n) {
+            val edge = min(1.0, min(k, n - k) / (0.02 * sampleRate)) // 20 ms fades: soft onsets
+            out[from + k] = (sin(2 * PI * f * k / sampleRate) * edge * 0.9).toFloat()
+        }
+    }
     return out
 }
 

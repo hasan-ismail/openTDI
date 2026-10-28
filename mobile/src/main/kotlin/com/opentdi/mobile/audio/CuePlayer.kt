@@ -236,6 +236,36 @@ class CuePlayer(private val context: Context) {
         }
     }
 
+    /** Sends [audio] for the watch to keep, not play: the spoken wake-up alarm. True when the watch stored it. */
+    suspend fun storeOnWatch(audio: WavAudio): Boolean = withContext(Dispatchers.IO) {
+        val channels = Wearable.getChannelClient(context)
+        val channel = openWatchChannel(channels) ?: return@withContext false
+        try {
+            coroutineScope {
+                val watchdog = launch {
+                    try {
+                        delay(WATCH_STORE_TIMEOUT_MS)
+                    } finally {
+                        channels.close(channel)
+                    }
+                }
+                try {
+                    val out = channels.getOutputStream(channel).await()
+                    WristCue.write(out, audio.samples, audio.sampleRate, calibrate = false, store = true)
+                    WristCue.readReply(channels.getInputStream(channel).await()) {}?.status == WristCue.PLAYED
+                } finally {
+                    watchdog.cancel()
+                }
+            }
+        } catch (e: IOException) {
+            false
+        } catch (e: ApiException) {
+            false
+        } finally {
+            channels.close(channel)
+        }
+    }
+
     /**
      * The cue channel to the watch, retried for [WATCH_CONNECT_MS]: a Bluetooth gap of a few seconds should not cost
      * a cue (a lost WAKE_PROMPT aborts its cycle). Null when the watch stayed out of reach.
@@ -412,6 +442,7 @@ class CuePlayer(private val context: Context) {
         const val WATCH_MARGIN_MS = 20_000L
         const val WATCH_CONNECT_MS = 30_000L
         const val WATCH_RETRY_MS = 3_000L
+        const val WATCH_STORE_TIMEOUT_MS = 60_000L
 
         // A 250 ms buffer leaves the 20 ms polling writer a wide margin against underruns.
         fun buildTrack(sampleRate: Int): AudioTrack = AudioTrack.Builder()

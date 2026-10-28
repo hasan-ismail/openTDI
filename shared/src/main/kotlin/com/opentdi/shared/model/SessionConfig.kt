@@ -99,6 +99,7 @@ data class AudioConfig(
     val cueTexts: Map<PromptCue, String> = emptyMap(), // the user's words per cue, <= 300 chars; missing or blank = §7.1
     val ttsEngine: TtsEngine = TtsEngine.SYSTEM, // NEURAL falls back to SYSTEM while the model is not on the phone
     val neuralSpeaker: String = "af_bella", // one of NEURAL_SPEAKERS; used by NEURAL only
+    val ownVoice: Map<PromptCue, String> = emptyMap(), // cue → SHA-256 of the user's own recording, used instead of TTS
 )
 
 @Serializable
@@ -150,4 +151,10 @@ data class AlarmConfig(
     val wbtbAwakeMin: Int = 30, // 5..60: 30+ min awake predicted success (LaBerge 2018); then a buzz says sleep
     val rampS: Int = 30, // 0..300: the tone rises from quiet to the watch's alarm volume
     val maxRingMin: Int = 10, // 1..30: then it stops by itself
+    val maxSnoozes: Int = 3, // 0..5 (0 = no snooze button), wake-up alarm only
+    val snoozeMin: Int = 9, // 1..30
+    val sleeperName: String = "", // <= 30 chars; the spoken wake-up says it (being called by name helps recall)
+    val lateCues: LateCueMode = LateCueMode.OFF, // soft tone cues after WBTB; needs wbtbEnabled
+    val lateCueDelayMin: Int = 40, // 10..120 after the back-to-sleep buzz: REM came ~42 min after WBTB (lab)
+    val lateCueVolume: Float = 0.15f, // 0.02..1.0 of the watch's media volume: "notice it, not wake to it"
 )

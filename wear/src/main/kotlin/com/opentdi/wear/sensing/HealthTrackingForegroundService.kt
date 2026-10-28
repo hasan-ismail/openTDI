@@ -56,6 +56,11 @@ class HealthTrackingForegroundService : LifecycleService() {
                 val p = SensingStateHolder.state.value.lastPacket?.packet
                 alarms?.stop(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
             }
+        } else if (intent?.action == ACTION_SNOOZE_ALARM) {
+            handler.post {
+                val p = SensingStateHolder.state.value.lastPacket?.packet
+                alarms?.snooze(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
+            }
         } else if (intent?.action == ACTION_WAIT) {
             if (!foreground) startInForeground(WAITING_TEXT)
             if (ticker == null) SensingStateHolder.update { it.copy(waiting = true) }
@@ -164,6 +169,7 @@ class HealthTrackingForegroundService : LifecycleService() {
         private const val ACTION_STOP = "com.opentdi.wear.action.STOP_LOGGING"
         private const val ACTION_WAIT = "com.opentdi.wear.action.WAIT_FOR_PHONE"
         private const val ACTION_STOP_ALARM = "com.opentdi.wear.action.STOP_ALARM"
+        private const val ACTION_SNOOZE_ALARM = "com.opentdi.wear.action.SNOOZE_ALARM"
         private const val ACTION_START_FROM_PHONE = "com.opentdi.wear.action.START_FROM_PHONE"
         private const val WAITING_TEXT = "Waiting for the phone"
         private const val RECORDING_TEXT = "Logging sensors"
@@ -205,6 +211,13 @@ class HealthTrackingForegroundService : LifecycleService() {
         /** "I'm awake": stops a ringing alarm; the recording goes on. */
         fun stopAlarmIntent(context: Context): Intent =
             Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_STOP_ALARM)
+
+        fun snoozeAlarmIntent(context: Context): Intent =
+            Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_SNOOZE_ALARM)
+
+        fun snoozeAlarm(context: Context) {
+            context.startService(snoozeAlarmIntent(context))
+        }
 
         fun stopAlarm(context: Context) {
             context.startService(stopAlarmIntent(context))

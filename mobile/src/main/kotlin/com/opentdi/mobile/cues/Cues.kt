@@ -30,8 +30,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 
-/** The cues Phase 1 renders and plays; SLEEP_STATE_QUESTION arrives with recording in Phase 2. */
-val PHASE1_CUES = listOf(PromptCue.INITIAL_INCUBATION, PromptCue.WAKE_PROMPT, PromptCue.RE_INCUBATION, PromptCue.SESSION_END)
+/**
+ * The cues Prepare renders; SLEEP_STATE_QUESTION arrives with recording in Phase 2. MORNING_WAKE is the spoken
+ * wake-up alarm, sent to the watch (owner, 2026-10-28).
+ */
+val PHASE1_CUES = listOf(
+    PromptCue.INITIAL_INCUBATION, PromptCue.WAKE_PROMPT, PromptCue.RE_INCUBATION, PromptCue.SESSION_END,
+    PromptCue.MORNING_WAKE,
+)
 
 /**
  * OpenTDI's default words (§7.1): lucidity, telling the sleeper they are dreaming and leaving the rest to them
@@ -43,6 +49,8 @@ fun cueText(cue: PromptCue, @Suppress("UNUSED_PARAMETER") theme: String): String
     PromptCue.WAKE_PROMPT -> "You're falling asleep. You are dreaming now. What do you notice?"
     PromptCue.RE_INCUBATION -> "You are dreaming. You are in control. You can fall back asleep now."
     PromptCue.SESSION_END -> "The session is over. You can wake up now."
+    // Calm and about recall first: being woken by name helped recall more than an alarm tone (§5.2).
+    PromptCue.MORNING_WAKE -> "Good morning. Keep your eyes closed, and replay your dream before you move."
     PromptCue.SLEEP_STATE_QUESTION -> throw IllegalArgumentException("SLEEP_STATE_QUESTION is Phase 2")
 }
 
@@ -51,16 +59,23 @@ fun mitThemeCueText(cue: PromptCue, theme: String): String = when (cue) {
     PromptCue.INITIAL_INCUBATION -> "Remember to think of $theme."
     PromptCue.WAKE_PROMPT -> "You're falling asleep. Please tell me, what's going through your mind?"
     PromptCue.RE_INCUBATION -> "Remember to think of $theme. You can fall back asleep now."
-    PromptCue.SESSION_END, PromptCue.SLEEP_STATE_QUESTION -> cueText(cue, theme)
+    PromptCue.SESSION_END, PromptCue.SLEEP_STATE_QUESTION, PromptCue.MORNING_WAKE -> cueText(cue, theme)
 }
 
 /** Stands for the theme in the user's own cue words, so edited cues follow a later theme change (§7.1). */
 const val THEME_PLACEHOLDER = "[THEME]"
 
 /** The words [cue] is rendered with: the user's own (audio.cueTexts), or the §7.1 wording when missing or blank. */
-fun cueText(cue: PromptCue, config: SessionConfig): String =
-    config.audio.cueTexts[cue]?.takeIf { it.isNotBlank() }?.replace(THEME_PLACEHOLDER, config.theme)
-        ?: cueText(cue, config.theme)
+fun cueText(cue: PromptCue, config: SessionConfig): String {
+    val own = config.audio.cueTexts[cue]?.takeIf { it.isNotBlank() }?.replace(THEME_PLACEHOLDER, config.theme)
+    val name = config.alarms.sleeperName.trim()
+    return when {
+        own != null -> own
+        cue == PromptCue.MORNING_WAKE && name.isNotEmpty() ->
+            cueText(cue, config.theme).replaceFirst("Good morning.", "Good morning, $name.")
+        else -> cueText(cue, config.theme)
+    }
+}
 
 /**
  * [text] as the phrases that are rendered one by one (§7.3): split after . ? ! ; : or a comma that a space follows,
@@ -77,8 +92,10 @@ fun cueFingerprint(config: SessionConfig, voice: String): String {
     val audio = config.audio
     // Only NEURAL adds inputs, so cues prepared with the system voice before the engine choice existed stay ready.
     val engine = if (audio.ttsEngine == TtsEngine.NEURAL) listOf("NEURAL", audio.neuralSpeaker) else emptyList()
+    // Own recordings likewise: only present ones add inputs.
+    val own = audio.ownVoice.toSortedMap().map { (cue, sha) -> "own:$cue:$sha" }
     val inputs = listOf(config.theme, voice, "${audio.ttsSpeechRate}", "${audio.phrasePauseMs}", "${audio.fadeInMs}") +
-        engine + PHASE1_CUES.map { cueText(it, config) }
+        engine + PHASE1_CUES.map { cueText(it, config) } + own
     return sha256Hex(OpenTdiJson.encodeToString(inputs).toByteArray())
 }
 
@@ -265,6 +282,15 @@ private suspend fun storeCues(
     // Trimmed speech would start at sample 0, where the §7.4 fade swallows a short first phrase.
     val leadMs = (config.audio.fadeInMs * StructuralConstants.SPEECH_LEAD_FADE_FRACTION).toInt()
     val rendered = PHASE1_CUES.map { cue ->
+        val ownSha = config.audio.ownVoice[cue]
+        if (ownSha != null) { // the user's own recording, trimmed and led in like speech (OwnVoice.kt)
+            val own = withContext(Dispatchers.IO) { loadOwnVoice(context, cue, ownSha) }
+            val samples = trimSilence(own.samples)
+            if (samples.isEmpty()) throw CueException("Your recording for \"${cue.name}\" is silent. Record it again.")
+            val padded = joinWithPauses(listOf(samples), own.sampleRate, config.audio.phrasePauseMs, leadMs)
+            withContext(Dispatchers.IO) { storeCue(cueFile(context, cue), padded, own.sampleRate) }
+            return@map RenderedCue(cue, own.sampleRate, AudioFormat.ENCODING_PCM_16BIT, 1)
+        }
         val phrases = splitPhrases(cueText(cue, config)).mapIndexed { i, text ->
             val (format, raw) = phrase(cue, i, text)
             val samples = trimSilence(raw)

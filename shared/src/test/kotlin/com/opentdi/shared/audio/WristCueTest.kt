@@ -22,6 +22,8 @@ class WristCueTest {
         assertArrayEquals(floatArrayOf(0f, 0.5f, -0.5f, 1f, -1f, 1f), back.audio.samples, 1e-4f)
         val plain = ByteArrayOutputStream().also { WristCue.write(it, FloatArray(0), 22_050, calibrate = false) }
         assertFalse(WristCue.read(plain.toByteArray().inputStream()).calibrate)
+        val kept = ByteArrayOutputStream().also { WristCue.write(it, FloatArray(0), 24_000, calibrate = false, store = true) }
+        WristCue.read(kept.toByteArray().inputStream()).let { assertTrue(it.store && !it.calibrate) }
     }
 
     @Test(expected = IOException::class)

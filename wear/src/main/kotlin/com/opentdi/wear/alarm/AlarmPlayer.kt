@@ -1,5 +1,7 @@
 package com.opentdi.wear.alarm
 
+import java.io.File
+import com.opentdi.shared.audio.WavIo
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
@@ -17,7 +19,7 @@ import com.opentdi.shared.model.AlarmTone
  * Plays an alarm tone on the watch speaker in a loop at the watch's alarm volume, with a vibration pattern, until
  * [stop]. USAGE_ALARM: it plays through Do Not Disturb and bedtime mode, as an alarm clock does.
  */
-class AlarmPlayer(context: Context) {
+class AlarmPlayer(private val context: Context) {
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val vibrator = context.getSystemService(Vibrator::class.java)
     private var track: AudioTrack? = null
@@ -25,14 +27,17 @@ class AlarmPlayer(context: Context) {
     /** Starts [tone] at [volume] (0..1 of the alarm stream); a [gentle] vibration is softer and sparser. */
     fun start(tone: AlarmTone, volume: Float, gentle: Boolean) {
         stop()
-        val loop = alarmLoop(tone, SAMPLE_RATE)
+        val voice = if (tone == AlarmTone.SPOKEN) spokenLoop() else null
+        // Without a voice from the phone yet, SPOKEN falls back to the melody.
+        val loop = voice ?: alarmLoop(if (tone == AlarmTone.SPOKEN) AlarmTone.MELODY else tone, SAMPLE_RATE)
+        val rate = if (voice != null) voiceRate else SAMPLE_RATE
         if (loop.isNotEmpty()) {
             track = AudioTrack.Builder()
                 .setAudioAttributes(ATTRIBUTES)
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                        .setSampleRate(SAMPLE_RATE)
+                        .setSampleRate(rate)
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build(),
                 )
@@ -59,6 +64,21 @@ class AlarmPlayer(context: Context) {
 
     fun setVolume(volume: Float) {
         track?.setVolume(volume)
+    }
+
+    private var voiceRate = SAMPLE_RATE
+
+    /** The phone's MORNING_WAKE voice with 3 s of quiet after it, or null when the phone has not sent one. */
+    private fun spokenLoop(): FloatArray? {
+        val file = File(context.filesDir, WAKE_VOICE_FILE)
+        if (!file.exists()) return null
+        val audio = try {
+            WavIo.read(file.readBytes())
+        } catch (e: IllegalArgumentException) { // an unreadable file: the melody instead
+            return null
+        }
+        voiceRate = audio.sampleRate
+        return audio.samples.copyOf(audio.samples.size + 3 * audio.sampleRate)
     }
 
     /** One short buzz, e.g. WBTB's "go back to sleep". */
@@ -89,9 +109,11 @@ class AlarmPlayer(context: Context) {
         }
     }
 
-    private companion object {
-        const val SAMPLE_RATE = 24_000
-        val ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
+    companion object {
+        /** The spoken wake-up, stored by WristSpeakerService when the phone sends it. */
+        const val WAKE_VOICE_FILE = "wake_voice.wav"
+        private const val SAMPLE_RATE = 24_000
+        private val ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ALARM)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()

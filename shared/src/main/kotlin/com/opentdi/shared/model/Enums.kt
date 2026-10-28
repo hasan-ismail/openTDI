@@ -14,7 +14,7 @@ enum class TdiState {
 enum class SessionMode { DETECTION, TIMED_CUES }
 
 @Serializable
-enum class PromptCue { INITIAL_INCUBATION, WAKE_PROMPT, SLEEP_STATE_QUESTION, RE_INCUBATION, SESSION_END }
+enum class PromptCue { INITIAL_INCUBATION, WAKE_PROMPT, SLEEP_STATE_QUESTION, RE_INCUBATION, SESSION_END, MORNING_WAKE }
 
 @Serializable
 enum class AudioRouteMode {
@@ -86,9 +86,13 @@ enum class EndAlarm { CHIME, NONE }
 @Serializable
 enum class TtsEngine { SYSTEM, NEURAL }
 
-/** Watch alarm sounds (AlarmTones); VIBRATE_ONLY plays none. */
+/** Watch alarm sounds (AlarmTones); VIBRATE_ONLY plays none; SPOKEN is the MORNING_WAKE cue the phone sent. */
 @Serializable
-enum class AlarmTone { MELODY, GENTLE_CHIMES, RISING_TONE, CLASSIC_BEEPS, VIBRATE_ONLY }
+enum class AlarmTone { MELODY, GENTLE_CHIMES, RISING_TONE, CLASSIC_BEEPS, VIBRATE_ONLY, SPOKEN }
+
+/** Late-night lucidity cues after WBTB; EXPERIMENT picks cue or no-cue at random each night, unseen (blinded). */
+@Serializable
+enum class LateCueMode { OFF, ON, EXPERIMENT }
 
 /** The Kokoro v0.19 voices in voices.bin order, so a name's index is its speaker id; af_ and bf_ are female. */
 val NEURAL_SPEAKERS = listOf(

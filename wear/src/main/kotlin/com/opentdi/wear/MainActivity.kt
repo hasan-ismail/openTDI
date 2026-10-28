@@ -61,6 +61,7 @@ import com.opentdi.wear.sensing.SensingStateHolder
 import com.opentdi.wear.sensing.heartRatePermission
 import com.opentdi.wear.sensing.runtimePermissions
 import com.opentdi.wear.sensing.statusText
+import java.io.File
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -103,6 +104,8 @@ class MainActivity : ComponentActivity() {
                                 onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
                                 onStatusTap = ::onStatusTap,
                                 onAlarmStop = { HealthTrackingForegroundService.stopAlarm(this@MainActivity) },
+                                onSnooze = { HealthTrackingForegroundService.snoozeAlarm(this@MainActivity) },
+                                onReport = { page = Page.REPORT },
                                 onDetails = { page = Page.DETAILS },
                                 onSessions = { page = Page.SESSIONS },
                             )
@@ -112,10 +115,31 @@ class MainActivity : ComponentActivity() {
                                 onLogRawAccelChange = { logRawAccelChoice = it },
                             )
                             Page.SESSIONS -> SessionsScreen(runningId = state.sessionId.takeIf { state.running })
+                            Page.REPORT -> DreamReportScreen(
+                                after = state.reportAfter ?: "WAKE",
+                                dir = File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
+                                requestMic = ::requestMic,
+                                onDone = {
+                                    SensingStateHolder.update { it.copy(reportAfter = null) }
+                                    page = Page.MAIN
+                                },
+                            )
                         }
                     }
                 }
             }
+        }
+    }
+
+    /** Runs [then] once the microphone may be used, asking for it first; refused, nothing happens. */
+    private fun requestMic(then: () -> Unit) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            then()
+        } else {
+            afterPermissions = {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) then()
+            }
+            permissionRequest.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
         }
     }
 
@@ -185,7 +209,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Page { MAIN, DETAILS, SESSIONS }
+private enum class Page { MAIN, DETAILS, SESSIONS, REPORT }
 
 // Near-black and dim with a muted indigo-lavender accent: the always-on screen stays lit beside the pillow (§14.6).
 private val NightColors = ColorScheme(
@@ -211,6 +235,8 @@ private fun MainScreen(
     onBasicSensors: () -> Unit,
     onStatusTap: (SensorStatus) -> Unit,
     onAlarmStop: () -> Unit,
+    onSnooze: () -> Unit,
+    onReport: () -> Unit,
     onDetails: () -> Unit,
     onSessions: () -> Unit,
 ) {
@@ -231,6 +257,11 @@ private fun MainScreen(
             state.alarmRinging?.let { kind ->
                 item { BigLine(if (kind == "WAKE") "Good morning" else "Wake back to bed") }
                 item { Button(onClick = onAlarmStop, modifier = Modifier.fillMaxWidth(), label = { Text("I'm awake") }) }
+                if (state.snoozesLeft > 0) {
+                    item {
+                        FilledTonalButton(onClick = onSnooze, modifier = Modifier.fillMaxWidth()) { Text("Snooze") }
+                    }
+                }
             }
             state.wbtbBackToSleepAtMs?.let { at ->
                 item {
@@ -240,7 +271,13 @@ private fun MainScreen(
                     )
                 }
             }
+            if (state.lateCuesTraining && state.wbtbBackToSleepAtMs != null) {
+                item { Text("Tonight, when you hear this soft three-note sound, you are dreaming. Notice it.") }
+            }
             if (state.alarmRinging == null) state.lastWakeText?.let { item { Text(it) } }
+            if (state.alarmRinging == null && state.reportAfter != null) {
+                item { Button(onClick = onReport, modifier = Modifier.fillMaxWidth(), label = { Text("Dream report") }) }
+            }
             if (!state.running && state.waiting) {
                 item { BigLine("Waiting for the phone") }
                 item { Text("Tap Start session on your phone, or start recording here.") }

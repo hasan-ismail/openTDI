@@ -1,5 +1,6 @@
 package com.opentdi.mobile.cues
 
+import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.AudioConfig
 import com.opentdi.shared.model.PromptCue
 import com.opentdi.shared.model.SessionConfig
@@ -39,11 +40,28 @@ class CueTextTest {
     }
 
     @Test
-    fun phase1Cues_areTheFourPlayedCues() {
+    fun phase1Cues_areThePlayedCuesAndTheSpokenWakeUp() {
         assertEquals(
-            listOf(PromptCue.INITIAL_INCUBATION, PromptCue.WAKE_PROMPT, PromptCue.RE_INCUBATION, PromptCue.SESSION_END),
+            listOf(
+                PromptCue.INITIAL_INCUBATION, PromptCue.WAKE_PROMPT, PromptCue.RE_INCUBATION, PromptCue.SESSION_END,
+                PromptCue.MORNING_WAKE,
+            ),
             PHASE1_CUES,
         )
+    }
+
+    @Test
+    fun spokenWakeUp_saysTheSleepersName_unlessTheWordsAreTheirOwn() {
+        val named = SessionConfig(alarms = AlarmConfig(sleeperName = " Hasan "))
+        assertEquals(
+            "Good morning, Hasan. Keep your eyes closed, and replay your dream before you move.",
+            cueText(PromptCue.MORNING_WAKE, named),
+        )
+        val own = named.copy(audio = AudioConfig(cueTexts = mapOf(PromptCue.MORNING_WAKE to "Wake up slowly.")))
+        assertEquals("Wake up slowly.", cueText(PromptCue.MORNING_WAKE, own))
+        // A new own recording asks for Prepare cues again.
+        val recorded = named.copy(audio = AudioConfig(ownVoice = mapOf(PromptCue.WAKE_PROMPT to "abc")))
+        assertTrue(cueFingerprint(named, "v") != cueFingerprint(recorded, "v"))
     }
 
     @Test

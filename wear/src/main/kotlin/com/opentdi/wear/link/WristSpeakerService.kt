@@ -1,5 +1,8 @@
 package com.opentdi.wear.link
 
+import java.io.File
+import com.opentdi.wear.alarm.AlarmPlayer
+import com.opentdi.shared.audio.WavIo
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
@@ -40,7 +43,14 @@ class WristSpeakerService : WearableListenerService() {
                 guard.removeCallbacksAndMessages(null)
             }
             val stream = Tasks.await(channels.getOutputStream(channel)).also { out = it }
-            WristCue.writeReply(stream, play(cue, stream))
+            if (cue.store) { // the spoken wake-up alarm: kept for the morning, not played now
+                val bytes = WavIo.writePcm16Mono(cue.audio.samples, cue.audio.sampleRate)
+                File(filesDir, AlarmPlayer.WAKE_VOICE_FILE).writeBytes(bytes)
+                Log.i(TAG, "WAKE_VOICE_STORED samples=${cue.audio.samples.size}")
+                WristCue.writeReply(stream, WristCue.Reply(WristCue.PLAYED))
+            } else {
+                WristCue.writeReply(stream, play(cue, stream))
+            }
         } catch (e: Exception) { // a closed channel, a bad header, a track the system refused
             Log.w(TAG, "WRIST_CUE_FAILED reason=${e.javaClass.simpleName}")
             try {

@@ -11,12 +11,15 @@ import org.junit.Test
 class AlarmTonesTest {
     @Test
     fun everyToneLoopsForOneToFourSeconds_atAPeakOf09_andVibrationHasNone() {
-        for (tone in AlarmTone.entries - AlarmTone.VIBRATE_ONLY) {
+        for (tone in AlarmTone.entries - AlarmTone.VIBRATE_ONLY - AlarmTone.SPOKEN) {
             val loop = alarmLoop(tone, 24_000)
             assertTrue("$tone length", loop.size in 24_000..96_000)
             assertEquals("$tone peak", 0.9f, loop.maxOf { abs(it) }, 1e-4f)
         }
         assertEquals(0, alarmLoop(AlarmTone.VIBRATE_ONLY, 24_000).size)
+        val cue = lucidCue(24_000)
+        assertEquals(15_600, cue.size) // 650 ms
+        assertTrue(cue.maxOf { abs(it) } <= 0.9f)
     }
 
     @Test

@@ -1,5 +1,7 @@
 package com.opentdi.wear.alarm
 
+import kotlin.random.Random
+import com.opentdi.shared.model.LateCueMode
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -30,11 +32,20 @@ import java.util.Locale
 class WakeAlarms(private val context: Context, private val dir: File, startMs: Long, private val config: AlarmConfig) {
     private val zone = ZoneId.systemDefault()
     private var wakeAt = if (config.wakeEnabled) nextAlarmAt(config.wakeAtMin, startMs, zone) else null
+    private var firstRingAt: Long? = null // the first ring of a snoozed wake-up
     private var wbtbAt = if (config.wbtbEnabled) nextAlarmAt(config.wbtbAtMin, startMs, zone) else null
     private val player = AlarmPlayer(context)
     private var ringing: Ringing? = null
     private var backToSleepAt: Long? = null
     private var csv: CsvWriter? = null
+    private var snoozes = 0
+    private val lateCues = if (config.wbtbEnabled && config.lateCues != LateCueMode.OFF) {
+        // EXPERIMENT: a coin decides tonight, unseen, so cue and no-cue nights can be compared (§5.4).
+        val cueNight = config.lateCues == LateCueMode.ON || Random.nextBoolean()
+        LateCues(context, config, cueNight) { event, still, hr, detail -> log(System.currentTimeMillis(), "CUES", event, still, hr, detail) }
+    } else {
+        null
+    }
 
     private class Ringing(
         val kind: String,
@@ -46,6 +57,7 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
     )
 
     fun tick(nowMs: Long, stillness: Float?, hr: Float?) {
+        lateCues?.tick(nowMs, stillness, hr)
         val r = ringing
         if (r != null) {
             if (r.movedAtMs == null && stillness != null && stillness < MOVING) {
@@ -70,6 +82,7 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
                 backToSleepAt = null
                 player.buzz()
                 log(nowMs, "WBTB", "BACK_TO_SLEEP", stillness, hr, null)
+                lateCues?.arm(nowMs)
                 SensingStateHolder.update { s -> s.copy(wbtbBackToSleepAtMs = null) }
             }
         }
@@ -82,6 +95,20 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
         }
     }
 
+    /** Snooze (wake-up alarm only, at most maxSnoozes): it rings again snoozeMin later; the wait counts as waking. */
+    fun snooze(nowMs: Long, stillness: Float?, hr: Float?) {
+        val r = ringing ?: return
+        if (r.kind != "WAKE" || snoozes >= config.maxSnoozes) return
+        snoozes++
+        ringing = null
+        player.stop()
+        context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+        log(nowMs, r.kind, "SNOOZE", stillness, hr, "after_ms=${nowMs - r.startMs};snooze=$snoozes")
+        wakeAt = nowMs + config.snoozeMin * 60_000L
+        firstRingAt = firstRingAt ?: r.startMs
+        SensingStateHolder.update { it.copy(alarmRinging = null, snoozesLeft = 0) }
+    }
+
     /** "I'm awake" ([how] STOPPED), or the ring time ran out (TIMED_OUT). */
     fun stop(nowMs: Long, stillness: Float?, hr: Float?, how: String = "STOPPED") {
         val r = ringing ?: return
@@ -90,22 +117,33 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         val moved = r.movedAtMs?.let { it - r.startMs }
         log(nowMs, r.kind, how, stillness, hr, "after_ms=${nowMs - r.startMs};first_movement_ms=${moved ?: ""}")
+        val total = nowMs - (firstRingAt ?: r.startMs) // snoozes count as part of waking up
         val summary = if (r.kind == "WAKE") {
             "Stay still with your eyes closed and replay your dream before you move. You moved after " +
-                "${clock(moved)} and stopped the alarm after ${clock(nowMs - r.startMs)}."
+                "${clock(moved)} and stopped the alarm after ${clock(total)}" +
+                (if (snoozes > 0) " ($snoozes snoozes)." else ".")
         } else {
             null
         }
-        if (r.kind == "WBTB" && how == "STOPPED") backToSleepAt = nowMs + config.wbtbAwakeMin * 60_000L
+        if (r.kind == "WBTB" && how == "STOPPED") {
+            backToSleepAt = nowMs + config.wbtbAwakeMin * 60_000L
+            lateCues?.train(nowMs)
+        }
         SensingStateHolder.update {
-            it.copy(alarmRinging = null, wbtbBackToSleepAtMs = backToSleepAt, lastWakeText = summary ?: it.lastWakeText)
+            it.copy(
+                alarmRinging = null,
+                wbtbBackToSleepAtMs = backToSleepAt,
+                lateCuesTraining = r.kind == "WBTB" && how == "STOPPED" && lateCues != null,
+                lastWakeText = summary ?: it.lastWakeText,
+                reportAfter = if (how == "STOPPED") r.kind else it.reportAfter,
+            )
         }
     }
 
     fun close() {
         player.stop()
         if (ringing != null) context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
-        SensingStateHolder.update { it.copy(alarmRinging = null, wbtbBackToSleepAtMs = null) }
+        SensingStateHolder.update { it.copy(alarmRinging = null, wbtbBackToSleepAtMs = null, lateCuesTraining = false) }
         csv?.close()
     }
 
@@ -113,11 +151,12 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
         ringing = Ringing(kind, tone, nowMs)
         player.start(tone, if (config.rampS == 0) 1f else 0.05f, gentle)
         log(nowMs, kind, "RING", stillness, hr, "tone=$tone;alarm_volume=${player.alarmVolumeIndex()}")
-        SensingStateHolder.update { it.copy(alarmRinging = kind) }
-        notifyRinging(kind)
+        val left = if (kind == "WAKE") config.maxSnoozes - snoozes else 0
+        SensingStateHolder.update { it.copy(alarmRinging = kind, snoozesLeft = left) }
+        notifyRinging(kind, left > 0)
     }
 
-    private fun notifyRinging(kind: String) {
+    private fun notifyRinging(kind: String, canSnooze: Boolean) {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Alarms", NotificationManager.IMPORTANCE_HIGH))
         val open = PendingIntent.getActivity(
@@ -135,6 +174,14 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
             .setContentIntent(open)
             .setFullScreenIntent(open, true)
             .addAction(0, "I'm awake", stop)
+            .apply {
+                if (canSnooze) {
+                    val snooze = PendingIntent.getService(
+                        context, 3, HealthTrackingForegroundService.snoozeAlarmIntent(context), PendingIntent.FLAG_IMMUTABLE,
+                    )
+                    addAction(0, "Snooze ${config.snoozeMin} min", snooze)
+                }
+            }
             .setOngoing(true)
             .build()
         nm.notify(NOTIFICATION_ID, notification)

@@ -1,5 +1,10 @@
 package com.opentdi.mobile
 
+import java.util.concurrent.atomic.AtomicBoolean
+import com.opentdi.mobile.cues.saveOwnVoice
+import com.opentdi.mobile.cues.recordMic
+import com.opentdi.mobile.cues.removeOwnVoice
+import com.opentdi.mobile.cues.OWN_VOICE_RATE
 import com.opentdi.shared.model.AlarmTone
 import android.app.Application
 import android.app.NotificationManager
@@ -58,6 +63,7 @@ data class UiState(
     val cueMessage: String? = null,
     val calibratedIndex: Int? = null, // media volume step of the last full test cue (§7.7 calibration)
     val watchTested: Boolean = false, // a test cue played on the watch in this app run
+    val recordingCue: PromptCue? = null, // the cue whose own voice is being recorded
     val batteryUnrestricted: Boolean = true, // as checked at the last resume
     val batteryManual: Boolean = false, // no battery settings screen opened: show the path instead
 )
@@ -108,9 +114,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Plays a few seconds of [tone] on the watch, for choosing an alarm sound. */
+    private val stopRecording = AtomicBoolean(false)
+
+    /** Records the user's own voice for [cue] until [stopOwnVoice] or 20 s; the caller has RECORD_AUDIO. */
+    fun recordOwnVoice(cue: PromptCue) {
+        if (ui.value.recordingCue != null) return
+        stopRecording.set(false)
+        mutableUi.update { it.copy(recordingCue = cue, cueMessage = null) }
+        viewModelScope.launch {
+            val samples = withContext(Dispatchers.IO) { recordMic(stopRecording) }
+            if (samples == null || samples.size < OWN_VOICE_RATE / 2) {
+                mutableUi.update { it.copy(recordingCue = null, cueMessage = "Nothing was recorded: try again.") }
+                return@launch
+            }
+            val sha = withContext(Dispatchers.IO) { saveOwnVoice(app, cue, samples) }
+            mutableUi.update { it.copy(recordingCue = null) }
+            edit { it.copy(audio = it.audio.copy(ownVoice = it.audio.ownVoice + (cue to sha))) }
+        }
+    }
+
+    fun stopOwnVoice() = stopRecording.set(true)
+
+    /** Back to the synthetic voice for [cue]. */
+    fun deleteOwnVoice(cue: PromptCue) {
+        edit { it.copy(audio = it.audio.copy(ownVoice = it.audio.ownVoice - cue)) }
+        viewModelScope.launch(Dispatchers.IO) { removeOwnVoice(app, cue) }
+    }
+
+    /** Plays the late-night cue once on the watch at [volume], for setting its loudness while lying in bed. */
+    fun testLateCue(volume: Float) {
+        viewModelScope.launch {
+            if (watchRequest(app, TdiCommand.TestLateCue(volume)) == null) {
+                mutableUi.update { it.copy(cueMessage = "The watch did not answer: is it connected?") }
+            }
+        }
+    }
+
+    /** Plays a few seconds of [tone] on the watch, for choosing an alarm sound; SPOKEN sends the voice first. */
     fun testAlarm(tone: AlarmTone) {
         viewModelScope.launch {
+            if (tone == AlarmTone.SPOKEN) {
+                val voice = try {
+                    withContext(Dispatchers.IO) { loadPreparedCues(app, ui.value.config) }.audio[PromptCue.MORNING_WAKE]
+                } catch (e: CueException) {
+                    null
+                }
+                if (voice == null || !CuePlayer(app).storeOnWatch(voice)) {
+                    mutableUi.update {
+                        it.copy(cueMessage = "Tap Prepare cues first, with the watch connected, for the spoken wake-up.")
+                    }
+                    return@launch
+                }
+            }
             val status = watchRequest(app, TdiCommand.TestAlarm(tone))
             if (status == null) mutableUi.update { it.copy(cueMessage = "The watch did not answer: is it connected?") }
         }

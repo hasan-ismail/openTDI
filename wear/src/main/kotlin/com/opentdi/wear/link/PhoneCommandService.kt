@@ -1,5 +1,7 @@
 package com.opentdi.wear.link
 
+import com.opentdi.wear.alarm.LateCues
+import com.opentdi.shared.model.AlarmConfig
 import android.os.BatteryManager
 import android.util.Log
 import com.google.android.gms.tasks.Task
@@ -43,6 +45,9 @@ class PhoneCommandService : WearableListenerService() {
                 Thread.sleep(TEST_MS)
                 player.stop()
             }.start()
+        }
+        if (command is TdiCommand.TestLateCue) {
+            LateCues(applicationContext, AlarmConfig(), cueNight = true) { _, _, _, _ -> }.play(command.volume)
         }
         try {
             if (command is TdiCommand.StartSession && now == WatchState.WAITING) {

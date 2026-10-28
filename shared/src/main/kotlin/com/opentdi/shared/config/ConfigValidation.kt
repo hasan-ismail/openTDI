@@ -3,6 +3,7 @@ package com.opentdi.shared.config
 import com.opentdi.shared.config.StructuralConstants.nEdaMin
 import com.opentdi.shared.config.StructuralConstants.nHrMin
 import com.opentdi.shared.config.StructuralConstants.nStillMin
+import com.opentdi.shared.model.LateCueMode
 import com.opentdi.shared.model.NEURAL_SPEAKERS
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SimulationMode
@@ -136,6 +137,12 @@ fun SessionConfig.validate(): List<String> {
         int("alarms.wbtbAwakeMin", wbtbAwakeMin, 5..60)
         int("alarms.rampS", rampS, 0..300)
         int("alarms.maxRingMin", maxRingMin, 1..30)
+        int("alarms.maxSnoozes", maxSnoozes, 0..5)
+        int("alarms.snoozeMin", snoozeMin, 1..30)
+        rule(sleeperName.length <= 30) { "alarms.sleeperName is longer than 30 characters" }
+        int("alarms.lateCueDelayMin", lateCueDelayMin, 10..120)
+        float("alarms.lateCueVolume", lateCueVolume, 0.02f..1f)
+        rule(lateCues == LateCueMode.OFF || wbtbEnabled) { "alarms.lateCues need the WBTB alarm (alarms.wbtbEnabled)" }
     }
     return errors
 }

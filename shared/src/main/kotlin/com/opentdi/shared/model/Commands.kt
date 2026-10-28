@@ -26,6 +26,11 @@ sealed class TdiCommand {
     @SerialName("test_alarm")
     data class TestAlarm(val tone: AlarmTone) : TdiCommand()
 
+    /** Phone → watch: plays the late-night lucidity cue once at [volume], for setting its loudness in bed. */
+    @Serializable
+    @SerialName("test_late_cue")
+    data class TestLateCue(val volume: Float) : TdiCommand()
+
     @Serializable
     @SerialName("pause")
     data class PauseSession(val sessionId: String, val origin: DeviceRole) : TdiCommand()

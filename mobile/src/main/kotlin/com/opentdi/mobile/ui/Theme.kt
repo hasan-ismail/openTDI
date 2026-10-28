@@ -1,5 +1,6 @@
 package com.opentdi.mobile.ui
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -128,6 +129,10 @@ fun Help(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** True while Settings shows its sliders (owner, 2026-10-28: sliders live behind "Show advanced settings"). */
+val LocalAdvanced = staticCompositionLocalOf { true }
+
+/** A slider setting; hidden unless [LocalAdvanced]. */
 @Composable
 fun IntSetting(
     label: String,
@@ -139,6 +144,7 @@ fun IntSetting(
     enabled: Boolean,
     onChange: (Int) -> Unit,
 ) {
+    if (!LocalAdvanced.current) return
     Column {
         Text("$label: $value $unit".trimEnd())
         Help(help)

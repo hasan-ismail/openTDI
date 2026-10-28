@@ -1,5 +1,6 @@
 package com.opentdi.mobile.session
 
+import com.opentdi.shared.model.AlarmTone
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -190,6 +191,12 @@ class NapSessionService : LifecycleService() {
                     TdiCommand.StartSession(id, config, DeviceRole.PHONE, System.currentTimeMillis()),
                 )
                 sessionEvent(logLine("WATCH_START", "state" to (watch?.state ?: "NO_ANSWER")))
+                val alarms = config.alarms
+                val spoken = (alarms.wakeEnabled && alarms.wakeTone == AlarmTone.SPOKEN) ||
+                    (alarms.wbtbEnabled && alarms.wbtbTone == AlarmTone.SPOKEN)
+                cues.audio[PromptCue.MORNING_WAKE]?.takeIf { spoken }?.let { voice ->
+                    sessionEvent(logLine("WAKE_VOICE_SENT", "stored" to player.storeOnWatch(voice)))
+                }
             }
             lifecycleScope.launch(Dispatchers.IO) { log.writeConfig(configRows()) }
             val (filter, categories) = getSystemService(NotificationManager::class.java).dndState()
