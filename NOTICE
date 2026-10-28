@@ -29,6 +29,10 @@ and is NOT part of this repository. Each developer downloads it from Samsung und
 
 demonstrated. This project is therefore published as source code only.
 
+The phone app includes sherpa-onnx (Apache-2.0, https://github.com/k2-fsa/sherpa-onnx) and the ONNX Runtime it
+bundles (MIT). The optional neural voice model is not in this repository or the app: tools/voice/fetch_voice_model.sh
+downloads Kokoro-82M (Apache-2.0) with espeak-ng data (GPL-3.0).
+
 The :samsung-health-stub module is original OpenTDI code that mirrors the SDK's public API (as
 documented in Samsung's public API reference) so the project compiles without the SDK; it contains
 no Samsung code.

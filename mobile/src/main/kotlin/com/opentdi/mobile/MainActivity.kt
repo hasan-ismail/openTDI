@@ -19,11 +19,18 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.audio.dndEffect
 import com.opentdi.mobile.audio.dndState
@@ -31,9 +38,12 @@ import com.opentdi.mobile.link.WatchStreamListener
 import com.opentdi.mobile.session.NapSessionService
 import com.opentdi.mobile.session.closeKilledSession
 import com.opentdi.mobile.session.deleteOldSessions
+import com.opentdi.mobile.ui.BottomTabs
 import com.opentdi.mobile.ui.OpenTdiTheme
-import com.opentdi.mobile.ui.SessionScreen
 import com.opentdi.mobile.ui.SessionsScreen
+import com.opentdi.mobile.ui.SettingsScreen
+import com.opentdi.mobile.ui.TonightScreen
+import com.opentdi.mobile.ui.WatchScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -59,18 +69,27 @@ class MainActivity : ComponentActivity() {
         lifecycle.addObserver(WatchStreamListener(applicationContext))
         setContent {
             OpenTdiTheme {
-                var sessions by rememberSaveable { mutableStateOf(false) }
-                if (sessions) {
-                    BackHandler { sessions = false }
-                    SessionsScreen(viewModel, onBack = { sessions = false })
-                } else {
-                    SessionScreen(
-                        viewModel,
-                        onStart = ::start,
-                        onStop = ::stop,
-                        onAllowBattery = ::allowBattery,
-                        onSessions = { sessions = true },
-                    )
+                var tab by rememberSaveable { mutableIntStateOf(0) }
+                BackHandler(enabled = tab != 0) { tab = 0 }
+                Scaffold(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    bottomBar = { BottomTabs(tab) { tab = it } },
+                ) { padding ->
+                    Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
+                        when (tab) {
+                            0 -> TonightScreen(
+                                viewModel,
+                                onStart = ::start,
+                                onStop = ::stop,
+                                onAllowBattery = ::allowBattery,
+                                onRaiseVolume = ::raiseVolume,
+                                onOpenDnd = ::openDndSettings,
+                            )
+                            1 -> WatchScreen()
+                            2 -> SessionsScreen(viewModel)
+                            else -> SettingsScreen(viewModel)
+                        }
+                    }
                 }
             }
         }
@@ -82,12 +101,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun start() {
-        // A session calibrated at index 0 would scale later cues to silence (§7.7 step 5); the button is off then too.
-        if (getSystemService(AudioManager::class.java).getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return
-        val (filter, categories) = getSystemService(NotificationManager::class.java).dndState()
-        val dnd = dndEffect(filter, categories)
-        viewModel.showDnd(dnd)
-        if (dnd == DndEffect.TOTAL_SILENCE) return // §7.7: blocks Start
+        // The phone's volume and DND only matter when the phone speaker plays the cues.
+        if (viewModel.ui.value.config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER) {
+            // A session calibrated at index 0 would scale later cues to silence (§7.7 step 5); the button is off then.
+            if (getSystemService(AudioManager::class.java).getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return
+            val (filter, categories) = getSystemService(NotificationManager::class.java).dndState()
+            if (dndEffect(filter, categories) == DndEffect.TOTAL_SILENCE) return // §7.7: blocks Start; Tonight says why
+        }
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             startSessionService()
         } else {
@@ -107,22 +127,35 @@ class MainActivity : ComponentActivity() {
     private fun batteryUnrestricted() =
         getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
 
+    /** One step up on the media volume, with the system volume panel so the user sees it. */
+    private fun raiseVolume() {
+        getSystemService(AudioManager::class.java)
+            .adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+    }
+
+    // ZEN_MODE_SETTINGS is not public API, so the sound settings are the fallback.
+    private fun openDndSettings() {
+        openFirst(Intent("android.settings.ZEN_MODE_SETTINGS"), Intent(Settings.ACTION_SOUND_SETTINGS))
+    }
+
     /** Opens the first screen that can make battery use "Unrestricted"; without one the card shows the path. */
     @SuppressLint("BatteryLife") // an overnight session on a charging phone is the use this exemption is for
     private fun allowBattery() {
         val app = Uri.fromParts("package", packageName, null)
-        val opened = listOf(
+        val opened = openFirst(
             Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, app),
             Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, app),
-        ).any { intent ->
-            try {
-                startActivity(intent)
-                true
-            } catch (e: ActivityNotFoundException) {
-                false
-            }
-        }
+        )
         if (!opened) viewModel.showBatteryManual()
+    }
+
+    private fun openFirst(vararg intents: Intent) = intents.any { intent ->
+        try {
+            startActivity(intent)
+            true
+        } catch (e: ActivityNotFoundException) {
+            false
+        }
     }
 }

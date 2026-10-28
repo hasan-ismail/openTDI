@@ -16,6 +16,7 @@ import com.opentdi.shared.model.SensorsConfig
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SimulationMode
 import com.opentdi.shared.model.TimedCueConfig
+import com.opentdi.shared.model.TtsEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -91,6 +92,7 @@ class ConfigValidationTest {
             SessionConfig(audio = AudioConfig(phrasePauseMs = 2001)) to "audio.phrasePauseMs",
             SessionConfig(audio = AudioConfig(cueTexts = mapOf(PromptCue.WAKE_PROMPT to "x".repeat(301)))) to
                 "audio.cueTexts.WAKE_PROMPT",
+            SessionConfig(audio = AudioConfig(neuralSpeaker = "heart")) to "audio.neuralSpeaker",
             SessionConfig(recording = RecordingConfig(marginDb = 2f)) to "recording.marginDb",
             SessionConfig(recording = RecordingConfig(hangoverMs = 999)) to "recording.hangoverMs",
             SessionConfig(recording = RecordingConfig(noSpeechTimeoutMs = 60_001)) to "recording.noSpeechTimeoutMs",
@@ -124,6 +126,7 @@ class ConfigValidationTest {
         assertValid(SessionConfig(timed = TimedCueConfig(firstSleepMinMin = 60, firstSleepMaxMin = 90)))
         assertValid(SessionConfig(audio = AudioConfig(userGain = 0f, fadeInMs = 0, carrierLevelDbfs = -50)))
         assertValid(SessionConfig(audio = AudioConfig(ttsSpeechRate = 0.5f, phrasePauseMs = 0)))
+        assertValid(SessionConfig(audio = AudioConfig(ttsEngine = TtsEngine.NEURAL, neuralSpeaker = "bf_emma")))
         assertValid(
             SessionConfig(
                 audio = AudioConfig(
@@ -254,6 +257,8 @@ class ConfigValidationTest {
         assertEquals("-75", map["audio.carrierLevelDbfs"])
         assertEquals("0.75", map["audio.ttsSpeechRate"])
         assertEquals("700", map["audio.phrasePauseMs"])
+        assertEquals("SYSTEM", map["audio.ttsEngine"])
+        assertEquals("af_bella", map["audio.neuralSpeaker"])
         assertEquals("", map["audio.cueTexts"]) // no overrides: one empty row
         assertEquals("en-US", map["recording.sttLanguage"])
         assertEquals("2", map["link.telemetryFlushS"])
@@ -263,9 +268,9 @@ class ConfigValidationTest {
         assertEquals("15", map["sensors.spo2IntervalMin"])
         assertEquals("60", map["sensors.spo2TimeoutS"])
         assertEquals("", map["simulation"])
-        // One row per leaf: 7 top-level, 21 detection, 12 accel, 6 timed, 15 audio (2 caps), 12 recording, 3 link,
+        // One row per leaf: 7 top-level, 21 detection, 12 accel, 6 timed, 17 audio (2 caps), 12 recording, 3 link,
         // 6 sensors.
-        assertEquals(82, rows.size)
+        assertEquals(84, rows.size)
 
         val words = "You are dreaming. You are in control."
         val custom = SessionConfig(audio = AudioConfig(cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to words)))

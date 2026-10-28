@@ -476,6 +476,13 @@ prefilled defaults and come back with "Reset to default" or a blank field. The d
 - The cue set stores a fingerprint (SHA-256) of the theme, voice, rate, pause, fade-in and every cue's text; when any of
   them changes, the app asks for Prepare cues again and refuses to start with the old set.
 - Every cue is peak-normalised to −3 dBFS at creation ([U] §3.4 step 1), then stored as a PCM16 mono WAV.
+- **[EXT]** (owner, 2026-10-27: "make the text to speech way more natural, use a female voice, use a model")
+  `audio.ttsEngine = NEURAL` renders each phrase with sherpa-onnx `OfflineTts` and the Kokoro v0.19 int8 model in
+  `filesDir/voice/kokoro-int8-en-v0_19/` (docs/SETUP.md §11), speaker `audio.neuralSpeaker` (default `af_bella`) at
+  speed `audio.ttsSpeechRate` (1 = normal in both engines), float samples at the model's 24 kHz; trimming, pauses,
+  lead, normalisation and storage are unchanged. When the model is missing, does not load or fails while rendering, the
+  app says so and renders with the system voice. The fingerprint adds the engine and speaker only for NEURAL, so
+  system-voice sets prepared before the choice existed stay ready.
 - Phase 3 theme studio: own-voice recordings for every cue (experimenter voice and own voice were both used "without a
   significant change in efficacy", PhD22 p.56, [P] §5.1), normalised the same way.
 

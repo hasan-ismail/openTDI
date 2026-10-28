@@ -50,5 +50,18 @@
             android:name=".sensing.HealthTrackingForegroundService"
             android:exported="false"
             android:foregroundServiceType="health" />
+
+        <!-- The wrist speaker: Play Services starts it when the phone opens the cue channel. -->
+        <service
+            android:name=".link.WristSpeakerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
+                <data
+                    android:host="*"
+                    android:path="/opentdi/wrist_audio_channel"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

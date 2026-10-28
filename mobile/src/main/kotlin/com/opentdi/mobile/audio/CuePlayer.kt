@@ -9,20 +9,29 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.SystemClock
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.Wearable
 import com.opentdi.mobile.logLine
 import com.opentdi.shared.audio.FadeEnvelope
 import com.opentdi.shared.audio.WavAudio
+import com.opentdi.shared.audio.WristCue
 import com.opentdi.shared.audio.targetGain
 import com.opentdi.shared.audio.volumeRaisedCorrection
 import com.opentdi.shared.model.AudioConfig
 import com.opentdi.shared.model.AudioRouteMode
+import com.opentdi.shared.model.DataLayerPaths
 import com.opentdi.shared.model.FocusMode
 import com.opentdi.shared.model.PromptCue
+import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 /** One p_audio.csv row (§12.3) without wall_ms, elapsed_ms, cycle and route, which the logger adds. */
@@ -61,7 +70,7 @@ fun AudioEvent.toLogLine(route: AudioRouteMode, cycle: Int?): String = logLine(
  * cue, a routed-device check, the DND and zero-volume rules and the volume-raised correction. It never changes a
  * stream volume.
  */
-class CuePlayer(context: Context) {
+class CuePlayer(private val context: Context) {
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val notificationManager = context.getSystemService(NotificationManager::class.java)
 
@@ -76,6 +85,7 @@ class CuePlayer(context: Context) {
         calibratedIndex: Int,
         log: (AudioEvent) -> Unit,
     ): Boolean = withContext(Dispatchers.IO) {
+        if (config.route == AudioRouteMode.WATCH_WRIST_SPEAKER) return@withContext playOnWatch(cue, audio, config, log)
         val index = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         val (filter, categories) = notificationManager.dndState()
         log(AudioEvent("DND_STATE", cue, dndFilter = filter, dndCategories = categories, streamIndex = index))
@@ -139,6 +149,67 @@ class CuePlayer(context: Context) {
             Playback(cue, gain, config.fadeInMs, focus, index, speaker, focusChange, log).run(audio)
         } finally {
             audioManager.abandonAudioFocusRequest(focusRequest) // the same request object (§7.7)
+        }
+    }
+
+    /**
+     * The wrist speaker: the cue goes to the watch faded in and at G_target, and the watch's media volume sets the
+     * loudness. The phone's DND, volume and focus rules are about the phone speaker, so they do not apply here.
+     */
+    private suspend fun playOnWatch(
+        cue: PromptCue,
+        audio: WavAudio,
+        config: AudioConfig,
+        log: (AudioEvent) -> Unit,
+    ): Boolean {
+        val gain = config.targetGain()
+        fun event(name: String, detail: String) =
+            AudioEvent(name, cue, gain = gain, fadeMs = config.fadeInMs, detail = detail)
+        val nodes = try {
+            Wearable.getCapabilityClient(context)
+                .getCapability(DataLayerPaths.CAPABILITY_WATCH, CapabilityClient.FILTER_REACHABLE).await().nodes
+        } catch (e: ApiException) {
+            emptySet()
+        }
+        val node = nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull()
+        if (node == null) {
+            log(event("CUE_SKIPPED", "watch_unreachable"))
+            return false
+        }
+        val pcm = FadeEnvelope(audio.sampleRate, config.fadeInMs).applyTo(audio.samples, gain)
+        val channels = Wearable.getChannelClient(context)
+        val channel = try {
+            channels.openChannel(node.id, DataLayerPaths.WRIST_AUDIO_CHANNEL).await()
+        } catch (e: ApiException) {
+            log(event("CUE_SKIPPED", "watch_channel_failed"))
+            return false
+        }
+        log(event("CUE_START", "watch"))
+        val status = try {
+            coroutineScope {
+                // A blocked read only returns once the channel closes, so the deadline closes it: transfer plus play.
+                val watchdog = launch {
+                    delay(2 * pcm.size * 1000L / audio.sampleRate + WATCH_MARGIN_MS)
+                    channels.close(channel)
+                }
+                try {
+                    WristCue.write(channels.getOutputStream(channel).await(), pcm, audio.sampleRate)
+                    channels.getInputStream(channel).await().read()
+                } finally {
+                    watchdog.cancel()
+                }
+            }
+        } catch (e: IOException) {
+            -1
+        } catch (e: ApiException) {
+            -1
+        } finally {
+            channels.close(channel)
+        }
+        return when (status) {
+            WristCue.PLAYED -> true.also { log(event("CUE_END", "watch")) }
+            WristCue.VOLUME_ZERO -> false.also { log(event("VOLUME_ZERO", "watch_media_volume_off")) }
+            else -> false.also { log(event("CUE_END", "watch_failed=$status")) }
         }
     }
 
@@ -273,6 +344,7 @@ class CuePlayer(context: Context) {
         const val ROUTE_CHECK_MS = 1000L // how long after play() the routed device may still be unknown
         const val DEADLINE_MARGIN_MS = 2000L
         const val POLL_MS = 20L
+        const val WATCH_MARGIN_MS = 20_000L
 
         // A 250 ms buffer leaves the 20 ms polling writer a wide margin against underruns.
         fun buildTrack(sampleRate: Int): AudioTrack = AudioTrack.Builder()

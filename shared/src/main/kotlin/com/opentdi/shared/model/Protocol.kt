@@ -23,7 +23,7 @@ object DataLayerPaths {
     const val STATE_COMMAND = "/opentdi/state_command"
     const val HYPNAGOGIA_TRIGGER = "/opentdi/hypnagogia_trigger"
     const val SESSION_FILES = "/opentdi/session_files"
-    const val WRIST_AUDIO_CHANNEL = "/opentdi/wrist_audio_channel" // reserved for the deferred wrist speaker / mic
+    const val WRIST_AUDIO_CHANNEL = "/opentdi/wrist_audio_channel" // wrist speaker cues (WristCue); the wrist mic is deferred
     const val CAPABILITY_PHONE = "opentdi_phone"
     const val CAPABILITY_WATCH = "opentdi_watch"
 }

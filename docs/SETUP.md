@@ -179,7 +179,7 @@ adb -s $W exec-out run-as --user 0 com.opentdi cat files/sessions/<sessionId>/w_
 - Run these in a POSIX shell (Git Bash on Windows). Windows PowerShell 5.1's `>` re-encodes the output as text and
   corrupts the tar file.
 - Phase 1 files: on the watch `w_config.csv`, `w_sensor_raw.csv`, `w_packets.csv`, `w_accel_events.csv` and, only
-  when "Log raw accelerometer" is on, `w_accel_raw.csv`; on the phone `p_config.csv`, `p_transitions.csv` and
+  when "Log raw accelerometer" (watch, Details) is on, `w_accel_raw.csv`; on the phone `p_config.csv`, `p_transitions.csv` and
   `p_audio.csv`. Spec §12.2–12.3 describes every file and column. From Phase 2 the phone also keeps `files/journal/`.
 - All but the last 30 sessions are deleted, on the phone when the app starts and on the watch when a logging session
   starts, so copy what you want to keep.
@@ -204,3 +204,23 @@ android.aapt2FromMavenOverride=C:/Users/<you>/AppData/Local/Android/Sdk/build-to
 
 Use forward slashes, because a backslash is an escape character in `.properties` files. Build-tools 37.0.0 is known
 to work with this project's Android Gradle Plugin (`sdkmanager "build-tools;37.0.0"`).
+
+## 11. Natural voice (optional)
+
+The phone can render the cues with an on-device neural voice instead of Android's text-to-speech: Kokoro-82M v0.19
+(int8) through sherpa-onnx, with American and British female voices. It runs only when you tap **Prepare cues**, never
+during a nap, and needs no network. The model is not in the APK or the repository: download it once (103 MB, 152 MB
+unpacked; Kokoro weights Apache-2.0, espeak-ng data GPL-3.0) and copy it into the app's private storage.
+
+```bash
+tools/voice/fetch_voice_model.sh        # into tools/voice/models/ (gitignored), checked against a pinned SHA-256
+tools/voice/push_voice_model.sh $P      # into files/voice/kokoro-int8-en-v0_19/ of com.opentdi on the phone
+```
+
+The push script copies the model to `/data/local/tmp`, moves it into the app's storage with `run-as --user 0
+com.opentdi` and deletes the temporary copy; it touches nothing else. Uninstalling the app deletes the model, so run
+the push script again after a reinstall (`install -r` keeps it).
+
+Then, in the cue sound settings, turn on **Natural voice**, choose a voice and tap **Prepare cues**. If the model is
+missing, does not load or fails while rendering, the app says so and prepares the cues with the phone's own voice. The
+build fetches the sherpa-onnx AAR (`mobile/libs/`, gitignored, pinned SHA-256) by itself.

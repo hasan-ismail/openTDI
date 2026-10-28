@@ -1,13 +1,17 @@
 package com.opentdi.mobile
 
 import android.app.Application
+import android.app.NotificationManager
 import android.media.AudioManager
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.mobile.audio.AudioEvent
 import com.opentdi.mobile.audio.CuePlayer
 import com.opentdi.mobile.audio.DndEffect
+import com.opentdi.mobile.audio.dndEffect
+import com.opentdi.mobile.audio.dndState
 import com.opentdi.mobile.audio.toLogLine
 import com.opentdi.mobile.cues.CueException
 import com.opentdi.mobile.cues.CueSet
@@ -46,7 +50,6 @@ data class UiState(
     val preparing: Boolean = false,
     val testing: Boolean = false,
     val cueMessage: String? = null,
-    val dnd: DndEffect = DndEffect.PLAYS, // as checked at the last Start tap
     val calibratedIndex: Int? = null, // media volume step of the last full test cue (§7.7 calibration)
     val batteryUnrestricted: Boolean = true, // as checked at the last resume
     val batteryManual: Boolean = false, // no battery settings screen opened: show the path instead
@@ -72,14 +75,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.distinctUntilChanged()
 
+    /** How Do Not Disturb treats cues now (§7.7); polled while the screen collects it. */
+    val dnd: Flow<DndEffect> = flow {
+        val notifications = app.getSystemService(NotificationManager::class.java)
+        while (true) {
+            val (filter, categories) = notifications.dndState()
+            emit(dndEffect(filter, categories))
+            delay(1000)
+        }
+    }.distinctUntilChanged()
+
     /** Applies and saves a settings change. */
     fun edit(transform: (SessionConfig) -> SessionConfig) {
         val next = transform(ui.value.config).copy(revision = System.currentTimeMillis())
         mutableUi.update { it.copy(config = next) }
         saveConfig(app, next)
     }
-
-    fun showDnd(effect: DndEffect) = mutableUi.update { it.copy(dnd = effect) }
 
     fun showBattery(unrestricted: Boolean) = mutableUi.update { it.copy(batteryUnrestricted = unrestricted) }
 
@@ -120,9 +131,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val config = ui.value.config
         mutableUi.update { it.copy(preparing = true, cueMessage = null) }
         viewModelScope.launch {
+            var fallback: String? = null
             val error = try {
-                renderCues(app, config)
-                null
+                renderCues(app, config) { fallback = it }
+                fallback
             } catch (e: CueException) {
                 e.message
             } catch (e: IOException) {
@@ -151,7 +163,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     Log.i(TAG_AUDIO, event.toLogLine(config.audio.route, cycle = null))
                 }
                 if (played) {
-                    if (index > 0) { // a muted test is no calibration: it would scale every later cue to silence
+                    // A muted test is no calibration (it would scale every later cue to silence), nor is the watch's.
+                    if (index > 0 && config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER) {
                         saveCalibratedIndex(app, index)
                         mutableUi.update { it.copy(calibratedIndex = index) }
                     }

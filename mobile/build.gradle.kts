@@ -1,3 +1,5 @@
+import java.net.URI
+import java.security.MessageDigest
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -18,6 +20,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
         versionName = "0.1.0"
+        // The owner's phone is arm64-v8a; the other three ABIs would add about 90 MB of sherpa-onnx native code.
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     compileOptions {
@@ -34,6 +38,37 @@ kotlin {
     compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
 }
 
+// sherpa-onnx (Apache-2.0) renders the neural cue voice (§7.3). Its AAR is not on Maven Central, so it is fetched from
+// the release and checked against a pinned digest instead of being committed (.gitignore).
+val sherpaOnnxAar: File = layout.projectDirectory.file("libs/sherpa-onnx-1.13.7.aar").asFile
+val fetchSherpaOnnx = tasks.register("fetchSherpaOnnx") {
+    description = "Downloads the pinned sherpa-onnx AAR and verifies its digest."
+    // Locals, so the task body does not reach back into the script at execution time.
+    val target = sherpaOnnxAar
+    val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.7/sherpa-onnx-1.13.7.aar"
+    val expected = "c4ef49e309f24fcee5c106b8a279481aaecaabb078cd37b2cd6e9a62cc8a73c8"
+    outputs.file(target)
+    inputs.property("pin", "$url@$expected")
+
+    doLast {
+        fun digest(file: File): String =
+            MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+
+        if (target.exists() && digest(target) == expected) return@doLast
+        target.parentFile.mkdirs()
+        logger.lifecycle("Fetching $url")
+        val partial = File(target.parentFile, target.name + ".part")
+        URI(url).toURL().openStream().use { input -> partial.outputStream().use { input.copyTo(it) } }
+        val actual = digest(partial)
+        if (actual != expected) {
+            partial.delete()
+            error("${target.name} digest mismatch: expected $expected, got $actual")
+        }
+        target.delete()
+        if (!partial.renameTo(target)) error("Could not move ${partial.name} to ${target.name}")
+    }
+}
+
 dependencies {
     implementation(project(":shared"))
     implementation(platform(libs.compose.bom))
@@ -46,5 +81,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.play.services.wearable)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(files(sherpaOnnxAar).builtBy(fetchSherpaOnnx))
     testImplementation(libs.junit)
 }

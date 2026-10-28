@@ -29,7 +29,8 @@ on its sensor-free version that uses timed cues only
 5. **This repeats up to 4 times**, about 7 minutes apart. The session then ends, with a soft chime if you want one.
 
 The phone speaks slowly, one phrase at a time, and every voice fades in over two seconds so it does not startle you.
-You can change the words, the speaking speed and all the timings.
+You can change the words, the voice, the speaking speed and all the timings. If your phone is in another room,
+turn on **Play cues on the watch** and the watch's speaker plays them.
 
 While you sleep, the **watch records your body's signals**: heart rate and heartbeat timing, skin response (EDA),
 movement, skin temperature, blood-oxygen spot checks, and the raw pulse signal, which can later show your breathing.
@@ -48,7 +49,7 @@ The phone shows these live.
 
 | | Works now | Coming next |
 |---|---|---|
-| **Cues** | Timed cues on the phone (MIT's sensor-free method); lucid-dream wording by default; your own words; slow, phrase-by-phrase voice | Cues timed by your body: the watch notices you drifting off. A more natural voice that runs on the phone |
+| **Cues** | Timed cues (MIT's sensor-free method), from the phone or the watch speaker; lucid-dream wording by default; your own words; slow, phrase-by-phrase voice; a natural voice that runs on the phone | Cues timed by your body: the watch notices you drifting off |
 | **Watch** | Records heart rate, heartbeat timing, skin response, movement, skin temperature, blood oxygen and the raw pulse signal; shows it live on the phone | Breathing rate worked out from the pulse signal |
 | **Your answers** | You can speak; nothing is recorded yet | Recording and on-phone transcription, and a dream journal |
 | **Safety** | Volume cap set by you; warnings when the media volume is off or Do Not Disturb would mute the cues | |

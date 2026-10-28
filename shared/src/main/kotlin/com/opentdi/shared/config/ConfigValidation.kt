@@ -3,6 +3,7 @@ package com.opentdi.shared.config
 import com.opentdi.shared.config.StructuralConstants.nEdaMin
 import com.opentdi.shared.config.StructuralConstants.nHrMin
 import com.opentdi.shared.config.StructuralConstants.nStillMin
+import com.opentdi.shared.model.NEURAL_SPEAKERS
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SimulationMode
 
@@ -106,6 +107,7 @@ fun SessionConfig.validate(): List<String> {
         cueTexts.forEach { (cue, text) ->
             rule(text.length <= 300) { "audio.cueTexts.$cue must be at most 300 characters, is ${text.length}" }
         }
+        rule(neuralSpeaker in NEURAL_SPEAKERS) { "audio.neuralSpeaker = $neuralSpeaker is not a voice of the model" }
     }
 
     with(recording) {

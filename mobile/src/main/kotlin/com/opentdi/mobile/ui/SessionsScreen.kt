@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -41,7 +40,7 @@ import com.opentdi.shared.model.StateReason
 
 /** The session directories, newest first, to delete test sessions; the running session cannot be selected. */
 @Composable
-fun SessionsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
+fun SessionsScreen(viewModel: MainViewModel) {
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val status by SessionMonitor.status.collectAsStateWithLifecycle()
     val runningId = status.sessionId.takeIf { status.running }
@@ -53,18 +52,15 @@ fun SessionsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val chosen = deletable.filter { it in selected }
     LaunchedEffect(status.running) { viewModel.loadSessions() } // again when a session starts or ends
 
-    Scaffold(containerColor = Color.Black) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Sessions", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = onBack) { Text("Back") }
-            }
+            Text("Sessions", style = MaterialTheme.typography.headlineMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = { confirm = chosen }, enabled = chosen.isNotEmpty()) { Text("Delete selected") }
                 OutlinedButton(onClick = { confirm = deletable }, enabled = deletable.isNotEmpty()) {

@@ -21,7 +21,7 @@ enum class AudioRouteMode {
     NIGHTSTAND_SPEAKER,
     BLUETOOTH_SLEEP_AUDIO,
     USB_WIRED_DAC, // deferred, disabled in the UI
-    WATCH_WRIST_SPEAKER, // deferred, disabled in the UI
+    WATCH_WRIST_SPEAKER, // the phone sends each cue to the watch, which plays it (WristCue)
 }
 
 /** `MIT_STANDARD` keeps its name for the wire format; the UI label is "Standard" (no value in it is MIT's). */
@@ -81,6 +81,16 @@ enum class RouteLossPolicy { PAUSE_CUES, SPEAKER_FALLBACK }
 
 @Serializable
 enum class EndAlarm { CHIME, NONE }
+
+/** What renders the cues at Prepare cues (§7.3): Android's TextToSpeech, or the on-device Kokoro model. */
+@Serializable
+enum class TtsEngine { SYSTEM, NEURAL }
+
+/** The Kokoro v0.19 voices in voices.bin order, so a name's index is its speaker id; af_ and bf_ are female. */
+val NEURAL_SPEAKERS = listOf(
+    "af", "af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael",
+    "bf_emma", "bf_isabella", "bm_george", "bm_lewis",
+)
 
 @Serializable
 enum class PriorHrSource { NONE, USER_ENTERED, PREVIOUS_SESSION }

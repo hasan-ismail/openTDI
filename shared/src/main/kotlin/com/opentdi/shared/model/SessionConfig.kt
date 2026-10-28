@@ -94,6 +94,8 @@ data class AudioConfig(
     val ttsSpeechRate: Float = 0.75f, // 0.5..1.2; TextToSpeech.setSpeechRate when the cues are prepared, 1 = normal
     val phrasePauseMs: Int = 700, // 0..2000; silence between the phrases of a cue
     val cueTexts: Map<PromptCue, String> = emptyMap(), // the user's words per cue, <= 300 chars; missing or blank = §7.1
+    val ttsEngine: TtsEngine = TtsEngine.SYSTEM, // NEURAL falls back to SYSTEM while the model is not on the phone
+    val neuralSpeaker: String = "af_bella", // one of NEURAL_SPEAKERS; used by NEURAL only
 )
 
 @Serializable

@@ -10,7 +10,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,13 +26,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
+import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.FilledTonalButton
@@ -37,6 +50,7 @@ import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
 import com.opentdi.shared.model.AccelConfig
 import com.opentdi.shared.model.GravityMode
+import com.opentdi.shared.model.PROTOCOL_VERSION
 import com.opentdi.shared.model.SensorSource
 import com.opentdi.shared.model.SensorStatus
 import com.opentdi.shared.sensing.AccelProcessor
@@ -47,9 +61,10 @@ import com.opentdi.wear.sensing.heartRatePermission
 import com.opentdi.wear.sensing.runtimePermissions
 import com.opentdi.wear.sensing.statusText
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
-/** Starts and stops watch logging sessions and shows the sensor status and live values (Phase 1, §0). */
+/** Starts and stops watch recording sessions and shows the sensor status and live values (Phase 1, §0). */
 class MainActivity : ComponentActivity() {
     private var afterPermissions: (() -> Unit)? = null
     private var resolving = false // Galaxy Store was opened to install or update Health Sensor Service
@@ -66,28 +81,31 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by SensingStateHolder.state.collectAsStateWithLifecycle()
             var logRawAccelChoice by rememberSaveable { mutableStateOf(AccelConfig().logRawAccel) }
-            var sessionsOpen by rememberSaveable { mutableStateOf(false) }
+            var page by rememberSaveable { mutableStateOf(Page.MAIN) }
             val logRawAccel = if (state.running) state.logRawAccel else logRawAccelChoice
             MaterialTheme(colorScheme = NightColors) {
                 AppScaffold {
-                    BackHandler(enabled = sessionsOpen) { sessionsOpen = false }
+                    BackHandler(enabled = page != Page.MAIN) { page = Page.MAIN }
                     SwipeToDismissBox(
-                        onDismissed = { sessionsOpen = false },
-                        userSwipeEnabled = sessionsOpen,
+                        onDismissed = { page = Page.MAIN },
+                        userSwipeEnabled = page != Page.MAIN,
                     ) { isBackground ->
-                        if (sessionsOpen && !isBackground) {
-                            SessionsScreen(runningId = state.sessionId.takeIf { state.running })
-                        } else {
-                            SessionScreen(
+                        when (if (isBackground) Page.MAIN else page) {
+                            Page.MAIN -> MainScreen(
                                 state = state,
-                                logRawAccel = logRawAccel,
-                                onLogRawAccelChange = { logRawAccelChoice = it },
                                 onStart = { startSession(logRawAccel, androidSensorsOnly = false) },
                                 onStop = { HealthTrackingForegroundService.stop(this@MainActivity) },
                                 onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
                                 onStatusTap = ::onStatusTap,
-                                onSessions = { sessionsOpen = true },
+                                onDetails = { page = Page.DETAILS },
+                                onSessions = { page = Page.SESSIONS },
                             )
+                            Page.DETAILS -> DetailsScreen(
+                                state = state,
+                                logRawAccel = logRawAccel,
+                                onLogRawAccelChange = { logRawAccelChoice = it },
+                            )
+                            Page.SESSIONS -> SessionsScreen(runningId = state.sessionId.takeIf { state.running })
                         }
                     }
                 }
@@ -152,30 +170,32 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// Near-black and dim: the always-on screen stays lit beside the pillow (§14.6).
+private enum class Page { MAIN, DETAILS, SESSIONS }
+
+// Near-black and dim with a muted indigo-lavender accent: the always-on screen stays lit beside the pillow (§14.6).
 private val NightColors = ColorScheme(
-    primary = Color(0xFF7C93B0),
-    primaryContainer = Color(0xFF1C2633),
-    onPrimary = Color(0xFF0B0F14),
-    onPrimaryContainer = Color(0xFFA9B6C6),
-    surfaceContainerLow = Color(0xFF0E0E0E),
-    surfaceContainer = Color(0xFF161616),
-    surfaceContainerHigh = Color(0xFF1E1E1E),
-    onSurface = Color(0xFFA6A6A6),
-    onSurfaceVariant = Color(0xFF8A8A8A),
+    primary = Color(0xFF8E8BC6),
+    primaryContainer = Color(0xFF221F3D),
+    onPrimary = Color(0xFF0F0E1A),
+    onPrimaryContainer = Color(0xFFB0ADD8),
+    surfaceContainerLow = Color(0xFF0D0C12),
+    surfaceContainer = Color(0xFF15141C),
+    surfaceContainerHigh = Color(0xFF1D1C26),
+    onSurface = Color(0xFFA9A7B8),
+    onSurfaceVariant = Color(0xFF8A889A),
     background = Color.Black,
-    onBackground = Color(0xFFA6A6A6),
+    onBackground = Color(0xFFA9A7B8),
 )
 
+/** The main screen: the sensor status in plain words, Start/Stop with the elapsed time, and the live values. */
 @Composable
-private fun SessionScreen(
+private fun MainScreen(
     state: SensingState,
-    logRawAccel: Boolean,
-    onLogRawAccelChange: (Boolean) -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onBasicSensors: () -> Unit,
     onStatusTap: (SensorStatus) -> Unit,
+    onDetails: () -> Unit,
     onSessions: () -> Unit,
 ) {
     var nowMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -187,15 +207,19 @@ private fun SessionScreen(
             }
         }
     }
-    val statuses = listOfNotNull(state.fallbackCause?.takeIf { it != state.status }, state.status)
-    val values = liveValues(state, nowMs)
+    val packet = state.lastPacket?.packet
     val listState = rememberTransformingLazyColumnState()
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
-            item { ListHeader { Text("OpenTDI sensors") } }
-            if (state.running && state.status == null) item { Line("Starting sensors…") }
-            for (status in statuses) item { StatusLine(status, state, onStatusTap) }
-            for ((extra, why) in state.extrasOff) item { Line("${extra.label} off: $why.") }
+            item { ListHeader { Text("OpenTDI") } }
+            if (!state.running) {
+                item { BigLine("Not recording") }
+            } else if (state.status == null) {
+                item { BigLine("Starting sensors…") }
+            }
+            // Stopped, only problems stay up: a denied permission is reported before any session runs.
+            val shown = statuses(state).filter { state.running || it !in FINE }
+            for (status in shown) item { StatusLine(status, state, onStatusTap, short = true) }
             if (state.status == SensorStatus.SDK_POLICY_ERROR) {
                 item {
                     FilledTonalButton(onClick = onBasicSensors, modifier = Modifier.fillMaxWidth()) {
@@ -204,11 +228,56 @@ private fun SessionScreen(
                 }
             }
             item {
-                val onClick = if (state.running) onStop else onStart
-                FilledTonalButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (state.running) "Stop logging session" else "Start logging session")
+                if (state.running) {
+                    Button(
+                        onClick = onStop,
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                        secondaryLabel = { Text(elapsed(nowMs - state.startedElapsedMs)) },
+                        label = { Text("Stop recording") },
+                    )
+                } else {
+                    Button(onClick = onStart, modifier = Modifier.fillMaxWidth(), label = { Text("Start recording") })
                 }
             }
+            if (state.sessionId != null) {
+                item {
+                    TileRow {
+                        Tile("Heart", format("%.0f", packet?.hr), "bpm", Modifier.weight(1f))
+                        Tile("EDA", format("%.2f", packet?.skinConductance), "µS", Modifier.weight(1f))
+                    }
+                }
+                item {
+                    TileRow {
+                        val still = packet?.stillnessScore?.let { "${(it * 100).roundToInt()}" } ?: "—"
+                        Tile("Still", still, "%", Modifier.weight(1f))
+                        Tile("Skin", format("%.1f", packet?.skinTemperature), "°C", Modifier.weight(1f))
+                    }
+                }
+                item {
+                    // %tR: the local 24-hour time of the epoch-ms timestamp
+                    val at = state.lastSpo2AtMs?.let { String.format(Locale.ROOT, "%% at %tR", it) } ?: "%"
+                    Tile("Last SpO2", state.lastSpo2?.toString() ?: "—", at, Modifier.fillMaxWidth())
+                }
+            }
+            item { FilledTonalButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) { Text("Details") } }
+            item { FilledTonalButton(onClick = onSessions, modifier = Modifier.fillMaxWidth()) { Text("Sessions") } }
+        }
+    }
+}
+
+/** Everything else: the exact §11.6 texts, extra sensors, the raw accelerometer choice and the technical values. */
+@Composable
+private fun DetailsScreen(state: SensingState, logRawAccel: Boolean, onLogRawAccelChange: (Boolean) -> Unit) {
+    val context = LocalContext.current
+    @Suppress("DEPRECATION") // the flags overload needs API 33; the watch's minSdk is 30
+    val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+    val listState = rememberTransformingLazyColumnState()
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+        TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
+            item { ListHeader { Text("Details") } }
+            for (status in statuses(state)) item { StatusLine(status, state, onTap = {}, short = false) }
+            for ((extra, why) in state.extrasOff) item { Line("${extra.label} off: $why.") }
             item {
                 SwitchButton(
                     checked = logRawAccel,
@@ -222,20 +291,28 @@ private fun SessionScreen(
                 // the health foreground service and its wake lock keep a session running (§14.4).
                 Line("Battery: no setting needed on the watch")
             }
-            item {
-                FilledTonalButton(onClick = onSessions, modifier = Modifier.fillMaxWidth()) { Text("Sessions") }
-            }
-            for (value in values) item { Line(value) }
+            for (value in liveValues(state)) item { Line(value) }
+            item { Line("App $version · protocol $PROTOCOL_VERSION") }
         }
     }
 }
 
+private val FINE = setOf(SensorStatus.CONNECTED_SAMSUNG, SensorStatus.FALLBACK_ANDROID_SENSORS, SensorStatus.SIMULATION)
+
+private fun statuses(state: SensingState) =
+    listOfNotNull(state.fallbackCause?.takeIf { it != state.status }, state.status)
+
+/** A status on the main screen ([short]): connected in two words, a problem in its §11.6 text with its tap fix. */
 @Composable
-private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (SensorStatus) -> Unit) {
+private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (SensorStatus) -> Unit, short: Boolean) {
+    if (short && status == SensorStatus.CONNECTED_SAMSUNG) {
+        BigLine(if (state.edaAvailable) "Sensors connected" else "Sensors connected, no EDA")
+        return
+    }
     val text = statusText(status, state.unsupported, state.edaAvailable, state.statusMessage)
     val tappable = status == SensorStatus.PERMISSION_MISSING ||
         (status in setOf(SensorStatus.HSS_NOT_INSTALLED, SensorStatus.HSS_TOO_OLD) && state.resolve != null)
-    if (tappable) {
+    if (short && tappable) {
         Card(onClick = { onTap(status) }, modifier = Modifier.fillMaxWidth()) { Text(text) }
     } else {
         Line(text)
@@ -243,16 +320,46 @@ private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (Sensor
 }
 
 @Composable
+private fun BigLine(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth(),
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
 internal fun Line(text: String) {
     Text(text, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
 }
 
-private fun liveValues(state: SensingState, nowMs: Long): List<String> {
+@Composable
+private fun TileRow(content: @Composable RowScope.() -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), content = content)
+}
+
+@Composable
+private fun Tile(label: String, value: String, unit: String, modifier: Modifier) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(vertical = 6.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+        Text(unit, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private fun liveValues(state: SensingState): List<String> {
     val sessionId = state.sessionId ?: return emptyList()
     val packet = state.lastPacket?.packet
-    return listOfNotNull(
+    return listOf(
         "Session $sessionId",
-        if (state.running) "Elapsed ${elapsed(nowMs - state.startedElapsedMs)}" else null,
         "Source ${state.source ?: "—"}",
         "HR ${format("%.0f", packet?.hr)} bpm",
         "IBIs ${state.ibisAccepted}",

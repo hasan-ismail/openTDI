@@ -11,13 +11,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class WatchLiveTest {
-    private fun frame(seq: Long, jerk: Boolean = false, limp: Boolean = false) = TelemetryFrame(
+    private fun frame(seq: Long, jerk: Boolean = false, limp: Boolean = false, spo2: Int? = null) = TelemetryFrame(
         seq = seq,
         packet = BiosignalPacket(
             timestamp = 1_793_000_000_000L + seq * 1000, hr = 60f, ibiList = emptyList(), rmssd = null,
             skinConductance = 0.4f, accelRms = 0.002f, edaStatus = 0, hrStatus = 1, accelMean = 0.01f,
             accelPeak = 0.004f, jerkEvent = jerk, limpEvent = limp, stillnessScore = 1f,
-            source = SensorSource.SAMSUNG_SDK,
+            source = SensorSource.SAMSUNG_SDK, spo2 = spo2,
         ),
         state = TdiState.IDLE, stateReason = null, completedCycles = 0, score = null,
     )
@@ -53,5 +53,16 @@ class WatchLiveTest {
         assertEquals(listOf(0L), next.frames.map { it.seq })
         assertEquals(0, next.jerkEvents)
         assertEquals(30L, next.receivedAtMs)
+    }
+
+    @Test
+    fun spo2Time_isWhenTheValueFirstArrived() {
+        val t0 = frame(0).packet.timestamp
+        var live = WatchLive().plus(batch("s1", listOf(frame(0), frame(1, spo2 = 96), frame(2, spo2 = 96))), 10L)
+        assertEquals(t0 + 1000, live.spo2AtMs)
+        live = live.plus(batch("s1", listOf(frame(3, spo2 = 96), frame(4, spo2 = 94))), 20L)
+        assertEquals(t0 + 4000, live.spo2AtMs)
+        live = live.plus(batch("s1", listOf(frame(5))), 30L)
+        assertEquals(null, live.spo2AtMs)
     }
 }

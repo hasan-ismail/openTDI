@@ -36,6 +36,10 @@ data class WatchLive(
     val jerkEvents: Int = 0, // in this session
     val limpEvents: Int = 0,
     val receivedAtMs: Long? = null, // SystemClock.elapsedRealtime() of the last batch
+    // Packet time the current spo2 value first arrived. shortcut: a check repeating the same value keeps the earlier
+    // time, and a value already held when the app opened gets its first packet's time; add the check time to the
+    // packet if that matters.
+    val spo2AtMs: Long? = null,
 )
 
 /** [this] with [batch] added: another session starts over, and frames already received (by seq) are skipped. */
@@ -43,7 +47,14 @@ fun WatchLive.plus(batch: TelemetryBatch, receivedAtMs: Long): WatchLive {
     val base = if (batch.sessionId == sessionId) this else WatchLive(sessionId = batch.sessionId)
     val lastSeq = base.frames.lastOrNull()?.seq ?: -1L
     val fresh = batch.frames.filter { it.seq > lastSeq }
+    var spo2 = base.frames.lastOrNull()?.packet?.spo2
+    var spo2AtMs = base.spo2AtMs
+    for (packet in fresh.map { it.packet }) {
+        if (packet.spo2 != spo2) spo2AtMs = packet.timestamp.takeIf { packet.spo2 != null }
+        spo2 = packet.spo2
+    }
     return base.copy(
+        spo2AtMs = spo2AtMs,
         sensorStatus = batch.sensorStatus,
         gravityMode = batch.gravityMode,
         frames = (base.frames + fresh).takeLast(KEEP_FRAMES),

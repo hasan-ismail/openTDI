@@ -21,6 +21,7 @@ import com.opentdi.mobile.R
 import com.opentdi.mobile.TAG_AUDIO
 import com.opentdi.mobile.TAG_SESSION
 import com.opentdi.mobile.audio.AudioEvent
+import com.opentdi.mobile.link.WatchStreamListener
 import com.opentdi.mobile.audio.CuePlayer
 import com.opentdi.mobile.audio.dndState
 import com.opentdi.mobile.audio.toLogLine
@@ -31,6 +32,7 @@ import com.opentdi.mobile.cues.loadPreparedCues
 import com.opentdi.mobile.loadCalibratedIndex
 import com.opentdi.mobile.loadConfig
 import com.opentdi.mobile.logLine
+import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.audio.WavAudio
 import com.opentdi.shared.audio.renderEndChime
 import com.opentdi.shared.audio.targetGain
@@ -64,6 +66,12 @@ import kotlinx.coroutines.launch
 class NapSessionService : LifecycleService() {
     private var session: Session? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        // The UI's listener stops with the screen; this one keeps the watch stream arriving for the whole session.
+        lifecycle.addObserver(WatchStreamListener(applicationContext))
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_STOP) {
@@ -88,7 +96,7 @@ class NapSessionService : LifecycleService() {
         val invalid = config.validate().firstOrNull()
         if (invalid != null) return refuse("Invalid settings: $invalid")
         // The volume guard reads the media index of the current media device, which must be the cue's speaker.
-        if (!CuePlayer(this).streamOnSpeaker()) {
+        if (config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER && !CuePlayer(this).streamOnSpeaker()) {
             return refuse(
                 "Media audio is on another device (Bluetooth or wired). " +
                     "Disconnect it so the cues play on the phone speaker.",
