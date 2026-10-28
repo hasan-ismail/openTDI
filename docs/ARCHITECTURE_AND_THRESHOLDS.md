@@ -1,6 +1,6 @@
 # OpenTDI: Architecture and Thresholds (engineering spec)
 
-Version 1.0, 2026-10-27. This is the spec that implementing engineers code from.
+Version 1.1, 2026-10-27 (1.0 revised after review). This is the spec that implementing engineers code from.
 
 **Order of authority.** (1) Owner requirements A1–G23. (2) Lead-engineer design decisions D1–D18. (3) This document.
 (4) `CLAUDE.md`. Where this document departs from D1–D18, the place is marked **[EXT]** (an extension the decisions
@@ -9,7 +9,9 @@ do not cover) or **[DEV]** (a deviation), and every one is listed in §17.1.
 **Labels.**
 - **SOURCED**: the number or behaviour is quoted in a reference note, which cites the original source.
 - **GUESSED**: an unvalidated OpenTDI default. It must be a config value, logged per session, and tuned on recorded
-  naps with the replay harness (§12).
+  naps with the replay harness (§12). Exception: the **structural** GUESSED constants listed in §8.15 are fixed in code
+  (not config values); they are written to `w_config.csv` / `p_config.csv` under `const.*` keys so every session
+  records them, and changing one needs a code change plus a replay re-run.
 - **FACT** / **INFERENCE** follow the reference notes: FACT is stated by a source, INFERENCE is reasoning.
 - **VERIFY ON DEVICE**: no document settles it; the check is in §15.
 
@@ -28,6 +30,8 @@ were raw ADC deltas fitted on 5 pilot participants and called provisional by the
 | [A] | `android_platform_notes.md` | developer.android.com, AOSP android-16.0.0_r1 |
 | [W] | `wear_compose_and_versions.md` | Wear Compose 1.7.1 sources, Maven metadata |
 | [U] | `android_audio_stt_notes.md` | developer.android.com media/speech, AOSP audio, Android 16 CDD |
+| [DA] | `device_audit.md` | read-only `adb getprop` / `dumpsys package` on the owner's SM-L500 and phone, 2026-10-27 |
+| [V] | `samsung_sdk_1.4.1_verified_api.md` | the downloaded SDK 1.4.1 zip and Samsung's public API reference. It states "Where another note … disagrees with this file, this file wins", so it overrides [S] |
 
 ---
 
@@ -41,12 +45,12 @@ Phases follow owner requirements G20 and G21 and decision D17.
 | README: wellness / not-a-medical-device statement, developer setup (Health Sensor Service developer mode, version check, AAR download + license note) | 1 | §17.4, §11.7 |
 | Watch: Samsung SDK connection + status checker (AAR missing, service missing, too old, SDK_POLICY_ERROR, permission, unsupported) with on-watch messages | 1 | §11.6 |
 | Watch: HR/IBI/EDA/accelerometer trackers, `flush()` timer, health FGS + Ongoing Activity | 1 | §11, §14 |
-| Watch: 25 Hz accelerometer processing (stillness, jerk, limp) and 1 Hz `BiosignalPacket` aggregation | 1 | §8.1–8.2. Computed in Phase 1 so the very first logs carry the fields |
+| Watch: 25 Hz accelerometer processing (stillness, jerk, limp) and 1 Hz `BiosignalPacket` aggregation: `:shared` `AccelProcessor` + `PacketAggregator` with `AccelProcessorTest` + `PacketAggregatorTest` | 1 | §8.1–8.2, §16. Computed in Phase 1 so the very first logs carry the fields |
 | Watch: SensorManager fallback (`TYPE_HEART_RATE` + `TYPE_ACCELEROMETER`) | 1 | §11.8 |
 | Watch: CSV logging (raw 1 Hz samples, packets, 25 Hz-derived events, config); in Phase 1 a watch logging session is started and stopped on the watch (no Data Layer yet) | 1 | §12 |
-| Phone: minimal app, one FGS, `TIMED_CUES` with TTS cues on `NIGHTSTAND_SPEAKER`, 2000 ms fade-in, hard volume cap, DND check, audio focus | 1 | Phase 1 FGS type is `mediaPlayback` only; the report window is a fixed 60 s with no recording (§4.3) |
+| Phone: minimal app, one FGS, `TIMED_CUES` driven by `:shared` `TimedCueScheduler` (+ `TimedCueSchedulerTest`), TTS cues on `NIGHTSTAND_SPEAKER`, 2000 ms fade-in, hard volume cap, DND check, audio focus | 1 | Phase 1 FGS type is `mediaPlayback` only; the report window is a fixed 60 s with no recording (§4.3) |
 | Phone: CSV logging (transitions, audio events, config) | 1 | §12 |
-| `:shared` `HypnagogiaDetectionEngine` + `TimedCueScheduler` + synthetic generator + replay harness + unit tests | 2 | §5, §8, §13, §16 |
+| `:shared` `HypnagogiaDetectionEngine` + synthetic generator + replay harness + their unit tests | 2 | §5, §8, §13, §16 |
 | Data Layer link: commands, trigger, batched telemetry, capabilities, watch-CSV transfer at session end | 2 | §10 |
 | Full DETECTION loop: watch trigger, phone countdown, cycle stages, countdown abort on movement, missed-cycle handling | 2 | §5 |
 | Phone FGS gains the `microphone` type; dream recording on the built-in mic with stop rules; on-device STT | 2 | §7.8–7.9 |
@@ -105,14 +109,21 @@ Could not be obtained (FACT, [P] §0): P20 Appendix A (PMC proof-of-work page), 
    (the 23 word files and `gong.wav`) from `openSleep` or `dormio`. It reimplements the behaviour described in [C] in
    Kotlin and records or synthesises its own audio. Cue wording comes from the published papers (§7.1), not from the repos.
 2. **Samsung AAR never in the repository.** `.gitignore` already contains `/wear/libs/*.aar`. Each developer downloads
-   `samsung-health-sensor-api.aar` (SDK v1.4.1, 70.8 KB download, [S] §7) from developer.samsung.com, which also makes
-   them accept the license. `wear/libs/README.md` documents the step and records the downloaded file name and SHA-256.
+   `samsung-health-sensor-sdk-v1.4.1.zip` (70.8 KB download, [S] §7) from developer.samsung.com, which also makes them
+   accept the license, and copies `1.4.1/libs/samsung-health-sensor-api-1.4.1.aar` into `wear/libs/` (FACT, [V] "SDK
+   package facts"; `wear/libs/README.md` step 2; the file in `wear/libs/` is 61 063 bytes). Samsung's own pages call it
+   `samsung-health-sensor-api.aar` ([S] §7), so the build matches both names (§11.5). `wear/libs/README.md` documents
+   the step and records the file name and SHA-256 (`893cd5d6…0344c`).
 
    ship source only.
 4. **The compile stub** `:samsung-health-stub` is written only from the public javadoc signatures in [S] §2, with no
    copied javadoc text, and contains only the members OpenTDI calls ([S] §2.2 license caution).
-5. **OpenTDI's own license** should be permissive (Apache-2.0 or MIT) with a NOTICE that the Samsung SDK is not covered
-   ([S] §6, answer 4). Open decision §17.2 O1.
+5. **OpenTDI's own license is decided: GPL-3.0** (FACT: `LICENSE` line 1 "GNU GENERAL PUBLIC LICENSE Version 3"; commit
+   9901e3d "Scaffold OpenTDI: … GPL-3.0") **with a GPL §7 additional permission for linking with the Samsung SDK**
+   (`NOTICE`: "… linking or combining it with the Samsung Health Sensor SDK … the Samsung Health Sensor SDK is not made
+
+   forbids making the SDK "subject to the licensing terms" of third-party software; the §7 exception is what addresses
+   that (INFERENCE, not legal advice). Do not relicense. §17.2 O1 is closed.
 
 
 ---
@@ -212,7 +223,15 @@ held for a time. That is stricter and is justified by the heavy Sleep/Wake overl
 | Mode | Driven by | Needs watch | Purpose |
 |---|---|---|---|
 | `DETECTION` | Watch `HypnagogiaDetectionEngine` (authoritative) | Yes | Wearable-driven TDI |
-| `TIMED_CUES` | Phone `TimedCueScheduler` (pure, `:shared`) | No (if present, the watch only logs and mirrors) | Sensor-free control condition; automatic fallback when sensors fail; works with no watch |
+| `TIMED_CUES` | Phone `TimedCueScheduler` (pure, `:shared`) | No (if present, the watch only logs and mirrors: below) | Sensor-free control condition; automatic fallback when sensors fail; works with no watch |
+
+**Watch in a `TIMED_CUES` session** **[EXT]**. `engine.startSession(sessionId, mode = TIMED_CUES)` goes straight to
+`AWAKE_INCUBATING` (row 2): no calibration, onset is never evaluated, no trigger is ever sent, and rows 6, 7, 9, 16 and
+18 do not apply. The engine still computes `DetectionScore` from the packets for logging (`detectionActive = false`).
+It mirrors the phone: the phone sends `CycleStage(cycle, DWELL_START)` at each dwell start (row T1), which moves the
+watch to `HYPNAGOGIA_DETECTED` (`TIMED_DWELL`), then the usual `WAKING_USER` … `CYCLE_COMPLETE` stages. After an
+automatic fallback (§4.4) the watch engine stays in `IDLE` with the session still open (row 21) and only logs packets
+and the stages it receives.
 
 ### 4.1 TIMED_CUES parameters
 
@@ -280,7 +299,7 @@ from the watch later are logged and answered with `Ack(ok = false, code = "MODE_
 
 | `TdiState` | Meaning | Detection evaluated? |
 |---|---|---|
-| `IDLE` | No session, or detection unavailable (with a reason) | No |
+| `IDLE` | No session, or detection unavailable mid-session (with a reason; the session stays open until `AbortSession`, `TIME_LIMIT` or `sessionMaxMin`, row 21) | No |
 | `CALIBRATING_BASELINE` | Collecting the baseline window (DETECTION only) | No |
 | `AWAKE_INCUBATING` | Waiting for onset; refractory may apply | Yes (unless refractory) |
 | `HYPNAGOGIA_DETECTED` | Onset detected; the phone runs the countdown; the watch watches for major movement | Movement only |
@@ -292,12 +311,17 @@ from the watch later are logged and answered with `Ack(ok = false, code = "MODE_
 
 ### 5.2 ASCII diagram (DETECTION; W = watch engine decides, P = phone decides)
 
+The transition table (§5.3) is authoritative. The diagram leaves out rows 10 (`PHONE_REJECTED`), 15 (`CYCLE_ABORTED`),
+16 (`STAGE_TIMEOUT`), 17 (forward-stage jump) and 22 (`TIME_LIMIT`).
+
 ```
                  StartSession (either device)
-   IDLE ───────────────────────────────────────► CALIBRATING_BASELINE
-    ▲  ▲                                            │ W: window done, baseline valid
-    │  │ W: baseline insufficient after 2×window,   ▼
-    │  └─ HR lost 300 s, accel lost 60 s ◄──── AWAKE_INCUBATING ◄─────────────────────────┐
+   IDLE ───────────────────────────────────────► CALIBRATING_BASELINE ──W: invalid at W─┐
+    ▲  ▲  ▲  W: still invalid at 2W (row 5)         │   ▲ (extend to 2W once, row 4)    │
+    │  │  └─────────────────────────────────────────┤   └───────────────────────────────┘
+    │  │                                            │ W: window done, baseline valid
+    │  │ W: HR lost 300 s, accel lost 60 s (row 18) ▼
+    │  └─────────────────────────────────────── AWAKE_INCUBATING ◄─────────────────────────┐
     │     (phone falls back to TIMED_CUES)          │ W: gate ∧ (HR drop ∨ RMSSD rise)      │
     │                                               │    held holdReq s, not in refractory │
     │                                               ▼                                      │
@@ -329,7 +353,7 @@ causes the transition; the other device mirrors it.
 | # | From | Event / guard | To | Actions / emitted events | Owner |
 |---|---|---|---|---|---|
 | 1 | `IDLE` or `SESSION_COMPLETE` | `StartSession`, mode `DETECTION`, a sensor source is usable | `CALIBRATING_BASELINE` | reset all buffers; `calStart` = timestamp of the first packet received after the call; `StateChanged` | W |
-| 2 | `IDLE` or `SESSION_COMPLETE` | `StartSession`, mode `TIMED_CUES` | `AWAKE_INCUBATING` | phone: play `INITIAL_INCUBATION`, draw L; watch (if present): log + mirror only | P |
+| 2 | `IDLE` or `SESSION_COMPLETE` | `StartSession`, mode `TIMED_CUES` | `AWAKE_INCUBATING` | phone: play `INITIAL_INCUBATION`, draw L; watch (if present): `startSession(id, TIMED_CUES)`, log + mirror only (§4) | P |
 | 3 | `CALIBRATING_BASELINE` | `t − calStart ≥ W·1000`, baseline valid (§8.4) | `AWAKE_INCUBATING` | compute `BaselineStats`; `BaselineReady`; this packet is then evaluated in `AWAKE_INCUBATING`; phone plays `INITIAL_INCUBATION` when it sees the state | W |
 | 4 | `CALIBRATING_BASELINE` | `t − calStart ≥ W·1000`, invalid, not yet extended | `CALIBRATING_BASELINE` | window becomes 2W (all packets so far kept); `BaselineExtended(reason)` | W |
 | 5 | `CALIBRATING_BASELINE` | `t − calStart ≥ 2W·1000` and still invalid | `IDLE` (`BASELINE_INSUFFICIENT_MOTION` or `_HR`) | `DetectionUnavailable`; phone falls back (§4.4) | W |
@@ -343,19 +367,19 @@ causes the transition; the other device mirrors it.
 | 13 | `RE_INCUBATING` | cue finished, `completedCycles + 1 < maxCycles` | `AWAKE_INCUBATING` | `CycleStage(CYCLE_COMPLETE, COMPLETED)` (acknowledged); `completedCycles++`; `refractoryUntil = t + refractoryS·1000`; phone starts STT | P |
 | 14 | `RE_INCUBATING` | cue finished, `completedCycles + 1 == maxCycles` | `SESSION_COMPLETE` (`MAX_CYCLES`) | as 13, then phone plays `SESSION_END` | P |
 | 15 | `WAKING_USER`, `RECORDING_DREAM`, `RE_INCUBATING` | `CycleStage(CYCLE_COMPLETE, ABORTED_AUDIO)` (focus denied, route lost, capture silenced) | `AWAKE_INCUBATING` (`CYCLE_ABORTED`) | cycle not counted; refractory | P |
-| 16 | `WAKING_USER`, `RECORDING_DREAM`, `RE_INCUBATING` | engine: no `CYCLE_COMPLETE` within `cycleStageTimeoutS` = 180 s of `WAKING_USER` | `AWAKE_INCUBATING` or `SESSION_COMPLETE` | treat as `CYCLE_COMPLETE` with reason `STAGE_TIMEOUT` (the phone most likely finished; the message was lost) | W |
+| 16 | `WAKING_USER`, `RECORDING_DREAM`, `RE_INCUBATING` | engine: no `CYCLE_COMPLETE` within `cycleStageTimeoutS` = 180 s of `WAKING_USER` | `AWAKE_INCUBATING` or `SESSION_COMPLETE` | treat as `CYCLE_COMPLETE` with reason `STAGE_TIMEOUT` (the phone most likely finished; the message was lost). A `CycleStage(CYCLE_COMPLETE)` that arrives later for a cycle already closed this way is logged (`LATE_STAGE_IGNORED`) and ignored: no second `completedCycles++`, no new refractory. `validate()` keeps the timeout longer than the longest phone cycle (§8.14) | W |
 | 17 | `HYPNAGOGIA_DETECTED` | `CycleStage` with a later stage arrives before `WAKING_USER` (lost message) | that stage | accept any forward stage | P |
-| 18 | `AWAKE_INCUBATING` | no `HR_ma` for 300 consecutive s, or no stillness for 60 s | `IDLE` (`HR_LOST` / `ACCEL_LOST`) | `DetectionUnavailable`; phone falls back | W |
+| 18 | `AWAKE_INCUBATING` | `HR_ma` null for `hrLostS` (300) consecutive s, or no non-null `stillnessScore` for `accelLostS` (60) consecutive s (sensor missing, not "user moving") | `IDLE` (`HR_LOST` / `ACCEL_LOST`) | `DetectionUnavailable`; phone falls back; session stays open | W |
 | 19 | any active state (`CALIBRATING_BASELINE` … `RE_INCUBATING`) | `PauseSession` (either device) | `PAUSED` | phone cancels the countdown, stops audio and recording; `resumeTarget` = `CALIBRATING_BASELINE` if the baseline is not ready, else `AWAKE_INCUBATING` | P or W |
 | 20 | `PAUSED` | `ResumeSession` | `resumeTarget` | baseline kept; partial calibration restarts from 0; refractory applied when the target is `AWAKE_INCUBATING` | P or W |
-| 21 | any except `IDLE`, `SESSION_COMPLETE` | `AbortSession(reason)` | `SESSION_COMPLETE` (reason) | stop audio, close CSVs, phone writes the journal | P or W |
+| 21 | any state while a session is open, including `IDLE` after `DetectionUnavailable` (rows 5, 18); not `SESSION_COMPLETE` or a session-less `IDLE` | `AbortSession(reason)` (also the phone's `TIME_LIMIT` after a fallback) | `SESSION_COMPLETE` (reason) | stop audio, close CSVs, phone writes the journal, watch CSV transfer (§12.5) | P or W |
 | 22 | `AWAKE_INCUBATING` | phone: session time ≥ `sessionMaxMin` | `SESSION_COMPLETE` (`TIME_LIMIT`) | phone sends `AbortSession(TIME_LIMIT)`. If a cycle is running, it waits for that cycle to complete | P |
 
 `TIMED_CUES` uses rows 2, 8, 11–15, 19–22 unchanged, plus:
 
 | # | From | Event / guard | To | Actions | Owner |
 |---|---|---|---|---|---|
-| T1 | `AWAKE_INCUBATING` | `now ≥ anchor + interval` (L for cycle 1, `betweenSleepS` after) | `HYPNAGOGIA_DETECTED` | play `INITIAL_INCUBATION`; start the dwell countdown (`countdownS`) | P |
+| T1 | `AWAKE_INCUBATING` | `now ≥ anchor + interval` (L for cycle 1, `betweenSleepS` after) | `HYPNAGOGIA_DETECTED` | play `INITIAL_INCUBATION`; start the dwell countdown (`countdownS`); send `CycleStage(cycle, DWELL_START)` if a watch is in the session **[EXT]** | P |
 | T2 | `HYPNAGOGIA_DETECTED` | dwell elapsed | `WAKING_USER` | as row 8 | P |
 
 There is no movement abort, no refractory and no missed-cycle rule in `TIMED_CUES` (no sensors).
@@ -373,7 +397,7 @@ There is no movement abort, no refractory and no missed-cycle rule in `TIMED_CUE
 | TIMED first latency L | 10–15 min, whole minutes | 1–90 | Phone | elapsed-realtime | SOURCED (§4.1) |
 | TIMED between-sleep | 420 s | 60–1200 | Phone | elapsed-realtime | SOURCED (§4.1) |
 | Missed-cycle grace | 15 s after countdown | 5–60 | Watch engine | packet time | GUESSED (D4) |
-| Cycle-stage timeout | 180 s after `WAKING_USER` | 90–600 | Watch engine | packet time | GUESSED: longer than prompt (~6 s) + 45 s recording + 8 s answer + re-incubation cue (~8 s) + margin |
+| Cycle-stage timeout | 180 s after `WAKING_USER` | 90–600 | Watch engine | packet time | GUESSED: longer than prompt (~6 s) + 45 s recording + 8 s answer + re-incubation cue (~8 s) + margin. Cross-rule: `cycleStageTimeoutS·1000 ≥ maxMs + answerMaxMs + 60 000` (§8.14), so raising `maxMs` needs a longer timeout |
 | Refractory after a cycle | 120 s | 0–600 | Watch engine | packet time | GUESSED. Context: measured onset-to-onset 6–12 min ([P] §4 #26) |
 | Hold (core held) | 20 s; 10 s with a bonus | preset table §8.11 | Watch engine | packet count | GUESSED (CLAUDE.md, NOT FOUND in sources) |
 | HR moving average | 15 s | 5–60 | Watch engine | packet time | GUESSED. Dormio web used about 10 s (10 BPM values, [C] §5.2) |
@@ -388,7 +412,7 @@ There is no movement abort, no refractory and no missed-cycle rule in `TIMED_CUE
 | SDK `flush()` interval (session) | 5 s | 1–30 | Watch FGS | `SystemClock.elapsedRealtime` under wake lock | GUESSED: Samsung batches screen-off data ("600 samples every 10 minutes", [S] §2.3) |
 | Packet lateness deadline | 2 × flush interval = 10 s | — | Watch aggregator | wall clock | GUESSED |
 | Telemetry batch flush | 5 s, and immediately on a state change | 1–30 | Watch FGS | wall clock | D3 |
-| Trigger retry | +2, +4, +8 s, stop at countdown + 15 s | — | Watch FGS | wall clock | GUESSED; `sendRequest` itself fails only after 1 min ([A] §4.3) |
+| Trigger retry | attempts at onset + 0, 2, 4, 8 s (offsets from the first send), each with a 2 s app-level reply timeout; stop at countdown + 15 s | — | Watch FGS | elapsed-realtime | GUESSED (structural, §8.15); `sendRequest` itself fails only after 1 min ([A] §4.3), so the app timeout is needed. Details in §10.2 |
 | Watch link timeout (phone) | 120 s | 30–600 | Phone | elapsed-realtime | GUESSED ([A] §4.5: reconnect "up to 4 minutes") |
 | Fade-in | 2000 ms | 0–5000 | Phone audio | sample count | GUESSED (CLAUDE.md, NOT FOUND in sources) |
 | Carrier lead before the first cue | 10 s | 0–60 | Phone audio | elapsed-realtime | GUESSED ([U] §4.5) |
@@ -399,7 +423,7 @@ There is no movement abort, no refractory and no missed-cycle rule in `TIMED_CUE
 | Sleep-state answer: max / silence / no-speech | 8000 / 1500 / 6000 ms | — | Phone recorder | sample count | GUESSED **[EXT]** |
 | Phase 1 TIMED report window | 60 s | 30–90 | Phone | elapsed-realtime | SOURCED (FS24; `script_timer.js:18`) |
 | Session maximum | 60 min | 15–180 | Phone | elapsed-realtime | GUESSED. Context: lab 45-min opportunity ([P] §4 #16); Dormio Light ≈ 1 h ([P] §4 #18) |
-| End chime | 3 plays | 0 (off)–3 | Phone | — | SOURCED: gong ×3 (`script_timer.js:429-435`); PhD22 p.58 allows no alarm ([P] §1.2 #11). Own audio asset |
+| End chime | 3 plays | 1–3 (off = `endAlarm = NONE`) | Phone | — | SOURCED: gong ×3 (`script_timer.js:429-435`); PhD22 p.58 allows no alarm ([P] §1.2 #11). Own audio asset |
 
 ---
 
@@ -489,8 +513,9 @@ Algorithm (deterministic, unit-tested):
 fs = 48000; N = 10 * fs                         // a 10 s loop buffer, generated once per session
 rng = xorshift32(seed = sessionId.hashCode(), or 1 if that is 0)
 w[n] uniform in [-1, 1]
-y[n] = y[n-1] + 0.05 * (w[n] - y[n-1])          // one-pole low-pass: "pink-ish" warm noise (about -6 dB/oct above a few
-                                                 // hundred Hz; INFERENCE). The spectrum is not critical, the level is ([U] §4.5)
+y[n] = y[n-1] + 0.05 * (w[n] - y[n-1])          // one-pole low-pass: flat below fc = -ln(0.95)·fs/2π ≈ 392 Hz, -6 dB/oct
+                                                 // above it, i.e. brown-ish (1/f²) warm noise, not pink (-3 dB/oct)
+                                                 // (arithmetic). The spectrum is not critical, the level is ([U] §4.5)
 drop the first 4800 samples (warm-up), subtract the mean
 A    = 10^(carrierLevelDbfs / 20)                // RMS re float full scale 1.0 ([U] §4.4)
 c[n] = y[n] * A / rms(y)                         // exact target RMS: -75 dBFS -> 1.778e-4 RMS ≈ 5.83 LSB at 16 bit
@@ -575,10 +600,13 @@ device disappears (`AudioPolicyManager.cpp:1318-1322`, [U] §2.4).
 1. Cues are pre-normalised to −3 dBFS peak (§7.3).
 2. `HARD_MAX_GAIN` = 1.0: no sample gain above unity, ever (`getMaxVolume()` may be larger; it is not used).
 3. `routeCapGain[route]` is set once per route in a calibration screen ("this is the loudest a cue will ever be").
-   Defaults: speaker 0.6, Bluetooth 0.3 (GUESSED). `userGain` is clamped to it in the UI and again at playback.
+   Defaults: speaker 0.6, Bluetooth 0.3 (GUESSED). `userGain` is **clamped** to it, never rejected: the UI slider stops
+   at the cap, playback uses `G_target = min(userGain, routeCapGain[route], 1.0)` (§7.4), and `validate()` only warns
+   (`USER_GAIN_CLAMPED`) when `userGain` exceeds the selected route's cap. This is the one rule used everywhere (§8.14).
 4. OpenTDI never calls `setStreamVolume` or `adjustStreamVolume` upward.
 5. Before each cue, read `getStreamVolume(STREAM_MUSIC)`. If it is above the index saved at calibration: on the
-   speaker, reduce `G_target` by `getStreamVolumeDb(now) − getStreamVolumeDb(calibrated)`; on Bluetooth (absolute
+   speaker, scale the linear gain `G_target ×= 10^(−(dB_now − dB_cal)/20)` with `dB = getStreamVolumeDb(STREAM_MUSIC,
+   index, deviceType)` at the current and the calibrated index; on Bluetooth (absolute
    volume may hide the real level) skip the cue and log `volume_raised` (a skipped `WAKE_PROMPT` aborts the cycle).
 6. The setup docs mention One UI's Media volume limit (Settings > Sounds and vibration > Volume > ⋮ > Media volume limit).
 
@@ -674,9 +702,19 @@ Per sample i (timestamps from `DataPoint.getTimestamp()`, ms):
 
 ```
 a_i   = c * (x_i, y_i, z_i)                       // g
-g_lp  = g_lp + α_g * (a_i - g_lp)                 // g_lp starts at the first sample
-d_i   = |a_i - g_lp|                               // dynamic magnitude in g (works with or without gravity in the data)
+d_i   = |a_i - g_lp|                               // dynamic magnitude in g, against g_lp from before this sample
+                                                   // (works with or without gravity in the data)
+if not frozen: g_lp = g_lp + α_g * (a_i - g_lp)   // g_lp starts at the first sample
 ```
+
+**Gravity freeze during a jerk burst.** `frozen` is true from the sample that opens a jerk burst (below) up to and
+including the 3 samples that close it, and is cleared at once if the burst stays open longer than `jerkMaxBurstMs`
+(500 ms; that is voluntary movement, and g_lp must track the new posture). Without the freeze, g_lp (τ = 1 s) is
+pulled towards a one-sided burst and d stays large for 1–3 s after it. A reference model of these formulas (α_g = 0.04,
+f = 0.003, M = 0.05, 25 Hz, 10 s still at (0, 0, 1 g), then 8 samples of +0.5 g on x) gives per-second stillness
+[0, 0.08, 0.71, 0.94] after an aligned burst and [0, 0, 0.23, 0.76] after one straddling a second boundary (3 seconds
+below θ_move); with the freeze, [0, 1, 1, 1] and [0, 0, 1, 1]; a zero-mean ±0.5 g burst gives [0, 1, 1, 1] either way
+(INFERENCE, simulated 2026-10-27).
 
 Per second s (samples with timestamps in [s, s + 1000)). With fewer than 20 samples (80 % of 25) all accel fields of
 that second are null.
@@ -708,8 +746,11 @@ else the 3 complete seconds after the burst's last second must each have stillne
      otherwise log JERK_REJECTED_POST_MOVE
 ```
 
-A burst ≤ 500 ms touches at most 2 seconds, so it makes at most 2 "moving" seconds. The stillness gate tolerates 2
-(§8.6) and major movement needs 3 (§8.10), so a jerk never breaks the gate and never aborts a countdown.
+A burst ≤ 500 ms touches at most 2 seconds. Because g_lp is frozen during it, the seconds after it return to the
+pre-burst stillness, so it makes at most 2 "moving" seconds. The stillness gate tolerates 2 (§8.6) and major movement
+needs 3 (§8.10), so a jerk never breaks the gate and never aborts a countdown. This holds for a burst that starts and
+ends cleanly above J_G; a burst with a slow ramp below J_G still moves g_lp a little (INFERENCE), which the raw-`a` tests
+in §16 and the recorded naps of §15 #10 check.
 
 **Limp-wrist detector** (`WITH_GRAVITY` only; passive posture drift, [D] §10.6 option 2; bonus only):
 
@@ -784,18 +825,30 @@ lies down", P20 §2.2).
 | `priorHrWeight` w | 0.3 | 0.0–0.5 | GUESSED |
 
 ```
-if prior != null and |prior − μ_HR,live| <= 0.15 · μ_HR,live :  μ_HR,eff = (1 − w) · μ_HR,live + w · prior
-else                                                           :  μ_HR,eff = μ_HR,live      (log PRIOR_IGNORED)
+if prior == null                                   :  μ_HR,eff = μ_HR,live
+else if prior >= μ_HR,live                         :  μ_HR,eff = μ_HR,live   (log PRIOR_IGNORED_HIGHER)
+else if μ_HR,live − prior > 0.15 · μ_HR,live       :  μ_HR,eff = μ_HR,live   (log PRIOR_IGNORED)
+else                                               :  μ_HR,eff = (1 − w) · μ_HR,live + w · prior
 ```
 
+So μ_HR,eff ≤ μ_HR,live always: the prior can only make a trigger harder, never easier.
+
 Rationale (INFERENCE): if the user is still keyed up when the baseline is taken, μ_live is high and relaxation alone
-would look like a 7 % drop; blending in a lower habitual resting HR asks for a real drop below it. The 15 % guard stops a
-stale or mistyped value from dominating. MIT gives no basis for this feature ([P] §8 item 10): GUESSED.
+would look like a 7 % drop; blending in a lower habitual resting HR asks for a real drop below it. A prior **above**
+μ_live is ignored, because blending it in would raise μ_eff and let the user's own resting HR count as a "drop"
+(example, arithmetic: prior = 1.15·μ_live, w = 0.5 → μ_eff = 1.075·μ_live and the `MIT_STANDARD` level 0.93·μ_eff =
+0.99975·μ_live). The 15 % guard stops a stale or mistyped value from dominating. MIT gives no basis for this feature
+([P] §8 item 10): GUESSED.
 
 ### 8.6 Per-frame signals (`AWAKE_INCUBATING`)
 
+Windows come from `DetectionConfig` (§9.5); the defaults are in brackets. Each minimum count is a fixed fraction of
+its window (structural constants, §8.15), so every allowed window length can be satisfied:
+`nHrMin = ceil(2/3 · hrMaWindowS)` [15 → 10], `nStillMin = ceil(5/6 · stillWindowS)` [30 → 25],
+`nEdaMin = ceil(2/3 · edaSlopeWindowS)` [30 → 20].
+
 ```
-HR_ma   = mean(hr over Win(t,15) where hr != null)    if at least 10 values, else null
+HR_ma   = mean(hr over Win(t, hrMaWindowS) where hr != null)   if at least nHrMin values, else null
 d_HR    = (μ_HR,eff − HR_ma) / μ_HR,eff                                // fraction; positive = drop
 H_sig   = HR_ma != null  and  d_HR >= θ_drop                           // i.e. HR_ma <= μ_HR,eff · (1 − θ_drop)
 
@@ -804,17 +857,17 @@ R_sig   = r != null  and  r >= θ_rmssd
 
 A       = H_sig or R_sig                                               // REQUIRED autonomic signal
 
-S_win   = non-null stillnessScore over Win(t,30); with fewer than 25 values G = false
+S_win   = non-null stillnessScore over Win(t, stillWindowS); with fewer than nStillMin values G = false
 m_still = mean(S_win);   n_move = count(S_win < θ_move)
 G       = m_still >= θ_still  and  n_move <= 2                         // REQUIRED stillness gate
 
 // bonuses (never sufficient on their own)
-E_win   = non-null skinConductance over Win(t,30); with fewer than 20 values E = false
+E_win   = non-null skinConductance over Win(t, edaSlopeWindowS); with fewer than nEdaMin values E = false
 β       = Σ (x−x̄)(y−ȳ) / Σ (x−x̄)²   with x = (timestamp − t)/1000 s and y in µS      // OLS slope, µS/s
 spikes  = any |y_k − y_{k−1}| > max(1.5 · σ_E, 0.02 µS) over pairs exactly 1 s apart
 E       = β <= 0  and  not spikes                                      // tonic decline, no phasic response
-J       = any jerkEvent in Win(t,120)
-L       = any limpEvent in Win(t,120)
+J       = any jerkEvent in Win(t, bonusLookbackS)
+L       = any limpEvent in Win(t, bonusLookbackS)
 ```
 
 The EDA rule (30 s slope ≤ 0, no spike above 1.5σ) is CLAUDE.md's, demoted to a bonus per owner 11; its numbers and
@@ -877,11 +930,13 @@ label is "Standard", because nothing here is an MIT value (owner 10; [W] §1.7);
 |---|---|---|---|---|
 | θ_drop (HR drop fraction) | 0.10 | **0.07** | 0.05 | 0.04–0.12 (CLAUDE.md range). An explicit `hrDropFraction` override beats the preset |
 | θ_rmssd (RMSSD rise fraction) | 0.25 | 0.15 | 0.10 | 0.05–0.50 |
-| θ_still (mean stillness over 30 s) | 0.85 | 0.80 | 0.75 | 0.60–0.95 |
-| `holdS` | 30 | 20 | 15 | 5–30 (≤ the 30 s gate window) |
-| `holdShortS` (with a bonus) | 15 | 10 | 8 | 3–`holdS` |
-| moving seconds allowed in the gate window | 2 | 2 | 2 | fixed (a ≤ 500 ms jerk spans ≤ 2 s) |
-| HR moving-average window | 15 s | 15 s | 15 s | 5–60 |
+| θ_still (mean stillness over the gate window) | 0.85 | 0.80 | 0.75 | 0.60–0.95 (`stillThreshold` override) |
+| `holdS` | 30 | 20 | 15 | 5–30, ≤ `stillWindowS` (`holdS` override) |
+| `holdShortS` (with a bonus) | 15 | 10 | 8 | 3–`holdS` (`holdShortS` override) |
+| moving seconds allowed in the gate window | 2 | 2 | 2 | fixed, structural (a ≤ 500 ms jerk spans ≤ 2 s; §8.15) |
+| HR moving-average window | 15 s | 15 s | 15 s | 5–60 (`hrMaWindowS`) |
+
+Every override in the "User range" column is a nullable `DetectionConfig` field (§9.5); null = the preset value.
 
 ### 8.12 Missing channels
 
@@ -890,8 +945,8 @@ label is "Standard", because nothing here is an MIT value (owner 10; [W] §1.7);
 | `ANDROID_SENSORS` fallback (no IBI, no EDA) | `rmssd` and `skinConductance` are null: R_sig false, E false. The rule runs on G + HR drop; jerk and limp still come from the accelerometer. Without jerk/limp the maximum confidence at a trigger is 0.85 |
 | EDA unsupported, or the EDA baseline invalid | E false all session |
 | RMSSD baseline null | R_sig false all session |
-| HR null for a while | `HR_ma` needs 10 values in 15 s, else H_sig is false. After 300 s with `HR_ma` null → `IDLE` (`HR_LOST`) |
-| Accelerometer missing | G false (fewer than 25 values); after 60 s → `IDLE` (`ACCEL_LOST`). DETECTION needs the gate, so there is no accel-free DETECTION |
+| HR null for a while | `HR_ma` needs `nHrMin` values (10 of 15 by default), else H_sig is false. After `hrLostS` (300) s with `HR_ma` null → `IDLE` (`HR_LOST`) |
+| Accelerometer missing | G false (fewer than `nStillMin` values); after `accelLostS` (60) s with no non-null `stillnessScore` → `IDLE` (`ACCEL_LOST`). DETECTION needs the gate, so there is no accel-free DETECTION |
 | No usable sensor at session start | `StartSession` in DETECTION is refused with `NO_SENSORS`; the UI offers TIMED_CUES |
 
 ### 8.13 Re-arm, refractory, max cycles
@@ -906,15 +961,45 @@ label is "Standard", because nothing here is an MIT value (owner 10; [W] §1.7);
 
 ### 8.14 Consistency checks (asserted in unit tests)
 
-- Every preset's `holdS` ≤ the 30 s gate window, and `holdShortS` ≤ `holdS`.
+- Every preset's and override's `holdS` ≤ `stillWindowS`, and `holdShortS` ≤ `holdS`.
 - Every preset's θ_drop lies in the 0.04–0.12 user range.
+- Every minimum count ≤ its window, for every allowed window: `nHrMin ≤ hrMaWindowS`, `nStillMin ≤ stillWindowS`,
+  `nEdaMin ≤ edaSlopeWindowS` (true by construction of §8.6; asserted over each range in `ConfigValidationTest`).
+- `cycleStageTimeoutS · 1000 ≥ recording.maxMs + recording.answerMaxMs + 60 000` (60 s for the prompt, the
+  re-incubation cue and margin); `validate()` rejects configs that break it.
 - The 15 s HR moving average lags the raw HR by about 7 s, so a trigger comes about 7 + (holdReq − 1) s after the
   noise-free HR crosses the line (raw crossing at k ≈ 329.4, onset at k = 346 in §13.4).
-- Jerk burst ≤ 500 ms ⇒ ≤ 2 moving seconds ⇒ ignored by both the gate (≤ 2 allowed) and the major-movement rule (≥ 3).
+- Jerk burst ≤ 500 ms (with the g_lp freeze of §8.1) ⇒ ≤ 2 moving seconds ⇒ ignored by both the gate (≤ 2 allowed)
+  and the major-movement rule (≥ 3). Asserted from raw `a` samples in `AccelProcessorTest`, not from d.
 - `missedCycleGraceS` < `cycleStageTimeoutS`.
 - `sessionMaxMin · 60 ≥ 2W + countdownS` (a session can always finish calibration plus one countdown); `validate()`
   rejects configs that break it.
-- `firstSleepMinMin ≤ firstSleepMaxMin`; `userGain ≤ routeCapGain[route] ≤ 1.0`.
+- `firstSleepMinMin ≤ firstSleepMaxMin`; `0 ≤ routeCapGain[route] ≤ 1.0` (rejected otherwise). `userGain` above the
+  route's cap is clamped with a warning, not rejected (§7.7 step 3).
+
+### 8.15 Structural constants (GUESSED, fixed in code, logged as `const.*` in `w_config.csv` / `p_config.csv`)
+
+These are GUESSED but are not config values (label rule, top of document). The tunable thresholds are config values
+(§9.5).
+
+| Constant | Value | Where |
+|---|---|---|
+| Minimum-count fractions | 2/3 (HR_ma), 5/6 (stillness), 2/3 (EDA) | §8.6 |
+| Moving seconds allowed in the gate / major movement | ≤ 2 of the gate window / ≥ 3 of the last 5 s | §8.6, §8.10 |
+| Packet gap that resets `hold` | > 1500 ms | §8.3 |
+| Accel samples for a valid second | ≥ 20 of 25 | §8.1 |
+| Gravity-mode rule | 30 still s; median `accelMean` ∈ [0.8, 1.2] g / < 0.3 g | §8.1 |
+| Jerk/limp stillness levels | ≥ 0.8 (still), < 0.5 (clears the limp reference) | §8.1 |
+| Baseline validity / extension | motion-free and HR frames ≥ 0.5·W; RMSSD n ≥ 30; one extension to 2W | §8.4 |
+| σ floors | σ_HR ≥ 1.0 bpm, σ_E ≥ 0.005 µS | §8.4 |
+| Prior-HR guard | prior ≥ 0.85·μ_live and < μ_live | §8.5 |
+| HR bounds | 30–220 bpm (the 5 s hold and the 60 s RMSSD window are config: `hrHoldMaxS`, `rmssdWindowS`, §9.5) | §8.2 |
+| IBI rules | 300–2000 ms; ≤ 20 % from the median of the last 7 accepted; RMSSD needs ≥ 20 pairs | §8.2 |
+| EDA floors | value ≥ 0.05 µS; spike floor 0.02 µS; spike factor 1.5σ_E | §8.2, §8.6 |
+| Confidence weights | 0.30 S, 0.40 A, 0.15 P, 0.15 B; bonus 0.5 each | §8.9 |
+| Command retry | 3× at 2 s if no reply in 5 s | §10.2 |
+| Trigger retry | attempts at +0, 2, 4, 8 s, 2 s reply timeout each | §10.2 |
+| Cue normalisation | −3 dBFS peak | §7.3 |
 
 ---
 
@@ -936,7 +1021,8 @@ explicitNulls = false }`. Every timestamp is epoch ms. Units are in the field na
 @Serializable enum class SensitivityPreset { LOW, MIT_STANDARD /*UI label "Standard"*/, HIGH }
 @Serializable enum class SensorSource { SAMSUNG_SDK, ANDROID_SENSORS, SIMULATION }
 @Serializable enum class SimulationMode { FAST_HYPNAGOGIA, REALTIME_HYPNAGOGIA, AWAKE_CONTROL, STOP }
-@Serializable enum class CycleStageType { WAKING_USER, RECORDING_DREAM, RE_INCUBATING, CYCLE_COMPLETE }
+@Serializable enum class CycleStageType { DWELL_START /*[EXT] TIMED_CUES only, §4*/, WAKING_USER, RECORDING_DREAM,
+    RE_INCUBATING, CYCLE_COMPLETE }
 @Serializable enum class CycleOutcome { COMPLETED, ABORTED_AUDIO }                                   // [EXT]
 @Serializable enum class CountdownAbortReason { MAJOR_MOVEMENT }
 @Serializable enum class DeviceRole { WATCH, PHONE }
@@ -1088,8 +1174,11 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
     val sensitivity: SensitivityPreset = SensitivityPreset.MIT_STANDARD,
     val hrDropFraction: Float? = null,              // 0.04..0.12; null = preset (§8.11)
     val rmssdRiseFraction: Float? = null,           // 0.05..0.50; null = preset
+    val stillThreshold: Float? = null,              // 0.60..0.95; null = preset (θ_still)
+    val holdS: Int? = null,                         // 5..30, <= stillWindowS; null = preset
+    val holdShortS: Int? = null,                    // 3..holdS; null = preset
     val hrMaWindowS: Int = 15,                      // 5..60
-    val stillWindowS: Int = 30,                     // 10..120, must be >= holdS
+    val stillWindowS: Int = 30,                     // 10..120, must be >= the resolved holdS
     val edaSlopeWindowS: Int = 30,                  // 15..120
     val bonusLookbackS: Int = 120,                  // 30..300
     val refractoryS: Int = 120,                     // 0..600
@@ -1097,6 +1186,8 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
     val cycleStageTimeoutS: Int = 180,              // 90..600
     val hrLostS: Int = 300,                         // 60..900
     val accelLostS: Int = 60,                       // 10..300
+    val hrHoldMaxS: Int = 5,                        // 1..15 (watch aggregator, §8.2)
+    val rmssdWindowS: Int = 60,                     // 30..300 (watch aggregator, §8.2)
     val priorHrSource: PriorHrSource = PriorHrSource.NONE,
     val priorRestingHrBpm: Float? = null,           // 35..120
     val priorHrWeight: Float = 0.3f,                // 0.0..0.5
@@ -1107,6 +1198,7 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
     val gravityAlpha: Float = 0.04f, val jerkThresholdG: Float = 0.30f, val jerkMaxBurstMs: Int = 500,
     val jerkPreStillS: Int = 10, val jerkPostStillS: Int = 3, val limpDriftDeg: Float = 3.0f,
     val limpRefStillS: Int = 10, val limpRefMaxAgeS: Int = 60,
+    val logRawAccel: Boolean = false,               // writes w_accel_raw.csv (§12.2) for AccelConfig replay tuning
 )                                                   // all GUESSED (§8.1)
 
 @Serializable data class TimedCueConfig(
@@ -1120,7 +1212,7 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
 
 @Serializable data class AudioConfig(
     val route: AudioRouteMode = AudioRouteMode.NIGHTSTAND_SPEAKER,
-    val userGain: Float = 0.5f,                     // 0..routeCapGain[route]
+    val userGain: Float = 0.5f,                     // 0..1; playback clamps it to routeCapGain[route] (§7.7)
     val routeCapGain: Map<AudioRouteMode, Float> = mapOf(
         AudioRouteMode.NIGHTSTAND_SPEAKER to 0.6f, AudioRouteMode.BLUETOOTH_SLEEP_AUDIO to 0.3f),   // 0..1, GUESSED
     val fadeInMs: Int = 2000,                       // 0..5000
@@ -1130,7 +1222,7 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
     val focusMode: FocusMode = FocusMode.GAIN_TRANSIENT,
     val routeLossPolicy: RouteLossPolicy = RouteLossPolicy.PAUSE_CUES,
     val endAlarm: EndAlarm = EndAlarm.CHIME,
-    val endChimeCount: Int = 3,                     // 1..3
+    val endChimeCount: Int = 3,                     // 1..3; "off" is endAlarm = NONE
 )
 
 @Serializable data class RecordingConfig(
@@ -1157,7 +1249,8 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
 ```kotlin
 class HypnagogiaDetectionEngine(config: SessionConfig) {
     val state: TdiState
-    fun startSession(sessionId: String): EngineResult               // IDLE/SESSION_COMPLETE → CALIBRATING_BASELINE
+    fun startSession(sessionId: String, mode: SessionMode): EngineResult
+        // IDLE/SESSION_COMPLETE → CALIBRATING_BASELINE (DETECTION) or AWAKE_INCUBATING, mirror only (TIMED_CUES, §4)
     fun onPacket(packet: BiosignalPacket): EngineResult              // the only clock
     fun onCycleStage(cycle: Int, stage: CycleStageType, outcome: CycleOutcome = CycleOutcome.COMPLETED): EngineResult
     fun onTriggerRejected(cycle: Int, code: String): EngineResult
@@ -1210,7 +1303,7 @@ Consequences:
 | Path | Direction | API | Payload | Reply |
 |---|---|---|---|---|
 | `/opentdi/state_command` | both | `MessageClient.sendRequest` | `TdiCommand` | `Ack`; retry 3× at 2 s if no reply in 5 s; the receiver de-duplicates by (sessionId, type, cycle, stage) |
-| `/opentdi/hypnagogia_trigger` | watch → phone | `MessageClient.sendRequest` | `HypnagogiaTrigger` | `Ack(ok, code)`: `ACCEPTED`, `MODE_TIMED`, `NOT_AWAKE_INCUBATING`, `DUPLICATE`. Retry at +2, +4, +8 s until the missed-cycle deadline; de-duplicated by (sessionId, cycle, onsetTimestampMs) |
+| `/opentdi/hypnagogia_trigger` | watch → phone | `MessageClient.sendRequest` | `HypnagogiaTrigger` | `Ack(ok, code)`: `Ack(true, ACCEPTED)`, `Ack(true, DUPLICATE)` (already accepted; the watch treats it as accepted), `Ack(false, MODE_TIMED)`, `Ack(false, NOT_AWAKE_INCUBATING)`. Attempts at +0, +2, +4, +8 s from the first send, each with a 2 s app-level reply timeout, stopping at the missed-cycle deadline. A new attempt does not cancel the earlier `sendRequest` Task (it cannot be cancelled); the first `Ack` from any attempt wins and later replies are logged and ignored. The phone de-duplicates by (sessionId, cycle, onsetTimestampMs) |
 | `/opentdi/sensor_stream` | watch → phone | batched `MessageClient`: `sendMessage` for routine batches (dropped on `TARGET_NODE_NOT_CONNECTED` = 4000), `sendRequest` + up to 3 retries for a batch that contains a state change **[EXT]** | `TelemetryBatch`, flushed every `telemetryFlushS` (5 s) and immediately on any state change | none / `Ack` |
 | `/opentdi/session_files` **[EXT]** | watch → phone | `ChannelClient.openChannel` + `sendFile` at session end (Phase 2) | each watch CSV of the session | channel close reason |
 | `/opentdi/wrist_audio_channel` | — | `ChannelClient` | reserved for the deferred wrist speaker / mic | — |
@@ -1222,11 +1315,16 @@ Capabilities (`res/values/wear.xml`, string-array `android_wear_capabilities` wi
 `opentdi_phone` in `:mobile`, `opentdi_watch` in `:wear`. The sender picks the node from
 `CapabilityClient.getCapability(name, FILTER_REACHABLE)`, preferring `isNearby()`.
 
-Listeners: live listeners (`MessageClient.addListener` with `wear://*/opentdi/` prefix, `addRpcService` for requests)
-are registered inside each FGS on a background `Looper` (`Wearable.WearableOptions`) while a session runs. A manifest
-`WearableListenerService` (`pathPrefix="/opentdi/"`, actions `MESSAGE_RECEIVED`, `REQUEST_RECEIVED`) exists only so a
-`StartSession` reaching a device whose service is not running can post a "Tap to start OpenTDI" notification, since a
-background FGS start is not allowed ([A] §2.6, §4.4).
+Listeners. Exactly one component receives each path, so the question "which one answers a `sendRequest` when both are
+registered" never arises (the docs do not define it: INFERENCE):
+
+| Path | Received by |
+|---|---|
+| `/opentdi/state_command` (requests, both devices) | the manifest `OpenTdiListenerService` only (`android:path="/opentdi/state_command"`, action `REQUEST_RECEIVED` only, §14.1). Its `onRequest` checks a process-wide flag set by the session FGS (`SessionServiceRegistry.running`): if the FGS runs, it hands the command to the FGS's handler and returns that handler's `Ack`; if not, a `StartSession` posts "Tap to start OpenTDI" and every command is answered `Ack(false, "WATCH_SERVICE_NOT_RUNNING")` (on the phone `"PHONE_SERVICE_NOT_RUNNING"`), since a background FGS start is not allowed ([A] §2.6, §4.4) |
+| `/opentdi/hypnagogia_trigger`, `/opentdi/sensor_stream` (phone) | live listeners inside the phone FGS: `addRpcService` for the requests, `MessageClient.addListener` (`wear://*/opentdi/sensor_stream`, `FILTER_LITERAL`) for routine batches, on a background `Looper` (`Wearable.WearableOptions`), registered only while the FGS runs |
+
+So the manifest service is never bound for the 5 s telemetry batches, in line with "If you only need to listen for
+events when your app is already running … register a live listener" ([A] §4.4). §15 #23 checks it on the devices.
 
 Clock offset: each device logs its wall clock on send and receive; the phone estimates the offset from `sendRequest`
 round trips (log only, Phase 2).
@@ -1306,6 +1404,12 @@ link back:
   trigger ─────────────────────────────────────► Ack(false, "MODE_TIMED") → watch: PHONE_REJECTED, refractory
 ```
 
+If the phone accepted the trigger but the watch still declares the cycle missed (for example the `Ack` was lost and
+`WAKING_USER` was late), the phone sees a telemetry frame with `state = AWAKE_INCUBATING`, `stateReason = MISSED_CYCLE`
+for the current cycle: if its countdown is still running it cancels it, and it logs `WATCH_MISSED` in
+`p_transitions.csv`. A `CycleStage` that reaches the watch for a cycle it already declared missed is logged
+`LATE_STAGE_IGNORED` and ignored (the deadline is 15 s after the countdown, so this needs a link delay above 15 s).
+
 If the phone process dies, the phone sends nothing; the watch keeps detecting, misses cycles and logs them until the
 user aborts or `sessionMaxMin` (enforced on the watch too, as a safety net) ends the session.
 
@@ -1317,7 +1421,8 @@ Start (UI visible) → FGS; AWAKE_INCUBATING; INITIAL_INCUBATION; draw L ∈ {10
 t = L       → HYPNAGOGIA_DETECTED (TIMED_DWELL); INITIAL_INCUBATION; dwell 180 s
 t = L+180 s → WAKING_USER → RECORDING_DREAM → RE_INCUBATING → cycle complete
 +420 s      → next dwell … ×4 → SESSION_COMPLETE; SESSION_END chime
-(no StartSession is sent if no opentdi_watch node is reachable; if one is, the watch logs packets and mirrors stages)
+(no StartSession is sent if no opentdi_watch node is reachable; if one is, StartSession(mode = TIMED_CUES) is sent and
+ the watch logs packets and mirrors stages, including DWELL_START at each dwell, §4)
 ```
 
 ---
@@ -1330,8 +1435,11 @@ t = L+180 s → WAKING_USER → RECORDING_DREAM → RE_INCUBATING → cycle comp
   rules (FACT, [S] §1). Target device: Galaxy Watch4 and later; EDA: Galaxy Watch8 series and later (FACT, [S] §2.3).
 - SDK 1.4.0 needs **Health Sensor Service 1.6.5 or above** (formerly "Health Platform"). The compatibility table has no
   1.4.1 row (UNVERIFIED; assume 1.6.5+) (FACT, [S] §5).
-- The installed package name `com.samsung.android.service.health.tracking` is UNVERIFIED (no Samsung page states it);
-  confirm with `adb shell pm list packages | grep -i health` ([S] §3.4).
+- The installed Health Platform / Health Sensor Service package is **`com.samsung.android.service.health`**, observed
+  on the owner's SM-L500 as versionName **1.7.00.05** (versionCode 170005001), which is ≥ 1.6.5 (FACT, [DA] "Samsung
+  Health Platform (watch)"). `com.samsung.android.service.health.tracking` is the SDK's Java package, not an installed
+  app ([DA]); it is used only for `Class.forName` and the R8 rule (§11.5). Every package or version lookup uses
+  `com.samsung.android.service.health`.
 
 ### 11.2 Trackers, keys, types, units
 
@@ -1373,7 +1481,7 @@ not connected) → `setEventListener(listener)` (one per type). Several continuo
 | Permission | Needed for | Declared | Runtime request | `pm grant` | Status |
 |---|---|---|---|---|---|
 | `android.permission.health.READ_HEART_RATE` (dangerous) | `HEART_RATE_CONTINUOUS` on targetSdk ≥ 36; also satisfies the `health` FGS type | yes | yes (`SDK_INT >= BAKLAVA`) | INFERENCE: yes | FACT [S] §3.1; [A] §1.2 |
-| `com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA` | `EDA_CONTINUOUS` on targetSdk ≥ 36 (owner 6) | yes | yes (Samsung: shows a consent pop-up) | protection level unknown: **VERIFY ON DEVICE** | FACT [S] §3.1, §3.5 |
+| `com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA` | `EDA_CONTINUOUS` on targetSdk ≥ 36 (owner 6) | yes | yes (Samsung: shows a consent pop-up) | yes: protection level `dangerous` (runtime, `pm grant`-able) on the SM-L500 | FACT [S] §3.1, §3.5; [DA] permissions table |
 | `android.permission.ACTIVITY_RECOGNITION` (dangerous) | `ACCELEROMETER_CONTINUOUS`; also satisfies the `health` FGS type without a while-in-use limit | yes | yes | yes | FACT [S] §3.1; [A] §1.5 |
 | `BODY_SENSORS` | only targetSdk ≤ 35 / API ≤ 35 watches | `maxSdkVersion="35"` | API ≤ 35 only | fails on API 36 ("has not requested permission") | FACT [A] §1.4; **VERIFY ON DEVICE** that Samsung's trackers do not check it on API 36 (owner 6) |
 | `BODY_SENSORS_BACKGROUND` | not on API 36 (replaced by `READ_HEALTH_DATA_IN_BACKGROUND`) | not declared | — | hard-restricted | FACT [A] §1.1, §1.3 |
@@ -1385,20 +1493,38 @@ not connected) → `setEventListener(listener)` (one per type). Several continuo
 `ACTIVITY_RECOGNITION`; Samsung ties `ACTIVITY_RECOGNITION` to the accelerometer ([S] §0 item 4). OpenTDI requests all
 three (`READ_HEART_RATE`, `READ_ADDITIONAL_HEALTH_DATA`, `ACTIVITY_RECOGNITION`), so the owner's intent is met.
 
-`<queries><package android:name="com.samsung.android.service.health.tracking"/></queries>` is declared so the version
-can be read with `getPackageInfo` ([S] §3.4).
+`getPackageInfo("com.samsung.android.service.health", 0).versionName` reads the version (owner 4; catch
+`NameNotFoundException` → `HSS_NOT_INSTALLED`; compare per numeric component, so "1.7.00.05" ≥ "1.6.5", [S] §5). The
+package is visible because the AAR's merged manifest already adds `<queries>` for `com.samsung.android.service.health`
+(FACT, [V] "SDK package facts"); in stub builds the app manifest declares the same entry (§14.1) so the check also runs
+without the AAR.
 
 ### 11.5 Build wiring of the AAR and the stub (D15)
 
 ```kotlin
 // wear/build.gradle.kts
-val samsungAar = file("libs/samsung-health-sensor-api.aar")
+// Matches samsung-health-sensor-api-1.4.1.aar (the file in the SDK zip, [V]) and samsung-health-sensor-api.aar
+// (the name on Samsung's pages, [S] §7). More than one match is a build error, so two SDK versions never mix.
+val samsungAars = fileTree("libs") { include("samsung-health-sensor-api*.aar") }.files
+check(samsungAars.size <= 1) { "More than one Samsung AAR in wear/libs: $samsungAars" }
+val samsungAar: File? = samsungAars.singleOrNull()
+logger.lifecycle("Samsung Health Sensor SDK: ${samsungAar?.name ?: "not bundled (stub)"}")
 dependencies {
-    if (samsungAar.exists()) implementation(files(samsungAar))
+    if (samsungAar != null) implementation(files(samsungAar))
     else compileOnly(project(":samsung-health-stub"))      // classes absent at runtime → AAR_NOT_BUNDLED
 }
-android { defaultConfig { buildConfigField("boolean", "SAMSUNG_SDK_BUNDLED", samsungAar.exists().toString()) } }
+android {
+    buildFeatures { buildConfig = true }                   // off by default since AGP 8.0; the project uses AGP 9.4.0
+    defaultConfig {
+        buildConfigField("boolean", "SAMSUNG_SDK_BUNDLED", (samsungAar != null).toString())
+        buildConfigField("String", "SAMSUNG_SDK_AAR", "\"${samsungAar?.name ?: ""}\"")   // logged to w_config.csv
+    }
+}
 ```
+
+`buildFeatures { buildConfig = true }` is required: "AGP 8.0 doesn't generate BuildConfig by default" (FACT,
+https://developer.android.com/build/releases/past-releases/agp-8-0-0-release-notes), and `gradle/libs.versions.toml`
+pins `agp = "9.4.0"`. The SHA-256 of the AAR is recorded in `wear/libs/README.md` (not recomputed by the build).
 
 At runtime, `BuildConfig.SAMSUNG_SDK_BUNDLED == false` (or `Class.forName(
 "com.samsung.android.service.health.tracking.HealthTrackingService")` failing) → `AAR_NOT_BUNDLED`. The AAR sits in
@@ -1467,7 +1593,8 @@ simulation receiver (§13) covers only the algorithm and the audio loop (owner 3
 
 | File | One row per | Columns (units) |
 |---|---|---|
-| `w_config.csv` | key | `key,value`: app version, `applicationId`, device model, SDK `getVersion()`, Health Sensor Service `versionName`, `sensorStatus`, `gravityMode`, every `SessionConfig` field (dotted keys, e.g. `detection.baselineWindowS`), the resolved thresholds, and every `BaselineStats` field once ready |
+| `w_config.csv` | key | `key,value`: app version, `applicationId`, device model, SDK `getVersion()`, Health Sensor Service `versionName`, `sensorStatus`, `gravityMode`, every `SessionConfig` field (dotted keys, e.g. `detection.baselineWindowS`), the resolved thresholds, every structural constant of §8.15 (`const.*`), the bundled AAR name (`BuildConfig.SAMSUNG_SDK_AAR`), and every `BaselineStats` field once ready |
+| `w_accel_raw.csv` (optional, `accel.logRawAccel`, default off) | raw 25 Hz accelerometer sample | `sdk_ts_ms,x,y,z` (raw counts, or m/s² × 1000 as integers for `ANDROID_SENSORS`), about 90 000 rows ≈ 2–3 MB per hour (INFERENCE). Input of the AccelConfig replay (§12.6) |
 | `w_sensor_raw.csv` | SDK HR or EDA data point (the raw 1 Hz data) | `arrival_wall_ms,sdk_ts_ms,tracker(HR/EDA),hr_bpm,hr_status,ibi_ms(;),ibi_status(;),eda_us,eda_status,batch_size,late(0/1)` |
 | `w_packets.csv` (**replay input**) | emitted 1 Hz packet | `ts_ms,seq,source,hr_bpm,hr_status,ibi_ms(;),rmssd_ms,eda_us,eda_status,accel_mean_g,accel_rms_g,accel_peak_g,stillness,jerk,limp,tilt_deg,n_accel_samples,emitted_wall_ms` |
 | `w_accel_events.csv` (25 Hz-derived flags) | event | `sample_ts_ms,event,value1,value2,detail` with events `JERK_BURST_OPEN`, `JERK_CONFIRMED` (burst ms, peak g), `JERK_REJECTED_LONG`, `JERK_REJECTED_POST_MOVE`, `LIMP_REF_SET`, `LIMP_REF_CLEARED`, `LIMP_CONFIRMED` (tilt °), `GRAVITY_MODE`, `LIMP_UNAVAILABLE` |
@@ -1512,11 +1639,16 @@ reference notes):
 
 ```bash
 W=<WATCH_SERIAL>; P=<PHONE_SERIAL>
-adb -s $W exec-out run-as com.opentdi tar cf - files/sessions > watch_sessions.tar
-adb -s $P exec-out run-as com.opentdi tar cf - files/sessions files/journal > phone_sessions.tar
+adb -s $W exec-out run-as --user 0 com.opentdi tar cf - files/sessions > watch_sessions.tar
+adb -s $P exec-out run-as --user 0 com.opentdi tar cf - files/sessions files/journal > phone_sessions.tar
 # one file:
-adb -s $W exec-out run-as com.opentdi cat files/sessions/<sessionId>/w_packets.csv > w_packets.csv
+adb -s $W exec-out run-as --user 0 com.opentdi cat files/sessions/<sessionId>/w_packets.csv > w_packets.csv
 ```
+
+Device safety (CLAUDE.md §6): every phone-side command names user 0, because the phone has a Secure Folder profile
+(user 150) and `pm list packages` without `--user 0` throws `SecurityException` there ([DA] "adb notes"); the watch
+commands do the same for uniformity. That this build's `run-as` accepts `--user` is UNVERIFIED (INFERENCE from AOSP
+`run-as` usage); if it refuses it, drop the flag only for `run-as`, which can read nothing but `com.opentdi`'s own files.
 
 Phase 2 also copies the watch's session CSVs to the phone at session end over `/opentdi/session_files`
 (`ChannelClient.sendFile`, [A] §4.8) into `files/sessions/<sessionId>/watch/`.
@@ -1525,7 +1657,8 @@ Phase 2 also copies the watch's session CSVs to the phone at session end over `/
 
 `shared/src/test/kotlin/com/opentdi/shared/replay/ReplayHarness.kt`:
 
-1. `load(dir)`: `w_config.csv` → `SessionConfig`; `w_packets.csv` → `List<BiosignalPacket>`; `w_inputs.csv` → inputs.
+1. `load(dir)`: `w_config.csv` → `SessionConfig`; `w_packets.csv` → `List<BiosignalPacket>`; `w_inputs.csv` → inputs;
+   `w_accel_raw.csv` if present.
 2. `run(configOverride = null)`: new engine; apply `START`; for each packet in order call `onPacket`, then apply every
    input whose `after_packet_ts_ms` equals that packet's timestamp, in file order. Returns the events and the scores.
 3. Assertions:
@@ -1534,6 +1667,11 @@ Phase 2 also copies the watch's session CSVs to the phone at session end over `/
    - **Synthetic fixtures**: the expected onset times of §13.4.
    - **Tuning runs** (not pass/fail): re-run a recorded nap with other presets or overrides and print onset times next
      to the journal's sleep-state answers (AWAKE / HALFWAY / ASLEEP), the only ground truth Dormio used ([P] §2.2).
+   - **AccelConfig runs** (only for sessions recorded with `logRawAccel`): feed `w_accel_raw.csv` through
+     `AccelProcessor` with another `AccelConfig`, replace `accel_*`, `stillness`, `jerk` and `limp` in each packet of
+     `w_packets.csv` by the new values (same `ts_ms` bins), and run the engine. With the recorded `AccelConfig` the
+     recomputed fields must equal the logged ones. Without `w_accel_raw.csv`, AccelConfig (f, M, J_G, drift°) can be
+     tuned only from live recordings (§15 #10), not by replay.
 4. Fixtures live in `shared/src/test/resources/replay/<name>/`. Synthetic ones are generated by a test utility from the
    generator of §13. Real naps (packets and inputs only, no audio, no transcripts) are added only with the recorded
    person's consent (O9).
@@ -1560,7 +1698,8 @@ supported by the Samsung SDK ([S] §4), and the synthetic curves below are desig
 | Duplicates | with `-p` while the app runs both receivers fire; `SimController` ignores a request with the same mode within 2 s **[EXT]** |
 | Build types | debug only **[EXT]**: release builds contain neither registration |
 | Behaviour | forwards to the running watch FGS. If it is not running: log `SIM_REJECTED reason=WATCH_SERVICE_NOT_RUNNING` (a receiver cannot start an FGS from the background, [A] §2.6) |
-| On a run mode | stop the real trackers; `source = SIMULATION`; abort any running session; start a new DETECTION session with the overrides below and send `StartSession(origin = WATCH)` to the phone (whose service must be running, §13.6) |
+| On a run mode | stop the real trackers; `source = SIMULATION`; abort any running session; start a new DETECTION session with the pinned config and the overrides below and send `StartSession(origin = WATCH)` to the phone (whose service must be running, §13.6) |
+| Pinned config **[EXT]** | the user's saved config, except `detection = DetectionConfig(sensitivity = <preset>)`: every detection field at its default (`baselineWindowS = 180`, `priorHrSource = NONE`, no threshold or hold overrides, default windows, refractory 120 s, grace 15 s, stage timeout 180 s). `<preset>` = optional extra `preset` (`LOW`, `MIT_STANDARD`, `HIGH`; default `MIT_STANDARD`; anything else → `SIM_REJECTED reason=BAD_PRESET`). `SIM_START` logs the full effective config (§13.5). The §13.4 numbers and the §13.5 pass criteria hold only for this pinned config |
 | `STOP` | `AbortSession(USER)`, restore the real sensors, engine `IDLE` |
 
 | Mode | Config overrides | Time compression | Curves |
@@ -1602,8 +1741,9 @@ Hypnagogia curves (`FAST_HYPNAGOGIA`, `REALTIME_HYPNAGOGIA`):
 | `REARM` 150 ≤ k < 210, f = (k − 150)/60 | 72 − 12f + n_HR | 38 + 10f + n_R | 2.05 − 0.10f + 0.005·n_E | 0.97 + 0.02·n_S; **0.30 at k = 180** | `jerkEvent` at k = 183, `limpEvent` at k = 195 |
 | `REARM` k ≥ 210 | 60 + n_HR | 48 + n_R | 1.95 + 0.005·n_E | 0.97 + 0.02·n_S | — |
 
-Other fields: `accelRms = 0.003 + (1 − s)·(0.05 − 0.003)` (consistent with §8.1), `accelPeak = min(1.0, 2·accelRms)`
-(0.45 g at a jerk-burst second), `accelMean = 1.0`, `hrStatus = 1`, `edaStatus = 0`,
+Other fields: `accelRms = 0.003 + (1 − s)·(0.05 − 0.003)` (consistent with §8.1); `accelPeak = 0.45 g` at the
+jerk-burst seconds (`INITIAL` k = 330, `REARM` k = 180), so it exceeds J_G = 0.30 g like a real jerk, and
+`min(1.0, 2·accelRms)` otherwise (the formula alone would give 2 × 0.0359 = 0.072 g there); `accelMean = 1.0`, `hrStatus = 1`, `edaStatus = 0`,
 `ibiList = [round(60000 / HR)]`, `source = SIMULATION`.
 
 ### 13.3 Awake-control curves (`AWAKE_CONTROL`, segment `INITIAL` only)
@@ -1634,7 +1774,8 @@ between −2.8 and +2.8. Hence the noise term of `HR_ma` lies in [−0.187, +0.1
 **No trigger in the first awake minutes** (k = 180–299): HR_ma ≥ 70 − 0.187 = 69.813, so d_HR ≤ (70.0078 − 69.813) /
 70.0078 = 0.28 %; RMSSD ≤ 41.0, so r ≤ 2.48 %. Both are below the smallest thresholds anywhere (θ_drop ≥ 0.04,
 θ_rmssd ≥ 0.05), so A is false for every preset and override. In addition the fidget at k = 240–243 (4 moving
-seconds) keeps G false from k = 240 to k = 270.
+seconds) keeps G false from k = 242 to k = 270: at k = 240–241 the 30 s window holds only 1–2 moving seconds and
+m_still ≥ 0.87 ≥ 0.80, and from k = 271 only k = 242–243 are left in it.
 
 **Cycle 1 onset.** For k ≥ 314 the 15 s window lies inside the descent, so HR_ma(k) = 70 − (k − 307)/6 + noise, with
 the noise in [−0.187, 0.187]:
@@ -1652,7 +1793,8 @@ the noise in [−0.187, 0.187]:
 - Countdown (15 s at 1:1): stillness ≥ 0.95 on the plateau, so no major movement and no abort; the phone sends
   `WAKING_USER` at about k = 361.
 
-**Cycle 2 onset** (segment `REARM`, k counted from T). Refractory blocks k ≤ 120. For 1 ≤ k < 150, HR_ma ≥ 71.81 >
+**Cycle 2 onset** (segment `REARM`, k counted from T). Refractory blocks k < 120 (k = 1–119; the guard is
+`t < refractoryUntil = T + 120 000`). For 1 ≤ k < 150, HR_ma ≥ 71.81 >
 μ_HR (d_HR < 0) and RMSSD ≤ 39 < μ_R, so A is false regardless. In the descent HR_ma(k) = 72 − (k − 157)/5 + noise;
 H_sig needs (k − 157)/5 ≥ 6.893 ∓ 0.187 → k ∈ [191, 193]; exactly **first core at k = 193** (HR_ma 64.880, 7.32 %);
 G is true (one moving second at k = 180); J is true from k = 183, so holdReq = 10; **onset at k = 202** (HR_ma 63.187,
@@ -1667,7 +1809,8 @@ at k = 217. `HIGH` onset k = 335 (first core 328, hold 8), cycle 2 at k = 192.
 **AWAKE_CONTROL never triggers.** Same baseline (k < 180 is identical). For every k ≥ 180: HR_ma ≥ 68 − 0.187 = 67.813,
 so d_HR ≤ (70.0078 − 67.813)/70.0078 = **3.14 % < 4 %** (the smallest θ_drop allowed anywhere); RMSSD ≤ 41.0, so
 r ≤ **2.48 % < 5 %** (the smallest θ_rmssd). A is therefore false at every k, for every preset and every allowed
-override, so the core is never true and nothing triggers, even though G is often true between fidgets and E is often
+θ_drop / θ_rmssd override, with the pinned config of §13.1 (`priorHrSource = NONE`). A prior HR cannot change this
+either, since §8.5 only ever lowers μ_HR,eff and so only lowers d_HR. So the core is never true and nothing triggers, even though G is often true between fidgets and E is often
 true (flat EDA). The run ends with `STOP` or at `sessionMaxMin` with 0 cycles.
 
 **Real-time length of a FAST run** (INFERENCE): cycle 1 onset after 347 compressed packets ≈ 34.7 s; countdown 15 s;
@@ -1682,7 +1825,7 @@ Tags: watch `OTDI.Sim`, `OTDI.Engine`, `OTDI.Link`, `OTDI.Sensors`; phone `OTDI.
 Watch, `FAST_HYPNAGOGIA`, `MIT_STANDARD`:
 
 ```
-OTDI.Sim     SIM_START mode=FAST_HYPNAGOGIA compression=10 countdownS=15 maxCycles=2
+OTDI.Sim     SIM_START mode=FAST_HYPNAGOGIA compression=10 countdownS=15 maxCycles=2 preset=MIT_STANDARD config=<full effective SessionConfig JSON>
 OTDI.Sensors STATUS SIMULATION
 OTDI.Engine  STATE IDLE->CALIBRATING_BASELINE t=0 reason=SESSION_START
 OTDI.Engine  BASELINE hrMean=70.01 hrSd=0.64 rmssdMean=40.01 edaMean=2.000 n=180 discarded=0
@@ -1725,18 +1868,24 @@ before `STOP`.
 
 ### 13.6 ADB hardware-in-the-loop procedure
 
+**Before running it: ask the owner** (CLAUDE.md §6 "Ask the owner before the first install on each device and before
+any audible playback test"). This run installs on both devices and plays cues aloud on the phone speaker, so it needs
+the owner's yes for the first install on each device and for every run (it is an audible playback test).
+
 ```bash
 W=<WATCH_SERIAL>; P=<PHONE_SERIAL>
 ./gradlew :wear:assembleDebug :mobile:assembleDebug
-adb -s $W install -r -g wear/build/outputs/apk/debug/wear-debug.apk      # -g grants requested runtime permissions
-adb -s $P install -r -g mobile/build/outputs/apk/debug/mobile-debug.apk
-adb -s $W shell am start -n com.opentdi/com.opentdi.wear.MainActivity    # visible UI starts the watch FGS
+# Only com.opentdi, always user 0 (the phone has a Secure Folder profile, user 150; CLAUDE.md §6).
+adb -s $W install -r -g --user 0 wear/build/outputs/apk/debug/wear-debug.apk     # -g grants requested runtime permissions
+adb -s $P install -r -g --user 0 mobile/build/outputs/apk/debug/mobile-debug.apk
+adb -s $W shell am start --user 0 -n com.opentdi/com.opentdi.wear.MainActivity    # visible UI starts the watch FGS
 # Phone service: tap "Arm" in the phone app, or (debug builds) start it from the shell:
-adb -s $P shell am start-foreground-service -n com.opentdi/com.opentdi.mobile.session.NapSessionService -a com.opentdi.ACTION_ARM
-adb -s $W logcat -c; adb -s $P logcat -c
-adb -s $W shell am broadcast -a com.opentdi.ACTION_SIMULATE_BIOSIGNALS --es mode FAST_HYPNAGOGIA
-adb -s $W logcat -v time -s OTDI.Sim OTDI.Engine OTDI.Link OTDI.Sensors > watch.log &
-adb -s $P logcat -v time -s OTDI.Session OTDI.Link OTDI.Audio OTDI.Rec OTDI.Stt > phone.log &
+adb -s $P shell am start-foreground-service --user 0 -n com.opentdi/com.opentdi.mobile.session.NapSessionService -a com.opentdi.ACTION_ARM
+# Never `logcat -c` (it clears the shared log buffer): read from a start time instead.
+TW=$(adb -s $W shell date +'%m-%d %H:%M:%S.000'); TP=$(adb -s $P shell date +'%m-%d %H:%M:%S.000')
+adb -s $W logcat -T "$TW" -v time -s OTDI.Sim OTDI.Engine OTDI.Link OTDI.Sensors > watch.log &
+adb -s $P logcat -T "$TP" -v time -s OTDI.Session OTDI.Link OTDI.Audio OTDI.Rec OTDI.Stt > phone.log &
+adb -s $W shell am broadcast --user 0 -a com.opentdi.ACTION_SIMULATE_BIOSIGNALS --es mode FAST_HYPNAGOGIA
 ```
 
 The debug-only phone service entry is `exported="true"` with `android:permission="android.permission.DUMP"`. A
@@ -1766,15 +1915,16 @@ Watch (`:wear`, `applicationId com.opentdi`, namespace `com.opentdi.wear`):
 <uses-permission android:name="android.permission.INTERNET" />
 <!-- add only if §15 #4 shows PERMISSION_ERROR with the screen off:
 <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" /> -->
-<queries><package android:name="com.samsung.android.service.health.tracking" /></queries>
+<!-- the installed Health Platform package ([DA]); the AAR's merged manifest adds the same entry ([V]) -->
+<queries><package android:name="com.samsung.android.service.health" /></queries>
 <application>
   <service android:name=".sensing.HealthTrackingForegroundService"
       android:exported="false" android:foregroundServiceType="health" />
+  <!-- state_command requests only; forwards to the FGS when it runs (§10.2) -->
   <service android:name=".link.OpenTdiListenerService" android:exported="true">
     <intent-filter>
-      <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
       <action android:name="com.google.android.gms.wearable.REQUEST_RECEIVED" />
-      <data android:scheme="wear" android:host="*" android:pathPrefix="/opentdi/" />
+      <data android:scheme="wear" android:host="*" android:path="/opentdi/state_command" />
     </intent-filter>
   </service>
 </application>
@@ -1803,15 +1953,15 @@ health permission and no Samsung permission (the SDK does not support phones, [S
 
 ### 14.2 Runtime requests and the `pm grant` list (API 36; replaces CLAUDE.md §6)
 
-| Device | Runtime request in the app | `adb shell pm grant com.opentdi …` |
+| Device | Runtime request in the app | `adb -s <serial> shell pm grant --user 0 com.opentdi …` |
 |---|---|---|
-| Watch | `READ_HEART_RATE`, `READ_ADDITIONAL_HEALTH_DATA`, `ACTIVITY_RECOGNITION`, `POST_NOTIFICATIONS` | `android.permission.health.READ_HEART_RATE`; `com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA` (VERIFY: protection level unknown); `android.permission.ACTIVITY_RECOGNITION`; `android.permission.POST_NOTIFICATIONS` |
+| Watch | `READ_HEART_RATE`, `READ_ADDITIONAL_HEALTH_DATA`, `ACTIVITY_RECOGNITION`, `POST_NOTIFICATIONS` | `android.permission.health.READ_HEART_RATE`; `com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA` (protection level `dangerous`, `pm grant`-able: FACT, [DA]); `android.permission.ACTIVITY_RECOGNITION`; `android.permission.POST_NOTIFICATIONS` |
 | Phone | `POST_NOTIFICATIONS`; `RECORD_AUDIO` (Phase 2) | `android.permission.POST_NOTIFICATIONS`; `android.permission.RECORD_AUDIO` |
 
 Dropped from CLAUDE.md's list: `BODY_SENSORS` and `BODY_SENSORS_BACKGROUND` (they fail on API 36), `BLUETOOTH_CONNECT`
 (not declared). Normal permissions (`FOREGROUND_SERVICE*`, `WAKE_LOCK`, `INTERNET`) cannot be granted and need no grant
-(FACT, `PermissionManagerServiceImpl.java:1411-1420`, [A] §1.4). `adb install -g` grants all requested runtime
-permissions in one go.
+(FACT, `PermissionManagerServiceImpl.java:1411-1420`, [A] §1.4). `adb install -r -g --user 0` grants all requested
+runtime permissions in one go. Every command passes `--user 0` and touches only `com.opentdi` (CLAUDE.md §6).
 
 ### 14.3 Foreground services
 
@@ -1839,8 +1989,9 @@ CSV writing and transcription run in the service's own coroutines, not WorkManag
   `flush()` timer must fire with the screen off. Wear guidance says workouts don't need a wake lock ([A] §2.4), so
   measure both settings (§15 #11) and turn it off if the trackers deliver on time without it.
 - Doze: the doc says Doze "Ignores wake locks", but AOSP keeps the partial wake locks of a process running an FGS
-  (`PowerManagerService.java:4409-4418`); OpenTDI relies on the AOSP behaviour and verifies it with
-  `dumpsys deviceidle force-idle` (§15 #12) ([A] §2.4).
+  (`PowerManagerService.java:4409-4418`); OpenTDI relies on the AOSP behaviour ([A] §2.4) and verifies it passively
+  with long screen-off runs and read-only `dumpsys deviceidle` / `dumpsys power` (§15 #12). `dumpsys deviceidle
+  force-idle` changes system state, so it is run only with the owner's explicit approval for that run (CLAUDE.md §6).
 
 ### 14.5 Broadcast restrictions
 
@@ -1856,8 +2007,10 @@ See §13.1: an implicit broadcast never reaches a manifest receiver; the dynamic
   `keepScreenOn` ("severely impacts battery life", [W] §2.3), near-black ambient layout.
 - Wear OS 6 + targetSdk 36 is always-on (dimmed, still visible, [W] §2.3): draw dim HR/state text only, so a lit face
   does not disturb sleep.
-- Measure with `adb shell dumpsys batterystats --reset` before and `dumpsys batterystats com.opentdi` after a 30-minute
-  screen-off run per setting, plus `adb shell dumpsys sensorservice`.
+- Measure passively: record the battery level and `adb -s $W shell dumpsys batterystats com.opentdi` (read-only)
+  before and after a 30-minute screen-off run per setting and take the difference, plus `adb -s $W shell dumpsys
+  sensorservice`. `dumpsys batterystats --reset` wipes the device's battery history, so it is used only with the
+  owner's explicit approval for that run (CLAUDE.md §6).
 
 ### 14.7 Versions (D16; [W] §4)
 
@@ -1873,18 +2026,18 @@ Horologist (the only stable line, 0.7.15, targets Wear Compose 1.5.0-rc01 and M2
 
 | # | Check | How | Pass / decides |
 |---|---|---|---|
-| 1 | Health Sensor Service package, version, developer mode | `adb -s $W shell pm list packages \| grep -i health`; `adb -s $W shell dumpsys package <pkg> \| grep -E "versionName\|versionCode"`; enable developer mode (§11.7); log `getTrackingCapability().getVersion()` | `CONNECTED_SAMSUNG`; version ≥ 1.6.5; record whether the label reads "Developer mode" or "[Dev mode]" |
+| 1 | Health Sensor Service version, developer mode | package already known: `com.samsung.android.service.health`, 1.7.00.05 on 2026-10-27 ([DA]); re-read after updates with `adb -s $W shell dumpsys package com.samsung.android.service.health \| grep -E "versionName\|versionCode"`; check the in-app `getPackageInfo` result matches; enable developer mode (§11.7); log `getTrackingCapability().getVersion()` | `CONNECTED_SAMSUNG`; version ≥ 1.6.5; record whether the label reads "Developer mode" or "[Dev mode]" |
 | 2 | Supported trackers | log `getSupportHealthTrackerTypes()` once; save to `docs/references` | HR, EDA, accelerometer continuous present |
-| 3 | Permissions actually required (owner 6) | install without `BODY_SENSORS` granted (it is `maxSdk 35`); `adb -s $W shell dumpsys package com.opentdi \| grep -iE "heart\|body_sensors\|ADDITIONAL\|ACTIVITY_RECOGNITION"`; `adb -s $W shell pm list permissions -f \| grep -A6 READ_ADDITIONAL_HEALTH_DATA`; run each `pm grant` of §14.2 | trackers run with `READ_HEART_RATE` + `READ_ADDITIONAL_HEALTH_DATA` + `ACTIVITY_RECOGNITION` only; `BODY_SENSORS` not needed on API 36; `pm grant` works for each, or document the exception |
+| 3 | Permissions actually required (owner 6) | install without `BODY_SENSORS` granted (it is `maxSdk 35`); `adb -s $W shell dumpsys package com.opentdi \| grep -iE "heart\|body_sensors\|ADDITIONAL\|ACTIVITY_RECOGNITION"`; run each `pm grant --user 0` of §14.2 (`READ_ADDITIONAL_HEALTH_DATA` is already known to be `dangerous`, [DA]) | trackers run with `READ_HEART_RATE` + `READ_ADDITIONAL_HEALTH_DATA` + `ACTIVITY_RECOGNITION` only; `BODY_SENSORS` not needed on API 36; `pm grant` works for each, or document the exception |
 | 4 | Background health permission | 10+ min with the screen off | no `PERMISSION_ERROR`; otherwise declare `READ_HEALTH_DATA_IN_BACKGROUND` |
 | 5 | Gravity in the accelerometer | watch flat and still: log raw `ACCELEROMETER_Z` | ≈ ±4096 → gravity included; ≈ 0 → javadoc right; decides `gravityMode` handling and limp availability |
 | 6 | Accelerometer rate and batching | samples per second over 10 min, screen on / off / dimmed; callback batch sizes; timestamp jitter | 25 ± 1 Hz; ≥ 20 samples in ≥ 99 % of seconds |
 | 7 | EDA with the screen off for 10+ min (owner 9) | log every `EdaSet` timestamp and status, with and without the 5 s `flush()` | no gaps > 2 s after re-ordering; status mostly 0; batch interval recorded |
 | 8 | HR / IBI with the screen off | as #7; check IBIs only in the first point of a batch; compare `getTimestamp()` with `System.currentTimeMillis()` | packet latency ≤ flush + 2 s with flush on; timestamp base = epoch |
 | 9 | Does the dimmed always-on screen count as "display off" for batching? | compare #7 with the screen dimmed vs off | recorded |
-| 10 | Accel noise floor and jerk/limp parameters | 10 min still lying; 10 deliberate small jerks; slow wrist tilts; 3 real naps | p95 of `accelRms` (sets f, M); J_G, drift° tuned through replay |
+| 10 | Accel noise floor and jerk/limp parameters | 10 min still lying; 10 deliberate small jerks; slow wrist tilts; 3 real naps; all with `accel.logRawAccel = true` | p95 of `accelRms` (sets f, M); J_G, drift° tuned through the AccelConfig replay of §12.6 on `w_accel_raw.csv`; check that real jerks leave ≤ 2 moving seconds (§8.1 freeze) |
 | 11 | Battery | §14.6 grid on 30-min screen-off runs | settings chosen; budget documented |
-| 12 | Doze and timers | `adb shell dumpsys deviceidle force-idle` on both; `adb shell dumpsys power \| grep -i wake`; a 180 s countdown with the screen off | wake locks held; countdown fires within ±1 s |
+| 12 | Doze and timers | passive: a 30–60 min screen-off run with the device still, reading `adb -s <serial> shell dumpsys deviceidle` (state) and `dumpsys power \| grep -i wake` (read-only); a 180 s countdown with the screen off. `dumpsys deviceidle force-idle` only with the owner's explicit approval for that run | wake locks held; countdown fires within ±1 s; Doze state reached recorded |
 | 13 | Phone mic for a whole nap | 30–60 min screen off; `adb -s $P shell dumpsys activity services com.opentdi \| grep -i allowWiu`; then a recording | `mAllowWiu_noBinding` not DENIED; recording RMS above the floor |
 | 14 | Keep-alive earbud test (owner 19) | §7.5 procedure per earbud | per-earbud carrier default recorded |
 | 15 | Disconnect mid-nap | power off the earbuds mid-carrier and mid-cue | emergency stop before any speaker output; which callback fires first |
@@ -1895,7 +2048,7 @@ Horologist (the only stable line, 0.7.15, targets Wear Compose 1.5.0-rc01 and M2
 | 20 | One UI DND | default of "Media sound"; does a `USAGE_MEDIA` cue play in Priority mode | setup docs updated |
 | 21 | Bezel | `adb -s $W shell pm list features \| grep -i rotary` (expect `android.hardware.rotaryencoder.lowres`); `pm list libraries \| grep -i wear-sdk`; log `verticalScrollPixels` per detent and its sign; Picker haptics | Picker works and ticks; ambient API choice |
 | 22 | Bluetooth device names | does reading `AudioDeviceInfo` names/addresses need `BLUETOOTH_CONNECT` | declare it only if needed |
-| 23 | Data Layer | messages flow between the two debug builds (same `applicationId` + keystore); reconnect time after Bluetooth off/on mid-session | link works; reconnect time recorded (docs: up to 4 min) |
+| 23 | Data Layer | messages flow between the two debug builds (same `applicationId` + keystore); a `state_command` request with the FGS running and with it stopped; reconnect time after Bluetooth off/on mid-session (done by the owner on the device, never over adb, CLAUDE.md §6) | link works; with the FGS running the `Ack` comes from the FGS handler, without it `WATCH_SERVICE_NOT_RUNNING` (§10.2); the manifest service is not bound for telemetry; reconnect time recorded (docs: up to 4 min) |
 | 24 | One UI battery managers | 60 min nap with default battery settings; check both FGS survive | if killed: setup docs ask for "Unrestricted" battery |
 | 25 | Watch face and screen | Ongoing Activity icon visible; dimmed session screen brightness in a dark room | acceptable to the owner |
 | 26 | Split permission flag | `adb -s $W shell dumpsys package com.opentdi \| grep -i -E "heart\|body_sensors"` after install | `replace_body_sensor_permission_enabled` behaviour confirmed |
@@ -1912,7 +2065,10 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 | | `stillness_mapping` | accelRms 0.003 / 0.0265 / 0.05 g | 1.0 / 0.5 / 0.0 |
 | | `fewerThan20Samples_nullFields` | 19 samples in a second | accel fields and stillness null |
 | | `gravityMode_detected` | 30 still s at \|a\| = 1 g; then at \|a\| = 0.02 g | `WITH_GRAVITY`; `LINEAR_ONLY` |
-| | `jerk_300msAfter10sStill_confirmedInThirdSecond` | 10 still s, 8 samples at d = 0.5 g, 3 still s | `jerkEvent` only in the 3rd post-burst second |
+| | `jerk_300msAfter10sStill_confirmedInThirdSecond` | raw `a`: 10 still s at (0, 0, 1 g), 8 samples of +0.5 g on x inside one second, 3 still s | `jerkEvent` only in the 3rd post-burst second; ≤ 2 seconds with stillness < 0.5; `majorMovement` never true |
+| | `jerk_unidirectionalStraddling_confirmed` | raw `a`: as above, burst across a second boundary | confirmed; ≤ 2 moving seconds; no `majorMovement` |
+| | `jerk_zeroMean_confirmed` | raw `a`: 8 samples alternating ±0.5 g on x | confirmed; ≤ 2 moving seconds |
+| | `gravityFreeze_releasedAfter500ms` | raw `a`: 30 samples (1.2 s) of a sustained 0.5 g offset | `JERK_REJECTED_LONG`; g_lp tracks the new offset again from 500 ms on |
 | | `jerk_700msBurst_rejected` | 18 samples above 0.3 g | no jerk; `JERK_REJECTED_LONG` |
 | | `jerk_followedByMovement_rejected` | burst, then a moving second | `JERK_REJECTED_POST_MOVE` |
 | | `jerk_withoutPreStill_ignored` | burst 5 s after movement | no burst opened |
@@ -1930,6 +2086,7 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 | | `baseline_insufficientHr_extendsThenIdle` | hr null in 60 % of frames | `BaselineExtended` at W, `IDLE` + `BASELINE_INSUFFICIENT_HR` at 2W |
 | | `baseline_priorBlend` | live 72, prior 64, w 0.3 | μ_eff = 69.6 |
 | | `baseline_priorIgnoredBeyond15Percent` | live 72, prior 55 | μ_eff = 72, `PRIOR_IGNORED` |
+| | `baseline_priorHigherIgnored` | live 70, prior 80 | μ_eff = 70, `PRIOR_IGNORED_HIGHER` |
 | | `baseline_noRmssd_disablesRmssdOnly` | rmssd null | `rmssdMean` null; HR rule still works |
 | `EngineRuleTest` | `edaAlone_neverTriggers` | G true, A false, E true, 3600 s | no onset |
 | | `jerkAndLimpAlone_neverTrigger` | jerk + limp every 60 s, A false | no onset |
@@ -1944,6 +2101,10 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 | | `triggerRejected_returnsAwake` | `onTriggerRejected` | `PHONE_REJECTED` |
 | | `lostWakingUser_acceptsLaterStage` | `RECORDING_DREAM` first | moves to `RECORDING_DREAM` |
 | | `stageTimeout180_completesCycle` | `WAKING_USER`, then silence | `CycleCompleted(STAGE_TIMEOUT)` at +180 s |
+| | `lateCycleCompleteAfterTimeout_ignored` | stage timeout, then `CYCLE_COMPLETE` for that cycle | `completedCycles` incremented once; `LATE_STAGE_IGNORED` |
+| | `timedMode_mirrorsOnly` | `startSession(id, TIMED_CUES)`, packets that would satisfy the core, then `DWELL_START` … `CYCLE_COMPLETE` | no `OnsetDetected`; states follow the stages |
+| | `abortFromIdleAfterFallback` | `HR_LOST` → `IDLE`, then `abort(USER)` | `SESSION_COMPLETE` |
+| | `windowsFromConfig_minCounts` | `hrMaWindowS` 5, `stillWindowS` 10, `edaSlopeWindowS` 15 | H_sig, G and E can become true |
 | | `abortedAudio_notCounted` | `CYCLE_COMPLETE(ABORTED_AUDIO)` | `completedCycles` unchanged |
 | | `maxCycles_sessionComplete` | 4 completed cycles | `SESSION_COMPLETE(MAX_CYCLES)` |
 | | `pause_keepsBaseline_resumeAwakeWithRefractory` / `pauseInCalibration_restarts` | — | as rows 19–20 |
@@ -1959,16 +2120,18 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 | `SimulationTest` | `fast_std_cycle1` | §13.2 | first core 337, onset 346, HR_ma 63.633, confidence 1.00 |
 | | `fast_std_cycle2` | `REARM` | first core T + 193, onset T + 202 |
 | | `fast_low_high` | presets | LOW 363 / T + 217; HIGH 335 / T + 192 |
-| | `fast_noOnsetBefore300` | k < 300 | no onset; G false k = 240–270 |
+| | `fast_noOnsetBefore300` | k < 300 | no onset; G false exactly at k = 242–270 |
 | | `fast_sessionCompleteAfter2` | `maxCycles` 2 | `SESSION_COMPLETE(MAX_CYCLES)` |
 | | `awakeControl_noOnset_1h_allPresetsAndMinOverrides` | `AWAKE_CONTROL`, θ_drop 0.04, θ_rmssd 0.05 | no onset in 3600 s |
+| | `awakeControl_withPrior_noOnset` | `AWAKE_CONTROL`, prior 80.5 (higher) and 64 (lower), w 0.5 | no onset in 3600 s |
+| | `simReceiver_pinsDetectionConfig` | saved config with `baselineWindowS` 600, a prior HR, `holdS` 30 | effective config = §13.1 pinned config |
 | | `noise_period11_sumZero` | n_c | 11-sums 0; 4-sums within ±2.8 |
 | `EndOfReportDetectorTest` | noise only / speech 5 s then silence / speech with a 3 s pause / continuous speech | frame dB sequences | `NO_SPEECH` at 15 000 ms / `SILENCE` 4000 ms after the last speech frame / continues / `MAX` at 45 000 ms; seed frames never count as speech |
 | `FadeEnvelopeTest` | gain curve | — | G(0) = 0 exactly; 0.00562 / 0.0316 / 0.178 / 1.0 at 500 / 1000 / 1500 / 2000 ms (±1e-4); monotonic; T = 0 → 1 |
 | `CarrierTest` | level and determinism | −75, −60 dBFS; same seed twice | RMS within 0.5 % of 10^(L/20); identical buffers |
 | `SleepStateParserTest` | keywords | "halfway", "I was not asleep", "asleep", "" | HALFWAY, AWAKE, ASLEEP, UNKNOWN |
 | `SerializationTest` | round trips | every contract; unknown field; each `TdiCommand` | equal; ignored; discriminators `start`, `pause`, `resume`, `abort`, `config`, `abort_countdown`, `cycle_stage` |
-| `ConfigValidationTest` | ranges and cross-rules | out-of-range values | rejected with field names |
+| `ConfigValidationTest` | ranges and cross-rules | out-of-range values; every window value with its minimum count; `maxMs` 180 000 with `cycleStageTimeoutS` 180; `userGain` 0.5 on Bluetooth (cap 0.3) | rejected with field names; min count ≤ window everywhere; timeout config rejected; `userGain` accepted with `USER_GAIN_CLAMPED` and played at 0.3 |
 | `WavIoTest` | PCM16 round trip; odd-sized `LIST` chunk; header with size 0 | — | samples equal; chunk skipped; read to EOF |
 | `ReplayHarnessTest` | `replay_syntheticFast_reproducesGolden` | generated fixture | transitions equal the golden file |
 | | `replay_inputsAppliedAfterPacket` | input after packet X | applied before packet X + 1 |
@@ -1999,9 +2162,14 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 | 14 | §0 | Phase | `BLUETOOTH_SLEEP_AUDIO` and the carrier are Phase 3 (owner G20 "extra audio routes"), although D12 lists Bluetooth as in scope. Phase 1's phone FGS is `mediaPlayback` only; `microphone` arrives with recording in Phase 2 |
 | 15 | §11.4 | Owner conflict resolved | Heart rate needs `READ_HEART_RATE`, not `ACTIVITY_RECOGNITION` (owner B6); all three permissions are requested |
 | 16 | §11.6 | DEV (wording) | The `SDK_POLICY_ERROR` message points to developer mode via the setup guide instead of listing Samsung's steps on the watch |
-| 17 | §3, §6, §8 | DEV from CLAUDE.md (not D1–D18) | Stillness window 30 s (not 60 s); packet `hr` is `Float`; the carrier is one-pole-filtered "pink-ish" noise, not exact 1/f; gate tolerates 2 moving seconds so a jerk does not break it |
+| 17 | §3, §6, §8, §7.5 | DEV from CLAUDE.md, and from D12's "pink-noise" wording | Stillness window 30 s (not 60 s); packet `hr` is `Float`; the carrier is one-pole low-passed noise (−6 dB/oct above ≈ 392 Hz, i.e. brown-ish), not pink (1/f, −3 dB/oct); only its level matters for the keep-alive ([U] §4.5); gate tolerates 2 moving seconds so a jerk does not break it |
 | 18 | §7.8 | follows D12, flagged | Recording source `UNPROCESSED` else `MIC` as D12 says, although research prefers `VOICE_RECOGNITION` over `MIC` (O7) |
 | 19 | §10.4 A | clarification | The watch FGS must be started from the watch UI (the user opens the watch app); a phone message cannot start it in the background |
+| 20 | §4, §5.3 T1, §9.1, §9.6 | EXT | `CycleStageType.DWELL_START` (phone → watch, TIMED_CUES only) and `startSession(sessionId, mode)`, so a watch in a TIMED_CUES session can mirror the dwell start; D3 lists only four stages |
+| 21 | §13.1 | EXT | The simulation receiver pins the detection config to defaults (plus an optional `preset` extra, D11 lists only `mode`), so the §13.4 proof and the HIL pass criteria hold whatever the user saved |
+| 22 | §8.1 | EXT | Gravity low-pass frozen during a jerk burst, so a ≤ 500 ms jerk leaves ≤ 2 moving seconds |
+| 23 | §12.2, §12.6 | EXT | Optional `w_accel_raw.csv` (raw 25 Hz) and an AccelConfig replay mode; off by default. Raw accel is logged locally only, never sent over the wire (D6) |
+| 24 | §10.2, §14.1 | clarification | The manifest `WearableListenerService` takes only `/opentdi/state_command` requests and forwards them to the running FGS; telemetry and triggers go to live listeners only |
 
 **Loud flags: decisions that research shows cannot work as literally written**
 - **D11 "registered in the manifest … so the exact command without `-p` works":** the manifest receiver can never get
@@ -2039,8 +2207,8 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 | Every detection threshold is unvalidated (no OpenTDI data; MIT's were n = 5 pilots, provisional) | false or missed onsets | presets, confidence logging, sleep-state labels, replay tuning (§12.6) |
 | Samsung accelerometer may exclude gravity | no limp bonus | `gravityMode` auto-detect; limp is bonus only |
 | Screen-off batching of HR/EDA/accel | detection latency, battery | 5 s `flush()` under a wake lock; measure (§15 #6–9, #11) |
-| `READ_ADDITIONAL_HEALTH_DATA` protection level and `pm grant` behaviour unknown | scripted setup may fail | grant in the UI; §15 #3 |
-| Health Sensor Service package name unverified | version check may fail | read it on device (§15 #1); fall back to the connection error codes |
+| Which of `READ_HEART_RATE` / `READ_ADDITIONAL_HEALTH_DATA` / `ACTIVITY_RECOGNITION` / `BODY_SENSORS` the trackers really check on API 36 (the protection levels are known: all `dangerous`, [DA]) | trackers refuse data | request all three in the UI; §15 #3 |
+| Health Sensor Service is updated or renamed on a later watch build (today `com.samsung.android.service.health` 1.7.00.05, [DA]) | version check may fail | `NameNotFoundException` → fall back to the connection error codes (`PACKAGE_NOT_INSTALLED`, `OLD_PLATFORM_VERSION`); re-check §15 #1 after updates |
 | Samsung on-device STT support for `EXTRA_AUDIO_SOURCE` unknown | no transcripts | WAV is primary; status `UNAVAILABLE_*`; retry from the journal |
 | One UI DND default for media unknown | silent cues | checks before each cue; setup docs |
 | Headset-side standby despite the carrier | clipped first syllable or pop | manual earbud test; longer fade; per-earbud defaults |

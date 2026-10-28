@@ -261,9 +261,9 @@ FACT, `https://developer.android.com/develop/background-work/services/fgs/servic
 - FACT (`https://developer.android.com/training/package-visibility`): for apps targeting API 30+, `getPackageInfo()` results are filtered, and visibility also "affects explicit interactions with other apps, such as starting another app's service".
 - **INFERENCE:** reading the Health Sensor Service version in code (requirement A4) needs a `<queries>` entry. The binding probably already works through the AAR's own merged manifest (UNVERIFIED, because the AAR was not inspected), so the extra entry is harmless:
   ```xml
-  <queries><package android:name="com.samsung.android.service.health.tracking" /></queries>
+  <queries><package android:name="com.samsung.android.service.health" /></queries>
   ```
-  The **installed package name of Health Sensor Service is UNVERIFIED:** no Samsung page states it. `com.samsung.android.service.health.tracking` is used by public apps (e.g. StanleyMasinde/HrmApp `app/src/main/AndroidManifest.xml:20-22`) and third-party notes, and it is also the SDK's Java package. Confirm on the watch with `adb shell pm list packages | grep -i health`.
+  **Corrected 2026-10-27 (FACT, `device_audit.md`; `samsung_sdk_1.4.1_verified_api.md`, which overrides this note):** the installed Health Platform / Health Sensor Service package is `com.samsung.android.service.health` (versionName 1.7.00.05 on the SM-L500), and the AAR's merged manifest already declares `<queries>` for it. `com.samsung.android.service.health.tracking` is only the SDK's Java package, not an installed app, so a `getPackageInfo` or `<queries>` lookup of it fails. (The earlier text here guessed `.tracking` from public apps such as StanleyMasinde/HrmApp `app/src/main/AndroidManifest.xml:20-22`.)
 - Also add `android.permission.INTERNET`: `hasResolution()`/`resolve()` need it (FACT, HealthTrackerException javadoc), and SDK_POLICY_ERROR can be caused by "A network is not connected" (FACT, TrackerError javadoc).
 
 ### 3.5 Can adb `pm grant` grant each permission?
@@ -326,12 +326,11 @@ FACT, `https://developer.android.com/develop/background-work/services/fgs/servic
 - **Samsung's handling pattern (FACT, `…/sensor/guide/getting-started.html` and dcuevasa/galaxy-watch-health-sensors-example@742b0c6 `…/MainActivity.java:186-196`):**
   `if (code == OLD_PLATFORM_VERSION || code == PACKAGE_NOT_INSTALLED) toast("…outdated or not installed"); if (e.hasResolution()) e.resolve(activity);`
 - **Health Sensor Service version format (FACT, developer-mode screenshot):** "Version 1.8.00.03". INFERENCE: compare numerically per component, so `1.6.05` equals `1.6.5`; do not compare the strings.
-- **Read the installed version (INFERENCE; the package name is UNVERIFIED, see §3.4):**
+- **Read the installed version (package name corrected per `device_audit.md`, see §3.4):**
   ```bash
-  adb -s $W shell pm list packages | grep -i health                    # find the real package name first
-  adb -s $W shell dumpsys package com.samsung.android.service.health.tracking | grep -E "versionName|versionCode"
+  adb -s $W shell dumpsys package com.samsung.android.service.health | grep -E "versionName|versionCode"   # package per device_audit.md
   ```
-  In code, with the `<queries>` entry from §3.4: `context.packageManager.getPackageInfo("com.samsung.android.service.health.tracking", 0).versionName` (catch `PackageManager.NameNotFoundException`). Log `getTrackingCapability().getVersion()` ("Get the SDK version", FACT) as well.
+  In code, with the `<queries>` entry from §3.4: `context.packageManager.getPackageInfo("com.samsung.android.service.health", 0).versionName` (catch `PackageManager.NameNotFoundException`). Log `getTrackingCapability().getVersion()` ("Get the SDK version", FACT) as well.
 
 ---
 

@@ -1,5 +1,6 @@
 # Toolchain versions are the stack already proven on this machine (AGP 9.4.0 + Gradle 9.6.1 + Kotlin 2.4.10,
 # resolved against live Maven metadata on 2026-09-01). AGP 9 compiles Kotlin itself for Android modules.
+# Wear and Play-services versions: docs/references/wear_compose_and_versions.md (resolved 2026-10-27).
 
 [versions]
 agp = "9.4.0"
@@ -16,10 +17,15 @@ composeBom = "2026.08.00"
 androidxCore = "1.19.0"
 androidxActivity = "1.13.0"
 androidxLifecycle = "2.11.0"
+# Wear Compose is not managed by the Compose BOM; 1.7.1 needs compileSdk >= 37 and AGP >= 9.1.0.
+wearCompose = "1.7.1"
+wearOngoing = "1.1.0"
+playServicesWearable = "20.0.1"
 junit = "4.13.2"
 
 [libraries]
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
 
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -30,6 +36,12 @@ androidx-core = { group = "androidx.core", name = "core", version.ref = "android
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "androidxActivity" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
 androidx-lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "androidxLifecycle" }
+
+wear-compose-material3 = { group = "androidx.wear.compose", name = "compose-material3", version.ref = "wearCompose" }
+wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "wearCompose" }
+androidx-wear-ongoing = { group = "androidx.wear", name = "wear-ongoing", version.ref = "wearOngoing" }
+# Phase 2 (Data Layer): MessageClient / ChannelClient only, never DataClient for the stream.
+play-services-wearable = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "playServicesWearable" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
