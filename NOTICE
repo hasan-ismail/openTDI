@@ -33,6 +33,11 @@ The phone app includes sherpa-onnx (Apache-2.0, https://github.com/k2-fsa/sherpa
 bundles (MIT). The optional neural voice model is not in this repository or the app: tools/voice/fetch_voice_model.sh
 downloads Kokoro-82M (Apache-2.0) with espeak-ng data (GPL-3.0).
 
+To install the watch app from the phone, the phone app includes Kadb (Apache-2.0,
+https://github.com/flyfishxu/Kadb), spake2-java (GPL-3.0, https://github.com/Flyfish233/spake2-java), Bouncy Castle
+(MIT, https://www.bouncycastle.org) and Okio (Apache-2.0, https://github.com/square/okio). A phone app built with the
+Samsung SDK also carries the watch app, and with it the SDK, so the rule above applies to it too.
+
 The :samsung-health-stub module is original OpenTDI code that mirrors the SDK's public API (as
 documented in Samsung's public API reference) so the project compiles without the SDK; it contains
 no Samsung code.

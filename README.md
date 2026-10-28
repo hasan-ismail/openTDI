@@ -65,8 +65,8 @@ become **lucid** has not been tested yet. Your own nights are the first test, so
 ## Your data stays with you
 
 - Everything is stored **on your own phone and watch**, in the app's private storage. Nothing is uploaded anywhere.
-- The phone app has **no internet permission** at all. The watch app only uses the network for Samsung's own sensor
-  service.
+- The phone app uses the network only to reach your watch on your own Wi-Fi when it installs the watch app; it never
+  contacts the internet. The watch app only uses the network for Samsung's own sensor service.
 - Each session is saved as a set of simple spreadsheet (CSV) files. You can look through your sessions and delete any
   of them in the app (**Sessions**).
 

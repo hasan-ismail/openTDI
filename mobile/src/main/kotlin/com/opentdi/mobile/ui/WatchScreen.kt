@@ -73,6 +73,7 @@ fun WatchScreen() {
                 Help("Sensors ${live.sensorStatus ?: "—"}")
             }
         }
+        WatchSetupCard()
     }
 }
 

@@ -32,6 +32,11 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        // Bouncy Castle (Kadb's pairing) ships the same license file in three jars: one copy is enough (MIT, NOTICE).
+        resources { pickFirsts += "META-INF/LICENSE.md" }
+    }
 }
 
 kotlin {
@@ -69,6 +74,30 @@ val fetchSherpaOnnx = tasks.register("fetchSherpaOnnx") {
     }
 }
 
+// The phone carries the watch app as assets/watch.apk, so it can install it on the watch itself (WatchInstaller).
+abstract class CopyWatchApk : DefaultTask() {
+    @get:InputFile
+    abstract val apk: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val dir = outputDir.get().asFile.apply { mkdirs() }
+        apk.get().asFile.copyTo(File(dir, "watch.apk"), overwrite = true)
+    }
+}
+
+val copyWatchApk = tasks.register<CopyWatchApk>("copyWatchApk") {
+    dependsOn(":wear:assembleDebug")
+    apk.set(rootProject.layout.projectDirectory.file("wear/build/outputs/apk/debug/wear-debug.apk"))
+}
+
+androidComponents {
+    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(copyWatchApk, CopyWatchApk::outputDir) }
+}
+
 dependencies {
     implementation(project(":shared"))
     implementation(platform(libs.compose.bom))
@@ -82,5 +111,6 @@ dependencies {
     implementation(libs.play.services.wearable)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(files(sherpaOnnxAar).builtBy(fetchSherpaOnnx))
+    implementation(libs.kadb)
     testImplementation(libs.junit)
 }

@@ -22,6 +22,8 @@ wearCompose = "1.7.1"
 wearOngoing = "1.1.0"
 playServicesWearable = "20.0.1"
 junit = "4.13.2"
+# Kadb (Apache-2.0): the phone installs the watch app over Wireless debugging (2.1.5, 2026-10-15).
+kadb = "2.1.5"
 
 [libraries]
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
@@ -42,6 +44,8 @@ wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-fou
 androidx-wear-ongoing = { group = "androidx.wear", name = "wear-ongoing", version.ref = "wearOngoing" }
 # Phase 2 (Data Layer): MessageClient / ChannelClient only, never DataClient for the stream.
 play-services-wearable = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "playServicesWearable" }
+
+kadb = { group = "com.flyfishxu", name = "kadb", version.ref = "kadb" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 

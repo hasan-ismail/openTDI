@@ -23,6 +23,8 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        // Only Kadb's pairing dependency (spake2-java, GPL-3.0) comes from JitPack; nothing else may.
+        maven("https://jitpack.io") { content { includeGroup("com.github.Flyfish233") } }
     }
 }
 
