@@ -1,6 +1,7 @@
-# OpenTDI
+# OpenTDI — Open Targeted Dream Incubation
 
-**A lucid-dreaming companion for your Galaxy Watch and Android phone.**
+**A lucid-dreaming companion for your Galaxy Watch and Android phone.** TDI stands for **Targeted Dream Incubation**:
+guiding what a dream is about with timed, spoken cues as you fall asleep.
 
 As you drift off to sleep, there is a short, dreamy in-between stage where thoughts turn into images. OpenTDI uses
 that moment. Your phone quietly reminds you, *"You are dreaming. You are in control."* It gently asks what you notice,
