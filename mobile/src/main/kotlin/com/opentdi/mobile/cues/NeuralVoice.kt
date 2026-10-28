@@ -16,8 +16,8 @@ const val NEURAL_MODEL = "kokoro-int8-en-v0_19"
 /** The engine name stored in [CueSet.engine] for a neural rendering. */
 const val NEURAL_ENGINE = "sherpa-onnx/$NEURAL_MODEL"
 
-/** The female voices offered in the settings, the default first; NEURAL_SPEAKERS also has a blend ("af") and men. */
-val FEMALE_NEURAL_SPEAKERS = listOf("af_bella", "af_nicole", "af_sarah", "af_sky", "bf_emma", "bf_isabella")
+/** The voices offered in the settings (owner's pick: two US women, one UK woman, three men), the default first. */
+val NEURAL_VOICE_CHOICES = listOf("af_bella", "af_sarah", "bf_emma", "am_adam", "am_michael", "bm_george")
 
 /** "af_bella" as "Bella (US)", "bf_emma" as "Emma (UK)". */
 fun speakerLabel(speaker: String): String =

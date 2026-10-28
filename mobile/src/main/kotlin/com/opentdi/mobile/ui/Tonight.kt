@@ -84,7 +84,7 @@ private fun span(s: Int) = when {
     else -> "${s / 60} min ${s % 60} s"
 }
 
-enum class Check { VOLUME, DND, BATTERY, CUES, TEST_CUE, WATCH }
+enum class Check { VOLUME, DND, BATTERY, CUES, TEST_CUE, WATCH, WATCH_BATTERY }
 
 /** One pre-flight line: [ok], or a problem said in [text]; a [blocking] problem keeps Start off. */
 data class CheckItem(val check: Check, val ok: Boolean, val text: String, val blocking: Boolean = false)
@@ -103,6 +103,7 @@ fun checklist(
     tested: Boolean,
     watchStreaming: Boolean,
     onWatch: Boolean = false,
+    watchBatteryPct: Int? = null, // known only while the watch streams
 ): List<CheckItem> = buildList {
     if (!onWatch) {
         add(
@@ -160,4 +161,15 @@ fun checklist(
             else -> CheckItem(Check.WATCH, false, "Watch not streaming (optional): start recording on the watch.")
         },
     )
+    if (watchBatteryPct != null) {
+        add(
+            CheckItem(
+                Check.WATCH_BATTERY,
+                watchBatteryPct >= 100,
+                if (watchBatteryPct >= 100) "Watch battery is full" else
+                    "Watch battery is at $watchBatteryPct%: charge it to 100% before a night. Recording uses about " +
+                        "8% an hour, so a full charge lasts about 12 hours.",
+            ),
+        )
+    }
 }

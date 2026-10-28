@@ -104,6 +104,7 @@ data class TelemetryBatch(
     val gravityMode: GravityMode,
     val frames: List<TelemetryFrame>,
     val sentAtWallMs: Long,
+    val watchBatteryPct: Int? = null, // the watch's charge when the batch was sent
 )
 
 /** Reply to every `sendRequest`. */

@@ -40,6 +40,7 @@ data class WatchLive(
     // time, and a value already held when the app opened gets its first packet's time; add the check time to the
     // packet if that matters.
     val spo2AtMs: Long? = null,
+    val watchBatteryPct: Int? = null, // from the last batch
 )
 
 /** [this] with [batch] added: another session starts over, and frames already received (by seq) are skipped. */
@@ -61,6 +62,7 @@ fun WatchLive.plus(batch: TelemetryBatch, receivedAtMs: Long): WatchLive {
         jerkEvents = base.jerkEvents + fresh.count { it.packet.jerkEvent },
         limpEvents = base.limpEvents + fresh.count { it.packet.limpEvent },
         receivedAtMs = receivedAtMs,
+        watchBatteryPct = batch.watchBatteryPct,
     )
 }
 

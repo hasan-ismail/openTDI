@@ -27,7 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opentdi.mobile.MainViewModel
-import com.opentdi.mobile.cues.FEMALE_NEURAL_SPEAKERS
+import com.opentdi.mobile.cues.NEURAL_VOICE_CHOICES
 import com.opentdi.mobile.cues.PHASE1_CUES
 import com.opentdi.mobile.cues.THEME_PLACEHOLDER
 import com.opentdi.mobile.cues.cueSetProblem
@@ -75,7 +75,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
             Help("A natural-sounding voice that runs on the phone itself. Off: your phone's text-to-speech voice.")
             if (neural) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (speaker in FEMALE_NEURAL_SPEAKERS) {
+                    for (speaker in NEURAL_VOICE_CHOICES) {
                         FilterChip(
                             selected = config.audio.neuralSpeaker == speaker,
                             onClick = { edit { it.copy(audio = it.audio.copy(neuralSpeaker = speaker)) } },

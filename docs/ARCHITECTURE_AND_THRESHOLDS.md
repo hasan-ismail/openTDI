@@ -478,7 +478,8 @@ prefilled defaults and come back with "Reset to default" or a blank field. The d
 - Every cue is peak-normalised to −3 dBFS at creation ([U] §3.4 step 1), then stored as a PCM16 mono WAV.
 - **[EXT]** (owner, 2026-10-27: "make the text to speech way more natural, use a female voice, use a model")
   `audio.ttsEngine = NEURAL` renders each phrase with sherpa-onnx `OfflineTts` and the Kokoro v0.19 int8 model in
-  `filesDir/voice/kokoro-int8-en-v0_19/` (docs/SETUP.md §11), speaker `audio.neuralSpeaker` (default `af_bella`) at
+  `filesDir/voice/kokoro-int8-en-v0_19/` (docs/SETUP.md §11), speaker `audio.neuralSpeaker` (default `af_bella`; the
+  settings offer af_bella, af_sarah, bf_emma, am_adam, am_michael and bm_george, owner 2026-10-28) at
   speed `audio.ttsSpeechRate` (1 = normal in both engines), float samples at the model's 24 kHz; trimming, pauses,
   lead, normalisation and storage are unchanged. When the model is missing, does not load or fails while rendering, the
   app says so and renders with the system voice. The fingerprint adds the engine and speaker only for NEURAL, so

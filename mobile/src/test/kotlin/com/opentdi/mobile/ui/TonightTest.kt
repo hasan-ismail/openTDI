@@ -86,6 +86,16 @@ class TonightTest {
         assertEquals("Test cue played on the watch", good.single { it.check == Check.TEST_CUE }.text)
     }
 
+    @Test
+    fun checklist_warnsBelowAFullWatchBattery_withoutBlocking() {
+        fun battery(pct: Int?) = checklist(false, DndEffect.PLAYS, true, null, true, true, watchBatteryPct = pct)
+            .singleOrNull { it.check == Check.WATCH_BATTERY }
+        assertNull(battery(null)) // unknown while the watch is not streaming
+        assertTrue(battery(100)!!.ok)
+        val low = battery(62)!!
+        assertTrue(!low.ok && !low.blocking && "62%" in low.text)
+    }
+
     private companion object {
         const val NOW = 1_000_000L
     }

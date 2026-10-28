@@ -13,17 +13,18 @@ import org.junit.Test
 
 class NeuralVoiceTest {
     @Test
-    fun speakers_mapToTheModelsIds_andOnlyFemaleVoicesAreOffered() {
+    fun speakers_mapToTheModelsIds_andTheOfferedVoicesAreTheModels() {
         // The model's own metadata: 0->af, 1->af_bella, ..., 7->bf_emma, 10->bm_lewis.
         assertEquals(0, neuralSpeakerId("af"))
         assertEquals(1, neuralSpeakerId("af_bella"))
         assertEquals(7, neuralSpeakerId("bf_emma"))
         assertEquals(10, neuralSpeakerId("bm_lewis"))
         assertThrows(CueException::class.java) { neuralSpeakerId("af_heart") }
-        assertEquals(AudioConfig().neuralSpeaker, FEMALE_NEURAL_SPEAKERS.first())
-        assertTrue(FEMALE_NEURAL_SPEAKERS.all { it in NEURAL_SPEAKERS && it.substring(1, 3) == "f_" })
+        assertEquals(AudioConfig().neuralSpeaker, NEURAL_VOICE_CHOICES.first())
+        assertTrue(NEURAL_VOICE_CHOICES.all { it in NEURAL_SPEAKERS })
+        assertEquals(3, NEURAL_VOICE_CHOICES.count { it.substring(1, 3) == "f_" }) // three women, three men
         assertEquals("Bella (US)", speakerLabel("af_bella"))
-        assertEquals("Isabella (UK)", speakerLabel("bf_isabella"))
+        assertEquals("George (UK)", speakerLabel("bm_george"))
     }
 
     @Test

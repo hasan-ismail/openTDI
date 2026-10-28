@@ -69,6 +69,7 @@ fun TonightScreen(
     val checks = checklist(
         volumeOff, dnd, ui.batteryUnrestricted, cueProblem,
         if (onWatch) ui.watchTested else ui.calibratedIndex != null, streaming, onWatch,
+        live.watchBatteryPct.takeIf { streaming },
     )
     val ready = errors.isEmpty() && checks.none { it.blocking && !it.ok }
     val idle = !status.running && !ui.preparing && !ui.testing
@@ -92,7 +93,7 @@ fun TonightScreen(
                     Check.BATTERY -> if (ui.batteryManual) null else "Allow" to onAllowBattery
                     Check.CUES -> "Prepare" to viewModel::prepareCues
                     Check.TEST_CUE -> "Test cue" to viewModel::testCue
-                    Check.WATCH -> null
+                    Check.WATCH, Check.WATCH_BATTERY -> null
                 }
                 val fixEnabled = when (item.check) {
                     Check.CUES -> idle && config.theme.isNotBlank() && config.theme.length <= 60

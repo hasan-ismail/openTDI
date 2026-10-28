@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.PowerManager
@@ -425,6 +426,8 @@ class LoggingSession(
                 gravityMode = gravityMode,
                 frames = frames.toList(),
                 sentAtWallMs = System.currentTimeMillis(),
+                watchBatteryPct = context.getSystemService(BatteryManager::class.java)
+                    .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),
             ),
         )
         frames.clear()
