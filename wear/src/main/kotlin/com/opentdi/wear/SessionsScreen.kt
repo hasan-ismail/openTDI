@@ -179,7 +179,8 @@ private fun <T> readPackets(dir: File, read: (File) -> T): T? = try {
 }
 
 private fun startText(context: Context, s: WatchSession) = DateUtils.formatDateTime(
-    context, s.startMs, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_ALL,
+    context, s.startMs, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_ALL or
+        DateUtils.FORMAT_12HOUR,
 )
 
 private fun duration(s: WatchSession) = s.durationMs?.let { DateUtils.formatElapsedTime(it / 1000) }

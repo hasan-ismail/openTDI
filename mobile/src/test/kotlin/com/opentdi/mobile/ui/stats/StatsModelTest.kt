@@ -86,10 +86,10 @@ class StatsModelTest {
         val spring = LocalDate.of(2026, 3, 7) // clocks go forward at 2:00 the next morning
         assertEquals(930, clockMin(ms(spring.plusDays(1), 3, 30), spring, zone)) // wall clock, not elapsed time
 
-        assertEquals("23:00", clockLabel(660))
-        assertEquals("1:30", clockLabel(810))
-        assertEquals("12:00", clockLabel(1440))
-        assertEquals("11:30", clockLabel(-30))
+        assertEquals("11 PM", clockLabel(660))
+        assertEquals("1:30 AM", clockLabel(810))
+        assertEquals("12 PM", clockLabel(1440))
+        assertEquals("11:30 AM", clockLabel(-30))
 
         assertEquals(600..1260, clockAxis(listOf(670, 1150))) // 23:10 to 7:10 gets 22:00 to 9:00
         assertEquals(540..1200, clockAxis(emptyList())) // 22:00 to 7:00 with an hour to spare

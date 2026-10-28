@@ -6,6 +6,7 @@ import com.opentdi.mobile.stats.SyncResult
 import com.opentdi.shared.stats.DreamReport
 import com.opentdi.shared.stats.Epochs
 import com.opentdi.shared.stats.NightSummary
+import com.opentdi.shared.time.clock12
 import java.time.DateTimeException
 import java.time.DayOfWeek
 import java.time.Duration
@@ -160,11 +161,8 @@ fun clockMin(epochMs: Long, night: LocalDate, zone: ZoneId): Int =
     Duration.between(night.atTime(12, 0), Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDateTime())
         .toMinutes().toInt()
 
-/** "23:00" for 660 minutes from noon. */
-fun clockLabel(minFromNoon: Int): String {
-    val m = Math.floorMod(minFromNoon + 12 * 60, 24 * 60)
-    return String.format(Locale.ROOT, "%d:%02d", m / 60, m % 60)
-}
+/** "11 PM" for 660 minutes from noon. */
+fun clockLabel(minFromNoon: Int): String = clock12(minFromNoon + 12 * 60)
 
 /** The sleep-times axis for [values] (minutes from noon): whole hours with an hour to spare, inside noon to noon. */
 fun clockAxis(values: List<Int>): IntRange {

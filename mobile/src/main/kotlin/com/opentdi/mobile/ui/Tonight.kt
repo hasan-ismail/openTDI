@@ -8,6 +8,7 @@ import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.WatchState
+import com.opentdi.shared.time.clock12
 import java.util.Locale
 
 /** The Tonight card's big line and the cycle line under it, for [status] at [nowMs] (elapsedRealtime). */
@@ -213,9 +214,9 @@ fun checklist(
     }
 }
 
-/** "Watch alarms: WBTB 4:30, wake up 7:00", or null when both are off. */
+/** "Watch alarms: WBTB 4:30 AM, wake up 7 AM", or null when both are off. */
 fun alarmsLine(alarms: AlarmConfig): String? {
-    fun hhmm(m: Int) = String.format(Locale.ROOT, "%d:%02d", m / 60, m % 60)
+    fun hhmm(m: Int) = clock12(m)
     val parts = listOfNotNull(
         "WBTB ${hhmm(alarms.wbtbAtMin)}".takeIf { alarms.wbtbEnabled },
         "wake up ${hhmm(alarms.wakeAtMin)}".takeIf { alarms.wakeEnabled },

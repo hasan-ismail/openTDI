@@ -60,6 +60,7 @@ import java.io.File
 import java.io.IOException
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -379,7 +380,7 @@ class NapSessionService : LifecycleService() {
         private const val CHANNEL_ID = "session"
         private const val TICK_MS = 250L
         private const val FLUSH_MS = 5000L // §12.1
-        private val CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss")
+        private val CLOCK = DateTimeFormatter.ofPattern("h:mm:ss a", Locale.US)
 
         // ro.* properties are readable through getprop; the value is empty when the build does not set it.
         private fun systemProperty(name: String): String = try {

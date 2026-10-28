@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import android.Manifest
+import com.opentdi.shared.time.clock12
 import java.util.Locale
 import java.util.Optional
 import kotlinx.coroutines.flow.map
@@ -20,7 +21,6 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import android.content.pm.PackageManager
-import android.text.format.DateFormat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
@@ -189,7 +189,7 @@ internal fun VoiceCard(viewModel: MainViewModel, ui: UiState, idle: Boolean, vol
         ) { v -> edit { it.copy(audio = it.audio.copy(phrasePauseMs = v)) } }
         Text(
             when {
-                ui.preparing -> "Preparing the voice cues…"
+                ui.preparing -> ui.prepareStatus
                 ui.testing -> "Playing the test cue…"
                 cueProblem == null -> "Cues are ready."
                 else -> cueProblem
@@ -542,13 +542,12 @@ private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean, onChang
 @Composable
 private fun TimeRow(label: String, minuteOfDay: Int, enabled: Boolean, onChange: (Int) -> Unit) {
     var picking by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("$label ${hhmm(minuteOfDay)}", modifier = Modifier.weight(1f))
         TextButton(onClick = { picking = true }, enabled = enabled) { Text("Change") }
     }
     if (picking) {
-        val state = rememberTimePickerState(minuteOfDay / 60, minuteOfDay % 60, is24Hour = DateFormat.is24HourFormat(context))
+        val state = rememberTimePickerState(minuteOfDay / 60, minuteOfDay % 60, is24Hour = false)
         AlertDialog(
             onDismissRequest = { picking = false },
             confirmButton = {
@@ -588,7 +587,7 @@ private fun toneLabel(tone: AlarmTone) = when (tone) {
     AlarmTone.SPOKEN -> "Spoken (cue voice)"
 }
 
-private fun hhmm(minuteOfDay: Int) = String.format(Locale.ROOT, "%d:%02d", minuteOfDay / 60, minuteOfDay % 60)
+private fun hhmm(minuteOfDay: Int) = clock12(minuteOfDay)
 
 /** Where the cues play (phone or watch), and where the watch plays them and its alarms: speaker or its earbuds. */
 @Composable

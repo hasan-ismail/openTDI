@@ -14,6 +14,7 @@ import com.opentdi.shared.csv.CsvWriter
 import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.AlarmTone
 import com.opentdi.shared.model.OpenTdiJson
+import com.opentdi.shared.time.clock12
 import com.opentdi.wear.MainActivity
 import com.opentdi.wear.R
 import com.opentdi.wear.sensing.HealthTrackingForegroundService
@@ -325,8 +326,8 @@ class WakeAlarms(
                 .putString(KEY_CONFIG, OpenTdiJson.encodeToString(AlarmConfig.serializer(), config)).apply()
         }
 
-        /** "07:00" in the watch's time zone, for the screen. */
-        fun hhmm(epochMs: Long): String =
-            Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalTime().toString().take(5)
+        /** "7 AM" in the watch's time zone, for the screen. */
+        fun hhmm(epochMs: Long): String = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalTime()
+            .let { clock12(it.hour * 60 + it.minute) }
     }
 }

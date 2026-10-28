@@ -112,7 +112,7 @@ fun SessionsScreen(viewModel: MainViewModel) {
 }
 
 private const val DATE_TIME = DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_SHOW_DATE or
-    DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_ALL
+    DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_ALL or DateUtils.FORMAT_12HOUR
 
 private fun details(context: Context, s: SessionItem): String = listOfNotNull(
     s.summary?.durationMs?.let { DateUtils.formatElapsedTime(it / 1000) },

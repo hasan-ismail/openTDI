@@ -123,7 +123,7 @@ class TonightTest {
     fun alarmsLine_namesTheAlarmsThatAreOn() {
         assertNull(alarmsLine(AlarmConfig()))
         assertEquals(
-            "Watch alarms: WBTB 4:30, wake up 7:05",
+            "Watch alarms: WBTB 4:30 AM, wake up 7:05 AM",
             alarmsLine(AlarmConfig(wakeEnabled = true, wakeAtMin = 425, wbtbEnabled = true, wbtbAtMin = 270)),
         )
     }
