@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 data class SessionConfig(
     val revision: Long = 0, // wall ms of the last edit; ConfigSync keeps the higher revision
     val mode: SessionMode = SessionMode.DETECTION,
-    val theme: String = "a tree", // 1..60 chars
+    val theme: String = "lucid dreaming", // 1..60 chars; the default cue words are about lucidity (§7.1)
     val maxCycles: Int = 4, // 1..10
     val sessionMaxMin: Int = 60, // 15..180
     val countdownS: Int = 180, // 60..300 step 15; also the TIMED dwell (15 only when simulation == FAST_HYPNAGOGIA)

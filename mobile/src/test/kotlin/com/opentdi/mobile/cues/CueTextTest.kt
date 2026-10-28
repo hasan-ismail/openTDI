@@ -11,17 +11,31 @@ import org.junit.Test
 
 class CueTextTest {
     @Test
-    fun wording_isSection7_1WithTheTheme() {
-        assertEquals("Remember to think of a tree.", cueText(PromptCue.INITIAL_INCUBATION, "a tree"))
+    fun defaultWording_isLucidity_andIgnoresTheTheme() {
+        assertEquals("You are dreaming. You are in control.", cueText(PromptCue.INITIAL_INCUBATION, "a tree"))
         assertEquals(
-            "You're falling asleep. Please tell me, what's going through your mind?",
+            "You're falling asleep. You are dreaming now. What do you notice?",
             cueText(PromptCue.WAKE_PROMPT, "a tree"),
         )
         assertEquals(
-            "Remember to think of a fork. You can fall back asleep now.",
+            "You are dreaming. You are in control. You can fall back asleep now.",
             cueText(PromptCue.RE_INCUBATION, "a fork"),
         )
         assertEquals("The session is over. You can wake up now.", cueText(PromptCue.SESSION_END, "a tree"))
+        assertEquals(cueText(PromptCue.RE_INCUBATION, "a tree"), cueText(PromptCue.RE_INCUBATION, "a fork"))
+    }
+
+    @Test
+    fun mitWording_isSection7_1WithTheTheme() {
+        assertEquals("Remember to think of a tree.", mitThemeCueText(PromptCue.INITIAL_INCUBATION, "a tree"))
+        assertEquals(
+            "You're falling asleep. Please tell me, what's going through your mind?",
+            mitThemeCueText(PromptCue.WAKE_PROMPT, "a tree"),
+        )
+        assertEquals(
+            "Remember to think of a fork. You can fall back asleep now.",
+            mitThemeCueText(PromptCue.RE_INCUBATION, "a fork"),
+        )
     }
 
     @Test
@@ -41,13 +55,13 @@ class CueTextTest {
         )
         assertEquals(own, cueText(PromptCue.INITIAL_INCUBATION, config))
         assertEquals(cueText(PromptCue.WAKE_PROMPT, "a fork"), cueText(PromptCue.WAKE_PROMPT, config))
-        assertEquals("Remember to think of a fork. You can fall back asleep now.", cueText(PromptCue.RE_INCUBATION, config))
+        assertEquals(cueText(PromptCue.RE_INCUBATION, "a fork"), cueText(PromptCue.RE_INCUBATION, config))
     }
 
     @Test
     fun ownWords_followTheThemeThroughThePlaceholder() {
         // The field is prefilled with the placeholder, so an edit (here a comma) keeps it.
-        val edited = cueText(PromptCue.RE_INCUBATION, THEME_PLACEHOLDER).replace(". You", ", you")
+        val edited = mitThemeCueText(PromptCue.RE_INCUBATION, THEME_PLACEHOLDER).replace(". You", ", you")
         assertEquals("Remember to think of [THEME], you can fall back asleep now.", edited)
         val audio = AudioConfig(cueTexts = mapOf(PromptCue.RE_INCUBATION to edited))
         val config = SessionConfig(theme = "a tree", audio = audio)

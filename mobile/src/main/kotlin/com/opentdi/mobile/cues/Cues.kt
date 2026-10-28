@@ -28,13 +28,25 @@ import kotlinx.serialization.Serializable
 /** The cues Phase 1 renders and plays; SLEEP_STATE_QUESTION arrives with recording in Phase 2. */
 val PHASE1_CUES = listOf(PromptCue.INITIAL_INCUBATION, PromptCue.WAKE_PROMPT, PromptCue.RE_INCUBATION, PromptCue.SESSION_END)
 
-/** §7.1 wording with [theme] for [THEME]. SESSION_END is the sentence only: the chime is prepended at playback. */
-fun cueText(cue: PromptCue, theme: String): String = when (cue) {
+/**
+ * OpenTDI's default words (§7.1): lucidity, telling the sleeper they are dreaming and leaving the rest to them
+ * (owner decision 2026-10-27). [theme] is not used; MIT's theme incubation wording is [mitThemeCueText].
+ * SESSION_END is the sentence only: the chime is prepended at playback.
+ */
+fun cueText(cue: PromptCue, @Suppress("UNUSED_PARAMETER") theme: String): String = when (cue) {
+    PromptCue.INITIAL_INCUBATION -> "You are dreaming. You are in control."
+    PromptCue.WAKE_PROMPT -> "You're falling asleep. You are dreaming now. What do you notice?"
+    PromptCue.RE_INCUBATION -> "You are dreaming. You are in control. You can fall back asleep now."
+    PromptCue.SESSION_END -> "The session is over. You can wake up now."
+    PromptCue.SLEEP_STATE_QUESTION -> throw IllegalArgumentException("SLEEP_STATE_QUESTION is Phase 2")
+}
+
+/** MIT Dormio's theme incubation wording (P20 §2.4), with [theme] for [THEME]: the alternative to [cueText]. */
+fun mitThemeCueText(cue: PromptCue, theme: String): String = when (cue) {
     PromptCue.INITIAL_INCUBATION -> "Remember to think of $theme."
     PromptCue.WAKE_PROMPT -> "You're falling asleep. Please tell me, what's going through your mind?"
     PromptCue.RE_INCUBATION -> "Remember to think of $theme. You can fall back asleep now."
-    PromptCue.SESSION_END -> "The session is over. You can wake up now."
-    PromptCue.SLEEP_STATE_QUESTION -> throw IllegalArgumentException("SLEEP_STATE_QUESTION is Phase 2")
+    PromptCue.SESSION_END, PromptCue.SLEEP_STATE_QUESTION -> cueText(cue, theme)
 }
 
 /** Stands for the theme in the user's own cue words, so edited cues follow a later theme change (§7.1). */

@@ -2,15 +2,10 @@ package com.opentdi.wear
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.ActivityNotFoundException
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.PowerManager
 import android.os.SystemClock
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -66,15 +61,8 @@ class MainActivity : ComponentActivity() {
         afterPermissions = null
     }
 
-    private var batteryUnrestricted by mutableStateOf(true) // as checked at the last resume
-    private var batteryManual by mutableStateOf(false) // no battery settings screen opened: show the path instead
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Once per launch, never over a running session (the ongoing chip opens a new instance); resume re-checks.
-        if (savedInstanceState == null && !SensingStateHolder.state.value.running && !isBatteryUnrestricted()) {
-            allowBattery(askOnly = true)
-        }
         setContent {
             val state by SensingStateHolder.state.collectAsStateWithLifecycle()
             var logRawAccelChoice by rememberSaveable { mutableStateOf(AccelConfig().logRawAccel) }
@@ -93,14 +81,11 @@ class MainActivity : ComponentActivity() {
                             SessionScreen(
                                 state = state,
                                 logRawAccel = logRawAccel,
-                                batteryUnrestricted = batteryUnrestricted,
-                                batteryManual = batteryManual,
                                 onLogRawAccelChange = { logRawAccelChoice = it },
                                 onStart = { startSession(logRawAccel, androidSensorsOnly = false) },
                                 onStop = { HealthTrackingForegroundService.stop(this@MainActivity) },
                                 onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
                                 onStatusTap = ::onStatusTap,
-                                onBatteryTap = ::allowBattery,
                                 onSessions = { sessionsOpen = true },
                             )
                         }
@@ -108,32 +93,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    private fun isBatteryUnrestricted() =
-        getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
-
-    /**
-     * Opens the first screen that can make battery use "Unrestricted" (Wear OS may lack some); else shows the path.
-     * [askOnly], the ask at launch, tries only the system dialog, so opening the app never lands in Settings.
-     */
-    @SuppressLint("BatteryLife") // a night-long health session is the use this exemption is for
-    private fun allowBattery(askOnly: Boolean = false) {
-        val app = Uri.fromParts("package", packageName, null)
-        val screens = listOf(
-            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, app),
-            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, app),
-        )
-        val opened = (if (askOnly) screens.take(1) else screens).any { intent ->
-            try {
-                startActivity(intent)
-                true
-            } catch (e: ActivityNotFoundException) {
-                false
-            }
-        }
-        if (!opened) batteryManual = true
     }
 
     private fun missingPermissions() = runtimePermissions(Build.VERSION.SDK_INT).filter {
@@ -163,7 +122,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        batteryUnrestricted = isBatteryUnrestricted()
         if (!resolving) return
         resolving = false
         // Back from Galaxy Store: only a new session reconnects to Health Sensor Service; still missing, it falls back.
@@ -213,14 +171,11 @@ private val NightColors = ColorScheme(
 private fun SessionScreen(
     state: SensingState,
     logRawAccel: Boolean,
-    batteryUnrestricted: Boolean,
-    batteryManual: Boolean,
     onLogRawAccelChange: (Boolean) -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onBasicSensors: () -> Unit,
     onStatusTap: (SensorStatus) -> Unit,
-    onBatteryTap: () -> Unit,
     onSessions: () -> Unit,
 ) {
     var nowMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -262,14 +217,9 @@ private fun SessionScreen(
                 ) { Text("Log raw accelerometer") }
             }
             item {
-                if (batteryUnrestricted) {
-                    Line("Battery: unrestricted")
-                } else {
-                    Card(onClick = onBatteryTap, modifier = Modifier.fillMaxWidth()) {
-                        Text("Battery: optimized. Tap to allow unrestricted so sensing isn't stopped.")
-                        if (batteryManual) Text("Settings > Apps > OpenTDI > Battery > Unrestricted")
-                    }
-                }
+                // Wear OS has no per-app battery screen (its request intent opens a no-op FakeSettingsActivity);
+                // the health foreground service and its wake lock keep a session running (§14.4).
+                Line("Battery: no setting needed on the watch")
             }
             item {
                 FilledTonalButton(onClick = onSessions, modifier = Modifier.fillMaxWidth()) { Text("Sessions") }
