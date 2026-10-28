@@ -125,6 +125,7 @@ fun TonightScreen(
             errors.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
             warnings.forEach { Text(it, color = MaterialTheme.colorScheme.tertiary) }
         }
+        RoutineCard()
         PresetCard(viewModel, enabled = idle)
         InstructionsCard(config.theme)
     }

@@ -171,6 +171,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val mutableOnboarded = MutableStateFlow(isOnboarded(app))
+
+    /** False while the set-up guide is shown. */
+    val onboarded: StateFlow<Boolean> = mutableOnboarded.asStateFlow()
+
+    fun finishOnboarding() {
+        setOnboarded(app, true)
+        mutableOnboarded.value = true
+    }
+
+    fun restartOnboarding() {
+        setOnboarded(app, false)
+        mutableOnboarded.value = false
+    }
+
     /** Applies and saves a settings change. */
     fun edit(transform: (SessionConfig) -> SessionConfig) {
         val next = transform(ui.value.config).copy(revision = System.currentTimeMillis())

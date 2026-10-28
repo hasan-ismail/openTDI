@@ -8,6 +8,7 @@ import com.opentdi.shared.model.SessionMode
 private const val PREFS = "opentdi"
 private const val KEY_CONFIG = "session_config"
 private const val KEY_CALIBRATED_INDEX = "calibrated_stream_index"
+private const val KEY_ONBOARDED = "onboarded"
 
 /** Phase 1 runs TIMED_CUES only (spec §0); every other default is the spec's. */
 val PHASE1_DEFAULT_CONFIG = SessionConfig(mode = SessionMode.TIMED_CUES)
@@ -31,6 +32,13 @@ fun loadCalibratedIndex(context: Context): Int? = prefs(context).getInt(KEY_CALI
 
 fun saveCalibratedIndex(context: Context, index: Int) {
     prefs(context).edit().putInt(KEY_CALIBRATED_INDEX, index).apply()
+}
+
+/** True once the set-up guide was finished or skipped. */
+fun isOnboarded(context: Context): Boolean = prefs(context).getBoolean(KEY_ONBOARDED, false)
+
+fun setOnboarded(context: Context, done: Boolean) {
+    prefs(context).edit().putBoolean(KEY_ONBOARDED, done).apply()
 }
 
 private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

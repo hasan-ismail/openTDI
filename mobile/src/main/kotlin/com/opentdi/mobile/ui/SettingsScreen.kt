@@ -58,7 +58,7 @@ import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.TtsEngine
 import kotlin.math.roundToInt
 
-private typealias Edit = ((SessionConfig) -> SessionConfig) -> Unit
+internal typealias Edit = ((SessionConfig) -> SessionConfig) -> Unit
 
 /** Settings in cards: cue words, voice, timing, sound, about. Locked while a session runs or cues are prepared. */
 @Composable
@@ -84,6 +84,12 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 OutlinedButton(onClick = { edit(::withDefaultNumbers) }, enabled = idle, modifier = Modifier.fillMaxWidth()) {
                     Text("Reset sliders to the defaults")
                 }
+            }
+        }
+        Section("Set-up guide") {
+            Help("The step-by-step guide from the first launch: the watch, the voice, alarms and your first night.")
+            OutlinedButton(onClick = viewModel::restartOnboarding, modifier = Modifier.fillMaxWidth()) {
+                Text("Open the set-up guide")
             }
         }
         AboutCard()
@@ -121,73 +127,81 @@ private fun SettingsCards(viewModel: MainViewModel, ui: UiState, idle: Boolean, 
     val edit: Edit = viewModel::edit
     run {
         CueWordsCard(config, idle, edit, viewModel, ui.recordingCue)
-        Section("Voice") {
-            // These apply when the cues are prepared; after a change the status line below asks for Prepare cues.
-            val neural = config.audio.ttsEngine == TtsEngine.NEURAL
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .toggleable(value = neural, enabled = idle, role = Role.Switch) { on ->
-                        edit { it.copy(audio = it.audio.copy(ttsEngine = if (on) TtsEngine.NEURAL else TtsEngine.SYSTEM)) }
-                    },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Natural voice (on-device model)", modifier = Modifier.weight(1f))
-                Switch(checked = neural, onCheckedChange = null, enabled = idle)
-            }
-            Help("A natural-sounding voice that runs on the phone itself. Off: your phone's text-to-speech voice.")
-            if (neural) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (speaker in NEURAL_VOICE_CHOICES) {
-                        FilterChip(
-                            selected = config.audio.neuralSpeaker == speaker,
-                            onClick = { edit { it.copy(audio = it.audio.copy(neuralSpeaker = speaker)) } },
-                            label = { Text(speakerLabel(speaker)) },
-                            enabled = idle,
-                        )
-                    }
-                }
-            }
-            IntSetting(
-                "Speaking speed", "How fast the voice speaks; 100 % is normal speed.",
-                (config.audio.ttsSpeechRate * 100).roundToInt(), 50..120, 5, "%", idle,
-            ) { v -> edit { it.copy(audio = it.audio.copy(ttsSpeechRate = v / 100f)) } }
-            IntSetting(
-                "Pause between phrases", "Silence between the short phrases of a cue.",
-                config.audio.phrasePauseMs, 0..2000, 100, "ms", idle,
-            ) { v -> edit { it.copy(audio = it.audio.copy(phrasePauseMs = v)) } }
-            Text(
-                when {
-                    ui.preparing -> "Preparing the cues with text-to-speech…"
-                    ui.testing -> "Playing the test cue…"
-                    cueProblem == null -> "Cues ready (voice ${ui.cues?.voice})."
-                    else -> cueProblem
-                },
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            ui.cueMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = viewModel::prepareCues,
-                    enabled = idle && config.theme.isNotBlank() && config.theme.length <= 60,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Prepare cues") }
-                OutlinedButton(
-                    onClick = viewModel::testCue,
-                    // The phone's media volume only matters when the phone speaker plays the cues.
-                    enabled = idle && cueProblem == null &&
-                        (!volumeOff || config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER),
-                    modifier = Modifier.weight(1f),
-                ) { Text("Test cue") }
-            }
-            Help(
-                "Prepare cues turns the words into speech on the phone. Test cue plays the first cue once: " +
-                    "play it at your bedtime volume, because cues never play louder than that.",
-            )
-        }
+        VoiceCard(viewModel, ui, idle, volumeOff, cueProblem)
         TimingCard(config, idle, edit)
         AlarmsCard(config, idle, edit, viewModel)
         SoundCard(config, idle, edit)
+    }
+}
+
+/** The voice and the cues: engine, voice, Prepare cues and Test cue (also a step of the set-up guide). */
+@Composable
+internal fun VoiceCard(viewModel: MainViewModel, ui: UiState, idle: Boolean, volumeOff: Boolean, cueProblem: String?) {
+    val config = ui.config
+    val edit: Edit = viewModel::edit
+    Section("Voice") {
+        // These apply when the cues are prepared; after a change the status line below asks for Prepare cues.
+        val neural = config.audio.ttsEngine == TtsEngine.NEURAL
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .toggleable(value = neural, enabled = idle, role = Role.Switch) { on ->
+                    edit { it.copy(audio = it.audio.copy(ttsEngine = if (on) TtsEngine.NEURAL else TtsEngine.SYSTEM)) }
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Natural voice (on-device model)", modifier = Modifier.weight(1f))
+            Switch(checked = neural, onCheckedChange = null, enabled = idle)
+        }
+        Help("A natural-sounding voice that runs on the phone itself. Off: your phone's text-to-speech voice.")
+        if (neural) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (speaker in NEURAL_VOICE_CHOICES) {
+                    FilterChip(
+                        selected = config.audio.neuralSpeaker == speaker,
+                        onClick = { edit { it.copy(audio = it.audio.copy(neuralSpeaker = speaker)) } },
+                        label = { Text(speakerLabel(speaker)) },
+                        enabled = idle,
+                    )
+                }
+            }
+        }
+        IntSetting(
+            "Speaking speed", "How fast the voice speaks; 100 % is normal speed.",
+            (config.audio.ttsSpeechRate * 100).roundToInt(), 50..120, 5, "%", idle,
+        ) { v -> edit { it.copy(audio = it.audio.copy(ttsSpeechRate = v / 100f)) } }
+        IntSetting(
+            "Pause between phrases", "Silence between the short phrases of a cue.",
+            config.audio.phrasePauseMs, 0..2000, 100, "ms", idle,
+        ) { v -> edit { it.copy(audio = it.audio.copy(phrasePauseMs = v)) } }
+        Text(
+            when {
+                ui.preparing -> "Preparing the cues with text-to-speech…"
+                ui.testing -> "Playing the test cue…"
+                cueProblem == null -> "Cues ready (voice ${ui.cues?.voice})."
+                else -> cueProblem
+            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        ui.cueMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = viewModel::prepareCues,
+                enabled = idle && config.theme.isNotBlank() && config.theme.length <= 60,
+                modifier = Modifier.weight(1f),
+            ) { Text("Prepare cues") }
+            OutlinedButton(
+                onClick = viewModel::testCue,
+                // The phone's media volume only matters when the phone speaker plays the cues.
+                enabled = idle && cueProblem == null &&
+                    (!volumeOff || config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER),
+                modifier = Modifier.weight(1f),
+            ) { Text("Test cue") }
+        }
+        Help(
+            "Prepare cues turns the words into speech on the phone. Test cue plays the first cue once: " +
+                "play it at your bedtime volume, because cues never play louder than that.",
+        )
     }
 }
 
@@ -372,7 +386,7 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
 
 /** The watch alarms (owner, 2026-10-28): they ring on the watch, so the phone can stay in another room. */
 @Composable
-private fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, viewModel: MainViewModel) {
+internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, viewModel: MainViewModel) {
     val onTest: (AlarmTone) -> Unit = viewModel::testAlarm
     val alarms = config.alarms
     fun change(transform: (AlarmConfig) -> AlarmConfig) = edit { it.copy(alarms = transform(it.alarms)) }

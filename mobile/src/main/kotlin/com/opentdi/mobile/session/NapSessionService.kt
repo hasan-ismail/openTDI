@@ -1,5 +1,7 @@
 package com.opentdi.mobile.session
 
+import com.opentdi.mobile.loadRoutine
+import com.opentdi.mobile.ROUTINE
 import com.opentdi.shared.model.AlarmTone
 import android.app.Notification
 import android.app.NotificationChannel
@@ -359,6 +361,9 @@ class NapSessionService : LifecycleService() {
                         audioManager.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED).orEmpty(),
                 )
                 add("audio.flingerStandbyTimeMs" to systemProperty("ro.audio.flinger_standbytime_ms"))
+                // Tonight's bedtime routine, to compare with the morning reports later.
+                val routine = loadRoutine(this@NapSessionService)
+                for (step in ROUTINE) add("routine.${step.id}" to if (step.id in routine) "1" else "0")
                 addAll(config.toConfigRows())
                 addAll(config.detection.thresholds().toConfigRows())
                 addAll(StructuralConstants.configRows())

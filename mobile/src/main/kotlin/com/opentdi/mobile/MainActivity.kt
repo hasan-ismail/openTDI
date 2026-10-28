@@ -1,5 +1,8 @@
 package com.opentdi.mobile
 
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.opentdi.mobile.ui.OnboardingScreen
 import com.opentdi.mobile.ui.NightSky
 import android.Manifest
 import android.annotation.SuppressLint
@@ -73,6 +76,13 @@ class MainActivity : ComponentActivity() {
                 var tab by rememberSaveable { mutableIntStateOf(0) }
                 BackHandler(enabled = tab != 0) { tab = 0 }
                 NightSky() // behind every tab; the scaffold is see-through
+                val onboarded by viewModel.onboarded.collectAsStateWithLifecycle()
+                if (!onboarded) {
+                    Box(Modifier.safeDrawingPadding()) {
+                        OnboardingScreen(viewModel, onAllowBattery = ::allowBattery, onDone = viewModel::finishOnboarding)
+                    }
+                    return@OpenTdiTheme
+                }
                 Scaffold(
                     containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     bottomBar = { BottomTabs(tab) { tab = it } },
