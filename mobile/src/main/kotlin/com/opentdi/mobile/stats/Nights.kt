@@ -12,6 +12,7 @@ import com.opentdi.mobile.session.SESSIONS_DIR
 import com.opentdi.shared.csv.CsvFiles
 import com.opentdi.shared.csv.sessionDirs
 import com.opentdi.shared.csv.sessionStartMs
+import com.opentdi.shared.csv.watchSessionDurationMs
 import com.opentdi.shared.model.DataLayerPaths
 import com.opentdi.shared.model.OpenTdiJson
 import com.opentdi.shared.model.SessionFilesRequest
@@ -26,6 +27,7 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.Reader
+import java.io.StringReader
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
@@ -97,8 +99,12 @@ object NightsRepository {
         // session's zone when that matters.
         val zone = ZoneId.systemDefault()
         val today = nightDate(System.currentTimeMillis(), zone)
-        val watch = sessionDirs(File(context.filesDir, WATCH_DIR)).mapNotNull { watchNight(it, zone, today) }
-        return joinNights(watch, phoneSessions(context.filesDir), zone)
+        val phone = phoneSessions(context.filesDir)
+        val sessionsDir = File(context.filesDir, SESSIONS_DIR)
+        val watch = sessionDirs(File(context.filesDir, WATCH_DIR)).mapNotNull {
+            watchNight(it, zone, today) { start, end -> transitionsDuring(phone, sessionsDir, start, end) }
+        }
+        return joinNights(watch, phone, zone)
     }
 
     /** Copies what the watch recorded since the last copy (SessionFiles.kt); one copy at a time. */
@@ -172,11 +178,20 @@ object NightsRepository {
         }
     }
 
-    /** A watch copy's night, summary and recordings; null for a folder whose name is no real time. */
-    private fun watchNight(dir: File, zone: ZoneId, today: LocalDate): WatchNight? {
+    /**
+     * A watch copy's night, summary and recordings; null for a folder whose name is no real time. [phone] gives the
+     * p_transitions.csv files of the phone's sessions during a span: their Dormio wakings are part of the night.
+     */
+    private fun watchNight(
+        dir: File,
+        zone: ZoneId,
+        today: LocalDate,
+        phone: (startMs: Long, endMs: Long) -> List<File>,
+    ): WatchNight? {
         val night = nightDate(sessionStartMs(dir.name) ?: return null, zone)
         val summary = try {
-            summary(dir, zone, prune = ChronoUnit.DAYS.between(night, today) > KEEP_CSV_NIGHTS)
+            val prune = ChronoUnit.DAYS.between(night, today) > KEEP_CSV_NIGHTS
+            summary(dir, zone, prune, transitions(dir, phone))
         } catch (e: IOException) {
             failed(dir, e)
         } catch (e: RuntimeException) { // a damaged file must not hide the other nights; it is read again next time
@@ -190,11 +205,28 @@ object NightsRepository {
         return null
     }
 
-    /** [dir]'s cached summary, computed again when its CSVs or SUMMARY_VERSION changed; [prune] then drops the CSVs. */
-    private fun summary(dir: File, zone: ZoneId, prune: Boolean): NightSummary? {
-        val files = fingerprint(dir) // before reading, so a file that grows meanwhile is read again next time
+    /**
+     * The [phone] sessions' p_transitions.csv files during [dir]'s watch recording, its first to last packet (read from
+     * the ends of w_packets.csv only).
+     */
+    private fun transitions(dir: File, phone: (startMs: Long, endMs: Long) -> List<File>): List<File> {
+        val packets = File(dir, CsvFiles.W_PACKETS.name).takeIf { it.isFile } ?: return emptyList()
+        val startMs = packets.useLines { lines ->
+            lines.drop(1).firstNotNullOfOrNull { it.substringBefore(',').toLongOrNull() }
+        }
+        val durationMs = watchSessionDurationMs(packets)
+        return if (startMs == null || durationMs == null) emptyList() else phone(startMs, startMs + durationMs + 1000)
+    }
+
+    /**
+     * [dir]'s cached summary, computed again when its CSVs, the phone sessions' [transitions] or SUMMARY_VERSION
+     * changed; [prune] then drops the CSVs.
+     */
+    private fun summary(dir: File, zone: ZoneId, prune: Boolean, transitions: List<File>): NightSummary? {
+        // Before reading, so a file that grows meanwhile is read again next time.
+        val files = fingerprint(dir) + transitions.associate { "${it.parentFile?.name}/${it.name}" to it.length() }
         val cache = readCache(dir)?.takeIf { it.pruned || it.version == SUMMARY_VERSION && it.files == files }
-            ?: SummaryCache(SUMMARY_VERSION, files, summarize(dir, zone)).also { writeCache(dir, it) }
+            ?: SummaryCache(SUMMARY_VERSION, files, summarize(dir, zone, transitions)).also { writeCache(dir, it) }
         if (prune) {
             // shortcut: copies older than KEEP_CSV_NIGHTS keep only the summary, the recordings and their transcripts,
             // so a new SUMMARY_VERSION cannot recompute them; keep their CSVs (zipped) when old nights must be recomputed.
@@ -208,12 +240,16 @@ object NightsRepository {
         return cache.summary
     }
 
-    /** summarizeNight over the copy in [dir], closing whatever it opened. */
-    private fun summarize(dir: File, zone: ZoneId): NightSummary? {
+    /** summarizeNight over the copy in [dir] and the phone's [transitions], closing whatever it opened. */
+    private fun summarize(dir: File, zone: ZoneId, transitions: List<File>): NightSummary? {
         val opened = mutableListOf<Reader>()
         try {
             return summarizeNight(dir.name, zone) { name ->
-                File(dir, name).takeIf { it.isFile }?.bufferedReader()?.also { opened += it }
+                if (name == CsvFiles.P_TRANSITIONS.name) {
+                    joinTransitions(transitions)?.let(::StringReader)
+                } else {
+                    File(dir, name).takeIf { it.isFile }?.bufferedReader()?.also { opened += it }
+                }
             }
         } finally {
             opened.forEach { it.close() }

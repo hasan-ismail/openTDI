@@ -124,8 +124,10 @@ fun watchSessionDurationMs(file: File): Long? {
 }
 
 private const val TAIL_BYTES = 4096 // about 20 rows of ~200 B (§12.1)
-private val PACKET_COMMAS = CsvFiles.W_PACKETS.columns.size - 1
+
+// Nights logged before angle_z_deg, the last column since 2026-10-28, have rows one field shorter.
+private val PACKET_COMMAS = CsvFiles.W_PACKETS.columns.size.let { setOf(it - 2, it - 1) }
 
 /** A w_packets.csv row's ts_ms; null for the header and for a row cut short when the app died. */
 private fun packetTsMs(line: String): Long? =
-    if (line.count { it == ',' } == PACKET_COMMAS) line.substringBefore(',').toLongOrNull() else null
+    if (line.count { it == ',' } in PACKET_COMMAS) line.substringBefore(',').toLongOrNull() else null

@@ -79,6 +79,26 @@ class NightsTest {
         assertNull(bare.routineTotal)
     }
 
+    @Test
+    fun transitions_ofThePhoneSessionsDuringARecording_joinedWithOneHeader() = withDir { sessions ->
+        val header = "wall_ms,elapsed_ms,from,to,reason,cycle,driver\n"
+        val rows = "9000,0,AWAKE_INCUBATING,HYPNAGOGIA_DETECTED,TIMED_DWELL,1,TIMED\n12000,3000,HYPNA" // died mid-row
+        fun session(id: String, startMs: Long, endMs: Long, written: Boolean = true) =
+            PhoneSession(id, startMs, endMs, 0, 0).also {
+                if (written) File(sessions, "$id/p_transitions.csv").apply { parentFile?.mkdirs() }.writeText(header + rows)
+            }
+        val before = session("20261028T020000Z-0001", 1_000, 5_000)
+        val during = session("20261028T030000Z-0002", 9_000, 12_000)
+        val after = session("20261028T040000Z-0003", 20_000, 25_000)
+        val deleted = session("20261028T035000Z-0004", 11_000, 13_000, written = false) // deleted on the Sessions screen
+
+        val files = transitionsDuring(listOf(before, during, after, deleted), sessions, 10_000, 20_000)
+
+        assertEquals(listOf(File(sessions, "${during.id}/p_transitions.csv")), files)
+        assertEquals("$header$rows\n$rows\n", joinTransitions(files + files)) // the header once
+        assertNull(joinTransitions(emptyList()))
+    }
+
     private fun summary(id: String, from: String, to: String) = NightSummary(
         sessionId = id, version = SUMMARY_VERSION, nightOf = from.take(10), zone = zone.id,
         recordStartMs = ms(from), recordEndMs = ms(to),

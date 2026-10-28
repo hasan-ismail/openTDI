@@ -3,6 +3,8 @@ package com.opentdi.shared.sensing
 import com.opentdi.shared.model.AccelConfig
 import com.opentdi.shared.model.GravityMode
 import kotlin.math.acos
+import kotlin.math.atan2
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -30,7 +32,7 @@ internal fun samsungCountsToG(counts: Double): Double = counts * 4.0 / 16383.75
 
 /**
  * §8.1 result for the second [startMs, startMs + 1000). The accel fields are null with fewer than 20 samples.
- * [tiltDeg] and [sampleCount] go to `w_packets.csv` only, never over the wire.
+ * [tiltDeg], [angleZDeg] and [sampleCount] go to `w_packets.csv` only, never over the wire.
  */
 data class AccelSecond(
     val startMs: Long,
@@ -40,6 +42,9 @@ data class AccelSecond(
     val accelPeak: Float?, // g, max d
     val stillnessScore: Float?, // 0..1, 1 = dead still
     val tiltDeg: Float?, // θ_s against the limp reference; null without one
+    // The arm angle of van Hees 2015 for the sleep estimate (owner, 2026-10-28; sleep_stats.md [1]): atan(z/√(x²+y²))
+    // of the second's mean vector, in degrees. Null unless WITH_GRAVITY: only then does that vector point along gravity.
+    val angleZDeg: Float?,
     val jerkEvent: Boolean,
     val limpEvent: Boolean,
 )
@@ -207,13 +212,15 @@ class AccelProcessor(private val config: AccelConfig) {
         if (calm && gravityMode == GravityMode.UNKNOWN) decideGravityMode(start, mean, events)
         val jerk = checkPendingJerk(start, still, events)
         val (tilt, limp) = updateLimp(start, stillness, orientation, events)
+        val angleZ = orientation?.takeIf { gravityMode == GravityMode.WITH_GRAVITY }
+            ?.let { Math.toDegrees(atan2(it.z, hypot(it.x, it.y))) }
         return if (valid) {
             AccelSecond(
                 start, n, mean.toFloat(), rms.toFloat(), peak.toFloat(), stillness?.toFloat(), tilt?.toFloat(),
-                jerk, limp,
+                angleZ?.toFloat(), jerk, limp,
             )
         } else {
-            AccelSecond(start, n, null, null, null, null, null, jerk, limp)
+            AccelSecond(start, n, null, null, null, null, null, null, jerk, limp)
         }
     }
 

@@ -38,6 +38,7 @@ enum class Tracker { HR, EDA, ACCEL }
 data class EmittedPacket(
     val packet: BiosignalPacket,
     val tiltDeg: Float?,
+    val angleZDeg: Float?,
     val accelSampleCount: Int,
     val emittedWallMs: Long,
 )
@@ -233,7 +234,7 @@ class PacketAggregator(
             skinTemperature = skinTemps.at(start, SKIN_TEMP_HOLD_MS),
             spo2 = spo2s.at(start, spo2HoldMs),
         )
-        return EmittedPacket(packet, accel?.tiltDeg, accel?.sampleCount ?: 0, nowWallMs)
+        return EmittedPacket(packet, accel?.tiltDeg, accel?.angleZDeg, accel?.sampleCount ?: 0, nowWallMs)
     }
 
     companion object {

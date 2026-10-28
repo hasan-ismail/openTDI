@@ -147,6 +147,8 @@ class SessionDirsTest {
         assertEquals(WatchSessionSummary(3_599_000, 3600), watchSessionSummary((text + "17930").lineSequence()))
         assertEquals(WatchSessionSummary(null, 0), watchSessionSummary(text.lineSequence().take(1)))
         assertEquals(WatchSessionSummary(null, 0), watchSessionSummary(emptySequence()))
+        val old = packetsCsv(3600, old = true) // a night logged before angle_z_deg: one column fewer
+        assertEquals(WatchSessionSummary(3_599_000, 3600), watchSessionSummary(old.lineSequence()))
     }
 
     @Test
@@ -159,19 +161,22 @@ class SessionDirsTest {
         assertEquals(2_000L, durationOf(packetsCsv(3))) // shorter than the tail: the header is in it
         assertEquals(0L, durationOf(packetsCsv(1)))
         assertNull(durationOf(packetsCsv(0)))
+        assertEquals(3_599_000L, durationOf(packetsCsv(3600, old = true)))
     }
 
-    /** w_packets.csv as LoggingSession writes it, one packet a second. */
-    private fun packetsCsv(rows: Int): String {
+    /** w_packets.csv as LoggingSession writes it, one packet a second; [old]: before its last column, angle_z_deg. */
+    private fun packetsCsv(rows: Int, old: Boolean = false): String {
+        val columns = CsvFiles.W_PACKETS.columns.let { if (old) it.dropLast(1) else it }
         val out = StringWriter()
-        CsvWriter(out, CsvFiles.W_PACKETS.columns).use { csv ->
+        CsvWriter(out, columns).use { csv ->
             for (i in 0 until rows) {
                 val ts = 1_793_000_000_000L + i * 1000L
                 val hr = if (i % 7 == 0) null else 61.5f // lost beats leave empty fields, still whole rows
-                csv.row(
+                val fields = listOf(
                     ts, i, SensorSource.SAMSUNG_SDK, hr, 1, listOf(812, 830), 31.2f, 0.42f, 0, 1.0f, 0.003f, 0.01f,
-                    0.97f, false, false, 0.5f, 25, ts + 1200, 33.1f, null,
+                    0.97f, false, false, 0.5f, 25, ts + 1200, 33.1f, null, -12.5f,
                 )
+                csv.row(*fields.take(columns.size).toTypedArray())
             }
         }
         return out.toString()

@@ -8,8 +8,8 @@ import kotlinx.serialization.Serializable
 /**
  * One recorded night as the phone's Stats screens need it (owner, 2026-10-28: "nice graphs ... of your sleep time and
  * dream state over months and weeks"). The phone computes it with [summarizeNight] from its copy of a watch session
- * (DataLayerPaths.SESSION_FILES) and caches it. Every sleep figure is an estimate from movement and heart rate, never
- * a sleep stage (sleep_and_dreams.md §1–2); the method is in docs/references/sleep_stats.md.
+ * (DataLayerPaths.SESSION_FILES) and caches it. Every sleep figure is an estimate from wrist movement; heart rate is
+ * shown, not used. Never a sleep stage (sleep_and_dreams.md §1–2); the method is in docs/references/sleep_stats.md.
  */
 @Serializable
 data class NightSummary(
@@ -28,6 +28,8 @@ data class NightSummary(
     val wbtb: WbtbOutcome? = null,
     val lateCues: LateCueOutcome? = null,
     val reports: List<DreamReport> = emptyList(),
+    /** Dormio prompts that woke the sleeper during the recording: the phone's p_transitions.csv WAKING_USER rows. */
+    val promptedWakings: Int = 0,
 )
 
 /** Estimated sleep for one night, in the consensus sleep diary's terms (TST, SOL, WASO, SE). */
@@ -42,11 +44,11 @@ data class SleepEstimate(
     /** Wake after sleep onset, until the final wake. */
     val wasoMin: Int,
     val awakenings: Int,
-    /** sleepMin as a share of recording start to final wake. */
+    /** sleepMin as a share of recording start to final wake, gaps excluded (not CSD SE). */
     val efficiencyPct: Int,
     val hrSleepMeanBpm: Float? = null,
     val hrSleepMinBpm: Float? = null,
-    /** Which rule produced it, e.g. "tilt-inactivity v1": a changed rule must not mix silently into trends. */
+    /** Which rule produced it, e.g. "arm-angle v1": a changed rule must not mix silently into trends. */
     val method: String,
 )
 
@@ -91,12 +93,17 @@ data class WbtbOutcome(
 data class LateCueOutcome(
     /** LateCueMode name: ON or EXPERIMENT. */
     val mode: String,
-    /** Cue night or, in the EXPERIMENT, the no-cue arm; shown only next to that morning's report. */
+    /**
+     * Cue night or, in the EXPERIMENT, the no-cue arm; never shown before the experiment's next milestone (Stats spec,
+     * Part C §C6): night 1's arm gives away night 2's.
+     */
     val cueNight: Boolean,
     /** EXPERIMENT pair position, "1/2" or "2/2". */
     val pair: String? = null,
     val cuesPlayed: Int = 0,
     val wouldCue: Int = 0,
+    /** EXPERIMENT block: the first night's ARMED time (`block=` in the ARMED detail); null where none was logged. */
+    val blockId: Long? = null,
 )
 
 /** One w_morning.csv row: the report after the WAKE or WBTB alarm. Null = skipped. */

@@ -27,7 +27,10 @@ internal const val SUMMARY_FILE = "night_summary.json"
 @Serializable
 internal data class SummaryCache(
     val version: Int,
-    /** The [fingerprint] it was computed from; once [pruned], what the phone had of each CSV. */
+    /**
+     * The [fingerprint] it was computed from, plus "<phone sessionId>/p_transitions.csv" of the overlapping phone
+     * sessions; once [pruned], what the phone had of each CSV.
+     */
     val files: Map<String, Long>,
     val summary: NightSummary? = null,
     /** The CSVs were deleted to save space: the summary is kept as it is. */
@@ -100,6 +103,17 @@ internal fun joinNights(watch: List<WatchNight>, phone: List<PhoneSession>, zone
         NightRow(night, summary, phoneNight, routine?.routineDone, routine?.routineTotal, recordings)
             .takeIf { summary != null || phoneNight != null || recordings.isNotEmpty() }
     }
+}
+
+/** The p_transitions.csv in [sessionsDir] (filesDir/sessions) of each [phone] session that overlaps [startMs, endMs). */
+internal fun transitionsDuring(phone: List<PhoneSession>, sessionsDir: File, startMs: Long, endMs: Long): List<File> =
+    phone.filter { it.startMs < endMs && it.endMs >= startMs }
+        .map { File(sessionsDir, "${it.id}/${CsvFiles.P_TRANSITIONS.name}") }.filter { it.isFile }
+
+/** [files] as one p_transitions.csv, the header once, for summarizeNight's Dormio wakings; null without a file. */
+internal fun joinTransitions(files: List<File>): String? = files.takeIf { it.isNotEmpty() }?.let {
+    (listOf(CsvFiles.P_TRANSITIONS.columns.joinToString(",")) + it.flatMap { f -> f.readLines().drop(1) })
+        .joinToString("\n", postfix = "\n")
 }
 
 /** w_dream_HHmmss.m4a's local time as HHmmss from noon, so a night's evening recordings sort before its morning's. */

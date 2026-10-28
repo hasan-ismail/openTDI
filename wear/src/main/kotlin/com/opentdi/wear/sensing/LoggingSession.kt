@@ -417,7 +417,7 @@ class LoggingSession(
                 packetsCsv?.row(
                     p.timestamp, packets++, p.source, p.hr, p.hrStatus, p.ibiList, p.rmssd, p.skinConductance,
                     p.edaStatus, p.accelMean, p.accelRms, p.accelPeak, p.stillnessScore, p.jerkEvent, p.limpEvent,
-                    e.tiltDeg, e.accelSampleCount, e.emittedWallMs, p.skinTemperature, p.spo2,
+                    e.tiltDeg, e.accelSampleCount, e.emittedWallMs, p.skinTemperature, p.spo2, e.angleZDeg,
                 )
             }
             ibis += p.ibiList.size

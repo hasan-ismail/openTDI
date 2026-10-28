@@ -19,7 +19,7 @@ class PacketAggregatorTest {
     private fun hr(ts: Long, bpm: Int = 60, status: Int = 1, ibis: List<Int>? = null) =
         HrDataPoint(ts, bpm, status, ibis, ibis?.map { 0 })
 
-    private fun stillSecond(start: Long) = AccelSecond(start, 25, 1f, 0f, 0f, 1f, null, false, false)
+    private fun stillSecond(start: Long) = AccelSecond(start, 25, 1f, 0f, 0f, 1f, null, null, false, false)
 
     /**
      * One single-point HR batch per second (screen on), beat k at T + k s + 500 ms (null: a point without IBIs);
@@ -209,7 +209,8 @@ class PacketAggregatorTest {
     fun emission_allTrackersDelivered_noDeadlineWait() {
         val agg = PacketAggregator(SessionConfig(), SensorSource.ANDROID_SENSORS, setOf(Tracker.HR, Tracker.ACCEL))
         agg.addHrBatch(listOf(hr(T + 400, bpm = 61)), T + 1100)
-        agg.addAccelSeconds(listOf(AccelSecond(T, 24, 1.01f, 0.004f, 0.012f, 0.98f, 1.5f, true, false)), T + 1100)
+        val second = AccelSecond(T, 24, 1.01f, 0.004f, 0.012f, 0.98f, 1.5f, -37.5f, true, false)
+        agg.addAccelSeconds(listOf(second), T + 1100)
         assertTrue(agg.poll(T + 1100).isEmpty()) // no HR point at or after the bin end yet
         agg.addHrBatch(listOf(hr(T + 1400, bpm = 62)), T + 1500)
         val expected = BiosignalPacket(
@@ -217,6 +218,6 @@ class PacketAggregatorTest {
             edaStatus = null, hrStatus = 1, accelMean = 1.01f, accelPeak = 0.012f, jerkEvent = true, limpEvent = false,
             stillnessScore = 0.98f, source = SensorSource.ANDROID_SENSORS,
         )
-        assertEquals(listOf(EmittedPacket(expected, 1.5f, 24, T + 1500)), agg.poll(T + 1500))
+        assertEquals(listOf(EmittedPacket(expected, 1.5f, -37.5f, 24, T + 1500)), agg.poll(T + 1500))
     }
 }

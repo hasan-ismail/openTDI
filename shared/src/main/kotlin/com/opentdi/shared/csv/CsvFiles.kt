@@ -15,7 +15,8 @@ object CsvFiles {
     val W_PACKETS = file(
         "w_packets.csv",
         "ts_ms,seq,source,hr_bpm,hr_status,ibi_ms(;),rmssd_ms,eda_us,eda_status,accel_mean_g,accel_rms_g," +
-            "accel_peak_g,stillness,jerk,limp,tilt_deg,n_accel_samples,emitted_wall_ms,skin_temp_c,spo2_pct",
+            "accel_peak_g,stillness,jerk,limp,tilt_deg,n_accel_samples,emitted_wall_ms,skin_temp_c,spo2_pct," +
+            "angle_z_deg",
     )
     val W_ACCEL_EVENTS = file("w_accel_events.csv", "sample_ts_ms,event,value1,value2,detail")
     val W_ENGINE = file(
@@ -49,12 +50,12 @@ object CsvFiles {
 
     val P_CONFIG = CsvFile("p_config.csv", W_CONFIG.columns)
 
-    // "every w_packets.csv packet column" = the BiosignalPacket fields; seq, tilt_deg, n_accel_samples and
-    // emitted_wall_ms never leave the watch (frame_seq carries the frame counter).
+    // "every w_packets.csv packet column" = the BiosignalPacket fields; seq, tilt_deg, n_accel_samples,
+    // emitted_wall_ms and angle_z_deg never leave the watch (frame_seq carries the frame counter).
     val P_FRAMES = CsvFile(
         "p_frames.csv",
         listOf("rx_wall_ms", "batch_seq", "frame_seq") +
-            (W_PACKETS.columns - setOf("seq", "tilt_deg", "n_accel_samples", "emitted_wall_ms")) +
+            (W_PACKETS.columns - setOf("seq", "tilt_deg", "n_accel_samples", "emitted_wall_ms", "angle_z_deg")) +
             names(
                 "state,state_reason,completed_cycles,confidence,gate,hr_sig,rmssd_sig,eda_bonus,jerk_bonus," +
                     "limp_bonus,hold_s,hold_req_s",

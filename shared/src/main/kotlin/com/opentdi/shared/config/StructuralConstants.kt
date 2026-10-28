@@ -52,6 +52,9 @@ object StructuralConstants {
     const val CUE_PEAK_DBFS = -3f // §7.3
     const val PHRASE_SILENCE_DBFS = -50f // §7.3: a TTS phrase's leading and trailing samples below this are trimmed
     const val SPEECH_LEAD_FADE_FRACTION = 0.75f // §7.3: a cue's speech enters this far into the §7.4 fade (−15 dB)
+    // GUESSED (LateCues, 2026-10-28): a still stretch this long after the WBTB buzz is falling back asleep; the night
+    // summary dates the re-onset by it (sleep_stats.md).
+    const val RE_ONSET_MS = 10 * 60_000L
 
     fun configRows(): List<Pair<String, String>> = listOf(
         "const.N_HR_MIN_FRACTION" to "2/3",
@@ -99,5 +102,6 @@ object StructuralConstants {
         "const.CUE_PEAK_DBFS" to "$CUE_PEAK_DBFS",
         "const.PHRASE_SILENCE_DBFS" to "$PHRASE_SILENCE_DBFS",
         "const.SPEECH_LEAD_FADE_FRACTION" to "$SPEECH_LEAD_FADE_FRACTION",
+        "const.RE_ONSET_MS" to "$RE_ONSET_MS",
     )
 }

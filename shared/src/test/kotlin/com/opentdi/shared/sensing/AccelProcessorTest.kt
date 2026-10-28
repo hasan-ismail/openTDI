@@ -130,6 +130,25 @@ class AccelProcessorTest {
     }
 
     @Test
+    fun angleZ_ofTheMeanVector_onlyWithGravity() {
+        val s = Stream().apply {
+            still(10) // second 9 decides WITH_GRAVITY
+            repeat(25) { tilted(30.0) } // second 10: gravity 30° off z, an arm angle of 60°
+            add(19, 0.0, 0.0, 1.0) // second 11: too few samples
+            t = START + 12_000
+            add(1, 0.0, 0.0, 1.0) // closes second 11
+        }
+        val angles = run(s).seconds.map { it.angleZDeg }
+        assertEquals(List(9) { null }, angles.take(9)) // gravity not yet decided
+        assertEquals(90f, angles[9]!!, 1e-4f)
+        assertEquals(60f, angles[10]!!, 1e-4f)
+        assertNull(angles[11])
+
+        val linear = AccelProcessor(config).add(Stream().apply { add(10 * 25 + 1, 0.02, 0.0, 0.0) }.samples)
+        assertTrue(linear.seconds.all { it.angleZDeg == null }) // the mean vector is no gravity: no angle
+    }
+
+    @Test
     fun jerk_300msAfter10sStill_confirmedInThirdSecond() {
         val s = Stream().apply {
             still(10)
