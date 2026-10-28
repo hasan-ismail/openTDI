@@ -1,6 +1,7 @@
 # Tests, builds and lints both apps on every push to main and every pull request (owner, 2026-10-28: "use github actions
 # to publish builds"; docs/SETUP.md §12). Builds use the stub instead of Samsung's SDK, and dexcheck.py confirms that no
-# Samsung code is inside. The debug APKs are kept for 7 days; signed releases come from release.yml.
+# Samsung code is inside. No APK is uploaded: the APKs combine GPL code with Play services, and publishing builds waits
+# for the owner's decision on that (docs/SETUP.md §12). Signed releases come from release.yml.
 name: CI
 
 on:
@@ -51,12 +52,3 @@ jobs:
           python3 tools/release/dexcheck.py
           wear/build/outputs/apk/debug/wear-debug.apk
           mobile/build/outputs/apk/debug/mobile-debug.apk
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: OpenTDI-debug-apks
-          path: |
-            wear/build/outputs/apk/debug/wear-debug.apk
-            mobile/build/outputs/apk/debug/mobile-debug.apk
-          retention-days: 7
-          if-no-files-found: error

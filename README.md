@@ -49,6 +49,9 @@ The phone shows these live.
 
 ## Download
 
+No release is published yet: the licences of two bundled components are being sorted out first. Until then, build
+OpenTDI from source ([docs/SETUP.md](docs/SETUP.md)). Once a release is out:
+
 1. On the [Releases](../../releases) page, download `OpenTDI-phone.apk`. (`OpenTDI-watch.apk` is the watch app the
    phone app already carries; you only need it to install the watch app yourself with `adb`.)
 2. To check the download on a computer, put the release's `SHA256SUMS` next to it and run
