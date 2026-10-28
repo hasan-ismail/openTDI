@@ -66,16 +66,20 @@ fun sampleNights(today: LocalDate, zone: ZoneId, count: Int = 120, seed: Int = 2
         val movement = ArrayList<Float?>()
         val hr = ArrayList<Float?>()
         val asleep = ArrayList<Boolean?>()
+        val remLikely = ArrayList<Boolean?>()
         for (m in start until end) {
             if (chance(0.01f)) { // the watch sent nothing that minute
                 movement += null
                 hr += null
                 asleep += null
+                remLikely += null
                 continue
             }
             val awakeAtWbtb = wbtb?.reOnsetMs != null && m in 990 until reOnset
             val sleeping = m in onset until finalWake && !awakeAtWbtb && brief.none { m in it until it + 5 }
             asleep += sleeping
+            // At the heart rate's peaks below, from an hour after onset: about a quarter of each 95-min cycle.
+            remLikely += sleeping && m - onset >= 60 && sin(2 * PI.toFloat() * (m - onset) / 95f) > 0.7f
             movement += when {
                 !sleeping -> 0.15f + r.nextFloat() * 0.45f
                 chance(0.04f) -> 0.1f + r.nextFloat() * 0.2f // a twitch
@@ -146,7 +150,7 @@ fun sampleNights(today: LocalDate, zone: ZoneId, count: Int = 120, seed: Int = 2
             recordStartMs = at(start),
             recordEndMs = at(end),
             sleep = sleep,
-            epochs = Epochs(at(start), 60, movement, hr, asleep),
+            epochs = Epochs(at(start), 60, movement, hr, asleep, remLikely),
             wake = if (alarm) {
                 AlarmOutcome(at(1140), stopped, if (chance(0.2f)) 1 else 0, ((stopped - at(1140)) / 1000).toInt())
             } else {
