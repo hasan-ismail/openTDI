@@ -305,17 +305,18 @@ class NightSummariesTest {
         val morning = W_MORNING.name to csv(
             W_MORNING.columns,
             listOf(
-                listOf(at(400), "WAKE", "w_dream_064512.m4a", "NO", 4, 3, "YES", "YES", "YES", "NO", 6, "NO", "YES"),
-                listOf(at(300), "WBTB", "../w_dream_040000.m4a", "WHITE", 4, 3, "YES", "NO", "NO", "YES", 3, "YES", "NO"),
-                listOf(at(410), "WAKE", null, "VAGUE", 2, 2, null, null, null, null, 5, null, null),
-                listOf(at(420), "WAKE", "w_dream_070000.m4a", "YES", 5, 0, "NO", "NO", "YES", "NO", 4, "NO", "NO"),
+                listOf(at(400), "WAKE", "w_dream_064512.m4a", "NO", 4, 3, "YES", "YES", "YES", "NO", 6, "NO", "YES", null, "FORM", "YES"),
+                listOf(at(300), "WBTB", "../w_dream_040000.m4a", "WHITE", 4, 3, "YES", "NO", "NO", "YES", 3, "YES", "NO", "UNSURE", "ACTION", "NO"),
+                listOf(at(410), "WAKE", null, "VAGUE", 2, 2, null, null, null, null, 5, null, null, "MAYBE", null, null),
+                listOf(at(420), "WAKE", "w_dream_070000.m4a", "YES", 5, 0, "NO", "NO", "YES", "NO", 4, "NO", "NO", "YES", "CONTEXT", "YES"),
             ),
         )
         assertEquals(
             listOf(
                 DreamReport(
                     at(300), "WBTB", recalled = "WHITE", nightmare = true, falseAwakening = false, cueInDream = false,
-                    cueWoke = true, refreshed = 3, sleepParalysis = true, unusualNight = false,
+                    cueWoke = true, refreshed = 3, sleepParalysis = true, unusualNight = false, guideSleep = "UNSURE",
+                    signSeen = false,
                 ),
                 DreamReport(
                     at(400), "WAKE", recording = "w_dream_064512.m4a", recalled = "NO", cueWoke = false,
@@ -325,11 +326,17 @@ class NightSummariesTest {
                 DreamReport(
                     at(420), "WAKE", "w_dream_070000.m4a", "YES", insight = 5, control = 0, nightmare = false,
                     falseAwakening = false, cueInDream = true, cueWoke = false, refreshed = 4, sleepParalysis = false,
-                    unusualNight = false,
+                    unusualNight = false, guideSleep = "YES", odd = "CONTEXT", signSeen = true,
                 ),
             ),
             summarize(shortNight + morning)!!.reports,
         )
+        // A report saved before guide_sleep, odd and sign_seen were added (2026-10-28) still reads.
+        val older = W_MORNING.name to csv(
+            W_MORNING.columns.take(13),
+            listOf(listOf(at(420), "WAKE", null, "YES", 3, 1, "NO", "NO", "NO", "NO", 4, "NO", "NO")),
+        )
+        assertEquals(3, summarize(shortNight + older)!!.reports.single().insight)
         val alarmsOnly = alarms(listOf(at(100), "WAKE", "RING", null, null, null))
         assertEquals(emptyList<DreamReport>(), summarize(shortNight + alarmsOnly)!!.reports)
     }

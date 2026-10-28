@@ -235,5 +235,11 @@ private fun dreamReport(row: Map<String, String?>): DreamReport? {
         refreshed = scale("refreshed", 1..5),
         sleepParalysis = yesNo("sleep_paralysis"),
         unusualNight = yesNo("unusual_night"),
+        guideSleep = row["guide_sleep"]?.takeIf { it in GUIDE_SLEEP },
+        odd = row["odd"]?.takeIf { it in ODD && recalled == "YES" },
+        signSeen = yesNo("sign_seen")?.takeIf { dreamt },
     )
 }
+
+private val GUIDE_SLEEP = setOf("YES", "NO", "UNSURE") // DreamReportScreen: "Fell asleep during the guide?"
+private val ODD = setOf("FORM", "ACTION", "CONTEXT", "NONE") // "What was odd?", asked only after a recalled dream
