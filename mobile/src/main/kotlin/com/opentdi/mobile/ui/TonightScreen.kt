@@ -65,7 +65,7 @@ import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.config.validate
 import com.opentdi.shared.config.warnings
 import com.opentdi.shared.model.SessionConfig
-import java.time.LocalTime
+import java.time.ZonedDateTime
 import java.util.Optional
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
@@ -186,7 +186,7 @@ fun TonightScreen(
                 }
                 val okItems = checks.filter { it.ok }
                 if (!running) {
-                    AnimatedVisibility(okItems.size == checks.size, enter = Appear, exit = Disappear) {
+                    AnimatedVisibility(ready && okItems.size == checks.size, enter = Appear, exit = Disappear) {
                         Text("All set for tonight", style = MaterialTheme.typography.titleMedium, color = OK_COLOR)
                     }
                     if (okItems.isNotEmpty()) Fold("✓ ${okItems.size} ready") { okItems.forEach { CheckRow(it, null) } }
@@ -205,7 +205,7 @@ fun TonightScreen(
         }
         AnimatedVisibility(!running, enter = Appear, exit = Disappear) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                NightPlanCard(config, LocalTime.now().let { it.hour * 60 + it.minute })
+                NightPlanCard(config, ZonedDateTime.now())
                 RoutineCard()
                 PresetCard(viewModel, enabled = idle)
                 InstructionsCard(config)

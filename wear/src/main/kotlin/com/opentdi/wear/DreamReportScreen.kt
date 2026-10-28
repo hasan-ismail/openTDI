@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,7 +72,13 @@ private const val SLEEP_PARALYSIS = 6 // its index in QUESTIONS
  * no-cue nights can be compared. Dream recall is the strongest personal predictor of lucid dreams.
  */
 @Composable
-fun DreamReportScreen(after: String, dir: File, requestMic: (then: () -> Unit) -> Unit, onDone: () -> Unit) {
+fun DreamReportScreen(
+    after: String,
+    dir: File,
+    requestMic: (then: () -> Unit) -> Unit,
+    onSaved: () -> Unit,
+    onDone: () -> Unit,
+) {
     val context = LocalContext.current
     val answers = remember { mutableStateMapOf<Int, String>() }
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
@@ -86,7 +93,19 @@ fun DreamReportScreen(after: String, dir: File, requestMic: (then: () -> Unit) -
             }
         }
     }
-    DisposableEffect(Unit) { onDispose { recorder?.let { stopRecorder(it) } } }
+    var saved by remember { mutableStateOf(false) }
+    fun saveOnce() {
+        recorder?.let { stopRecorder(it) }
+        recorder = null
+        if (saved) return
+        save(dir, after, recording, QUESTIONS.indices.map { answers[it] })
+        saved = true
+        onSaved() // also when saved on leaving, so "Record your dream" cannot write a second row
+    }
+    // Left without Save (back, swipe, the app closing): keep what was said and answered, unanswered as skipped.
+    val onLeave by rememberUpdatedState { if (recording != null || answers.isNotEmpty()) saveOnce() }
+    DisposableEffect(Unit) { onDispose { onLeave() } }
+    val awake = rememberInteractive()
     // A watch screen that times out can take the microphone from a recording app: keep it on while recording.
     val view = LocalView.current
     DisposableEffect(recorder != null) {
@@ -109,9 +128,10 @@ fun DreamReportScreen(after: String, dir: File, requestMic: (then: () -> Unit) -
                         (fadeIn(tween(220)) + slideInVertically { it / 6 }) togetherWith fadeOut(tween(150))
                     },
                 ) { s ->
-                    // A tap on the page that is fading out must not move on a second time.
+                    // Only the settled page takes taps: a double tap must not also answer the page sliding in.
+                    fun settled() = step == s && transition.currentState == transition.targetState
                     fun next() {
-                        if (step == s) step = s + 1
+                        if (settled()) step = s + 1
                     }
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         when {
@@ -119,7 +139,7 @@ fun DreamReportScreen(after: String, dir: File, requestMic: (then: () -> Unit) -
                                 val r = recorder
                                 if (r != null) {
                                     Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
-                                        BreathingRing(MaterialTheme.colorScheme.primary, breathMs = 1600)
+                                        if (awake) BreathingRing(MaterialTheme.colorScheme.primary, breathMs = 1600)
                                         Text(
                                             WakeAlarms.clock((nowMs - startedMs).coerceAtLeast(0)),
                                             style = MaterialTheme.typography.displaySmall,
@@ -179,7 +199,7 @@ fun DreamReportScreen(after: String, dir: File, requestMic: (then: () -> Unit) -
                                         for (option in row) {
                                             Button(
                                                 onClick = {
-                                                    if (step == s) answers[i] = option
+                                                    if (settled()) answers[i] = option
                                                     next()
                                                 },
                                                 colors = if (answers[i] == option) {
@@ -218,9 +238,7 @@ fun DreamReportScreen(after: String, dir: File, requestMic: (then: () -> Unit) -
                                 }
                                 Button(
                                     onClick = {
-                                        recorder?.let { stopRecorder(it) }
-                                        recorder = null
-                                        save(dir, after, recording, QUESTIONS.indices.map { answers[it] })
+                                        saveOnce()
                                         onDone()
                                     },
                                     modifier = Modifier.fillMaxWidth(),

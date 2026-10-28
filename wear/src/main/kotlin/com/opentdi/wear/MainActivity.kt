@@ -19,9 +19,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -38,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -100,49 +103,59 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = NightColors) {
                 AppScaffold {
                     BackHandler(enabled = page != Page.MAIN) { page = Page.MAIN }
-                    // On every page, not only MAIN: "I'm awake" must be on screen whichever page was left open.
                     val ringing = state.alarmRinging
-                    if (ringing != null) {
-                        AlarmScreen(
-                            kind = ringing,
-                            snoozesLeft = state.snoozesLeft,
-                            onAlarmStop = { HealthTrackingForegroundService.stopAlarm(this@MainActivity) },
-                            onSnooze = { HealthTrackingForegroundService.snoozeAlarm(this@MainActivity) },
-                        )
-                    } else SwipeToDismissBox(
-                        onDismissed = { page = Page.MAIN },
-                        userSwipeEnabled = page != Page.MAIN,
-                    ) { isBackground ->
-                        when (if (isBackground) Page.MAIN else page) {
-                            Page.MAIN -> MainScreen(
-                                state = state,
-                                onStart = { startSession(logRawAccel, androidSensorsOnly = false) },
-                                onStop = {
-                                    // Closing too: an open app would start waiting again the next time it resumes.
-                                    HealthTrackingForegroundService.stop(this@MainActivity)
-                                    finish()
-                                },
-                                onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
-                                onStatusTap = ::onStatusTap,
-                                onReport = { page = Page.REPORT },
-                                onDetails = { page = Page.DETAILS },
-                                onSessions = { page = Page.SESSIONS },
-                            )
-                            Page.DETAILS -> DetailsScreen(
-                                state = state,
-                                logRawAccel = logRawAccel,
-                                onLogRawAccelChange = { logRawAccelChoice = it },
-                            )
-                            Page.SESSIONS -> SessionsScreen(runningId = state.sessionId.takeIf { state.running })
-                            Page.REPORT -> DreamReportScreen(
-                                after = state.reportAfter ?: "WAKE",
-                                dir = File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
-                                requestMic = ::requestMic,
-                                onDone = {
-                                    SensingStateHolder.update { it.copy(reportAfter = null) }
-                                    page = Page.MAIN
-                                },
-                            )
+                    // Under the alarm, so I'm awake leads to "Record your dream"; an open report stays open.
+                    LaunchedEffect(ringing) { if (ringing != null && page != Page.REPORT) page = Page.MAIN }
+                    val stop = {
+                        // Closing too: an open app would start waiting again the next time it resumes.
+                        HealthTrackingForegroundService.stop(this@MainActivity)
+                        finish()
+                    }
+                    Box(Modifier.fillMaxSize()) {
+                        SwipeToDismissBox(
+                            onDismissed = { page = Page.MAIN },
+                            userSwipeEnabled = page != Page.MAIN && ringing == null,
+                        ) { isBackground ->
+                            when (if (isBackground) Page.MAIN else page) {
+                                Page.MAIN -> MainScreen(
+                                    state = state,
+                                    onStart = { startSession(logRawAccel, androidSensorsOnly = false) },
+                                    // Stop recording ends the night, so it asks first; Stop and close does not.
+                                    onStop = { if (state.running) page = Page.END_NIGHT else stop() },
+                                    onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
+                                    onStatusTap = ::onStatusTap,
+                                    onReport = { page = Page.REPORT },
+                                    onDetails = { page = Page.DETAILS },
+                                    onSessions = { page = Page.SESSIONS },
+                                )
+                                Page.DETAILS -> DetailsScreen(
+                                    state = state,
+                                    logRawAccel = logRawAccel,
+                                    onLogRawAccelChange = { logRawAccelChoice = it },
+                                )
+                                Page.SESSIONS -> SessionsScreen(runningId = state.sessionId.takeIf { state.running })
+                                Page.REPORT -> DreamReportScreen(
+                                    after = state.reportAfter ?: "WAKE",
+                                    dir = File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
+                                    requestMic = ::requestMic,
+                                    onSaved = { SensingStateHolder.update { it.copy(reportAfter = null) } },
+                                    onDone = { page = Page.MAIN },
+                                )
+                                Page.END_NIGHT -> EndNightScreen(onEnd = stop, onKeep = { page = Page.MAIN })
+                            }
+                        }
+                        // Over every page, not instead of it: an open report keeps its recording and answers underneath.
+                        if (ringing != null) {
+                            // The empty pointerInput keeps taps and swipes from the page underneath; BackHandler, back.
+                            Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(Unit) {}) {
+                                BackHandler {}
+                                AlarmScreen(
+                                    kind = ringing,
+                                    snoozesLeft = state.snoozesLeft,
+                                    onAlarmStop = { HealthTrackingForegroundService.stopAlarm(this@MainActivity) },
+                                    onSnooze = { HealthTrackingForegroundService.snoozeAlarm(this@MainActivity) },
+                                )
+                            }
                         }
                     }
                 }
@@ -228,7 +241,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Page { MAIN, DETAILS, SESSIONS, REPORT }
+private enum class Page { MAIN, DETAILS, SESSIONS, REPORT, END_NIGHT }
 
 // Near-black and dim with a muted indigo-lavender accent: the always-on screen stays lit beside the pillow (§14.6).
 private val NightColors = ColorScheme(
@@ -451,6 +464,33 @@ private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (Sensor
         Card(onClick = { onTap(status) }, modifier = Modifier.fillMaxWidth()) { Text(text) }
     } else {
         Line(text)
+    }
+}
+
+/** Asks before Stop recording ends the night and closes the app; Keep recording, or swiping back, goes back. */
+@Composable
+private fun EndNightScreen(onEnd: () -> Unit, onKeep: () -> Unit) {
+    val listState = rememberTransformingLazyColumnState()
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+        TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
+            item { BigLine("End the night?") }
+            item { Line("Recording stops and the app closes.") }
+            item {
+                Button(
+                    onClick = onKeep,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Keep recording", Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                )
+            }
+            item {
+                Button(
+                    onClick = onEnd,
+                    colors = ButtonDefaults.filledTonalButtonColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("End night", Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                )
+            }
+        }
     }
 }
 

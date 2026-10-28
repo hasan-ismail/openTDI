@@ -8,6 +8,8 @@ import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SessionMode
 import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.WatchState
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -129,10 +131,17 @@ class TonightTest {
     @Test
     fun nightPlan_wrapsPastMidnight() {
         val cfg = SessionConfig(alarms = AlarmConfig(wakeEnabled = true, wakeAtMin = 7 * 60))
-        val plan = nightPlan(cfg, 23 * 60)
+        val zone = ZoneId.of("America/New_York")
+        val at23 = ZonedDateTime.of(2026, 10, 27, 23, 0, 0, 0, zone)
+        val plan = nightPlan(cfg, at23)
         assertEquals(PlanMark("wake-up", 480), plan.last()) // 23:00 to 7:00
         assertEquals(PlanMark("Cues", 10, 180), plan.first())
-        assertEquals("Cues from about 23:10 until 2:00 at the latest · wake-up 7:00", nightPlanLine(cfg, 23 * 60))
+        assertEquals("Cues from about 23:10 until 2:00 at the latest · wake-up 7:00", nightPlanLine(cfg, at23))
+        assertEquals(PlanMark("wake-up", 480), nightPlan(cfg, at23.withSecond(30)).last()) // still 7:00, not 6:59
+        // DST ends at 2:00 that night: 3 real hours end at 1:00, and 7:00 is 9 hours away.
+        val fallBack = ZonedDateTime.of(2026, 10, 31, 23, 0, 0, 0, zone)
+        assertEquals(PlanMark("wake-up", 540), nightPlan(cfg, fallBack).last())
+        assertEquals("Cues from about 23:10 until 1:00 at the latest · wake-up 7:00", nightPlanLine(cfg, fallBack))
     }
 
     private companion object {

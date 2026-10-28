@@ -11,38 +11,42 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.opentdi.shared.audio.nextAlarmAt
 import com.opentdi.shared.model.SessionConfig
+import java.time.ZonedDateTime
 import java.util.Locale
 
 /** One part of tonight's plan, in minutes from now. */
 data class PlanMark(val label: String, val fromMin: Int, val toMin: Int = fromMin)
 
-/** If a session started at [nowMinOfDay]: when the cues can play, and when the watch alarms ring. */
-fun nightPlan(c: SessionConfig, nowMinOfDay: Int): List<PlanMark> {
-    fun ahead(at: Int) = Math.floorMod(at - nowMinOfDay, 1440)
+/** If a session started [now]: when the cues can play, and when the watch alarms ring, in real minutes (DST too). */
+fun nightPlan(c: SessionConfig, now: ZonedDateTime): List<PlanMark> {
+    val nowMs = now.toInstant().toEpochMilli()
+    // As the watch sets them; rounded up, so an alarm keeps its minute when now has seconds.
+    fun ahead(at: Int) = ((nextAlarmAt(at, nowMs, now.zone) - nowMs + 59_999) / 60_000).toInt()
     return listOfNotNull(
-        PlanMark(CUES, c.timed.firstSleepMinMin, c.sessionMaxMin),
+        PlanMark(CUES, minOf(c.timed.firstSleepMinMin, c.sessionMaxMin), c.sessionMaxMin),
         PlanMark(WBTB, ahead(c.alarms.wbtbAtMin)).takeIf { c.alarms.wbtbEnabled },
         PlanMark(WAKE, ahead(c.alarms.wakeAtMin)).takeIf { c.alarms.wakeEnabled },
     )
 }
 
 /** "Cues from about 23:20 until 2:10 at the latest · early wake 4:30 · wake-up 7:00" for [nightPlan]. */
-fun nightPlanLine(c: SessionConfig, nowMinOfDay: Int): String {
-    fun at(min: Int) = String.format(Locale.ROOT, "%d:%02d", min / 60 % 24, min % 60)
-    return nightPlan(c, nowMinOfDay).joinToString(" · ") {
+fun nightPlanLine(c: SessionConfig, now: ZonedDateTime): String {
+    fun at(min: Int) = now.plusMinutes(min.toLong()).let { String.format(Locale.ROOT, "%d:%02d", it.hour, it.minute) }
+    return nightPlan(c, now).joinToString(" · ") {
         when (it.label) {
-            CUES -> "Cues from about ${at(nowMinOfDay + it.fromMin)} until ${at(nowMinOfDay + it.toMin)} at the latest"
-            else -> "${it.label} ${at(nowMinOfDay + it.fromMin)}"
+            CUES -> "Cues from about ${at(it.fromMin)} until ${at(it.toMin)} at the latest"
+            else -> "${it.label} ${at(it.fromMin)}"
         }
     }
 }
 
 /** Tonight's plan as a timeline from now (a hollow dot) to the last alarm, shown while no session runs. */
 @Composable
-fun NightPlanCard(config: SessionConfig, nowMinOfDay: Int) {
-    val marks = nightPlan(config, nowMinOfDay)
-    val line = nightPlanLine(config, nowMinOfDay)
+fun NightPlanCard(config: SessionConfig, now: ZonedDateTime) {
+    val marks = nightPlan(config, now)
+    val line = nightPlanLine(config, now)
     val colors = MaterialTheme.colorScheme
     Section("Tonight's plan") {
         Help("If you start now")

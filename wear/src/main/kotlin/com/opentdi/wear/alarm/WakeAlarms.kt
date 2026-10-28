@@ -207,7 +207,7 @@ class WakeAlarms(
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_ongoing)
-            .setContentTitle(if (kind == "WAKE") "Good morning" else "Wake back to bed")
+            .setContentTitle(if (kind == "WAKE") "Good morning" else "Early wake")
             .setContentText("Tap I'm awake to stop the alarm.")
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)

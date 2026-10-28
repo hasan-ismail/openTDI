@@ -174,7 +174,7 @@ private fun StepPage(
                 modifier = Modifier.weight(1f),
             ) { Text(if (i == Step.entries.lastIndex) "Start using OpenTDI" else "Next") }
         }
-        if (step != Step.SAFETY && i != Step.entries.lastIndex) {
+        if (step > Step.SAFETY && i != Step.entries.lastIndex) { // never before the safety step is acknowledged
             TextButton(onClick = onDone) { Text("Skip the guide") }
         }
     }
