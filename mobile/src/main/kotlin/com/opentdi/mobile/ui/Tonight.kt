@@ -2,6 +2,8 @@ package com.opentdi.mobile.ui
 
 import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.mobile.audio.DndEffect
+import com.opentdi.mobile.cues.cueText
+import com.opentdi.shared.model.PromptCue
 import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.TdiState
@@ -33,11 +35,14 @@ fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean): Pair<String
             TdiState.SESSION_COMPLETE -> "Session complete"
         }
     }
-    // Between cycles the scheduler still reports the last cycle's number.
-    val n = if (status.state == TdiState.AWAKE_INCUBATING) status.completedCycles + 1 else status.cycle
+    val n = currentCycle(status)
     val shown = status.running && status.state != TdiState.SESSION_COMPLETE && n in 1..status.maxCycles
     return headline to if (shown) "Cycle $n of ${status.maxCycles}" else null
 }
+
+/** The cycle the session is in or waiting for; between cycles the scheduler still reports the last one's number. */
+fun currentCycle(status: SessionStatus) =
+    if (status.state == TdiState.AWAKE_INCUBATING) status.completedCycles + 1 else status.cycle
 
 private fun countdown(what: String, left: String?) = if (left == null) what else "$what in $left"
 
@@ -93,6 +98,16 @@ fun timingSummary(config: SessionConfig): String {
     }
 }
 
+/** "What to expect" in plain words, with the cue words and timing the session will really use. */
+fun whatToExpect(config: SessionConfig): String {
+    val still = if (config.timed.waitForStillness) " If you move around, it waits until you're still again." else ""
+    return "Lie down and let your mind wander. When it's time, a soft voice says \"" +
+        cueText(PromptCue.INITIAL_INCUBATION, config) + "\" Let the words drift into your thoughts; you don't need " +
+        "to wake up. About ${span(config.countdownS)} later it asks \"" + cueText(PromptCue.WAKE_PROMPT, config) +
+        "\" Say out loud, in a few words, what was going through your mind. Then it tells you that you can fall " +
+        "back asleep.$still"
+}
+
 private fun span(s: Int) = when {
     s < 60 -> "$s s"
     s % 60 == 0 -> "${s / 60} min"
@@ -126,14 +141,14 @@ fun checklist(
     val why = when {
         onWatch -> " It plays tonight's cues."
         alarmsOn -> " Your alarms ring on the watch."
-        else -> " (Optional: cues play on the phone.)"
+        else -> " Optional: the phone plays the cues."
     }
     if (!onWatch) {
         add(
             CheckItem(
                 Check.VOLUME,
                 !volumeOff,
-                if (volumeOff) "Media volume is off, so cues would be silent." else "Media volume is on",
+                if (volumeOff) "Phone volume is off, so you would not hear the cues." else "Phone volume is on",
                 blocking = true,
             ),
         )
@@ -150,24 +165,24 @@ fun checklist(
         CheckItem(
             Check.BATTERY,
             batteryUnrestricted,
-            if (batteryUnrestricted) "Battery use is unrestricted" else
+            if (batteryUnrestricted) "Android will let the session run all night" else
                 "Allow unrestricted battery so Android doesn't stop the session while you sleep.",
         ),
     )
-    add(CheckItem(Check.CUES, cueProblem == null, cueProblem ?: "Cues are prepared", blocking = true))
+    add(CheckItem(Check.CUES, cueProblem == null, cueProblem ?: "Voice cues are ready", blocking = true))
     add(
         when {
             !onWatch -> CheckItem(
                 Check.TEST_CUE,
                 tested,
                 if (tested) "Test cue played at bedtime volume" else
-                    "Play a test cue once at your bedtime volume: cues never play louder than that.",
+                    "Play a test cue at the volume you'll sleep with. Cues never get louder than that.",
             )
             tested -> CheckItem(Check.TEST_CUE, true, "Test cue played on the watch", blocking = true)
             else -> CheckItem(
                 Check.TEST_CUE,
                 false,
-                "Play a test cue on the watch at your bedtime volume: cues never play louder than that.",
+                "Play a test cue on the watch at the volume you'll sleep with. Cues never get louder than that.",
                 blocking = true,
             )
         },
@@ -176,14 +191,14 @@ fun checklist(
         when (watch) {
             WatchState.RECORDING -> CheckItem(Check.WATCH, true, "Watch is recording", blocking = needed)
             WatchState.WAITING ->
-                CheckItem(Check.WATCH, true, "Watch is waiting: Start session starts it too", blocking = needed)
+                CheckItem(Check.WATCH, true, "Watch is ready: Start session starts it too", blocking = needed)
             WatchState.IDLE -> CheckItem(
                 Check.WATCH,
                 false,
-                "Open OpenTDI on the watch so Start session starts its recording too.$why",
+                "Open OpenTDI on your watch so it records with the session.$why",
                 blocking = needed,
             )
-            null -> CheckItem(Check.WATCH, false, "Watch not connected.$why", blocking = needed)
+            null -> CheckItem(Check.WATCH, false, "Can't reach the watch. Open OpenTDI on it.$why", blocking = needed)
         },
     )
     if (watchBatteryPct != null) {
@@ -192,8 +207,7 @@ fun checklist(
                 Check.WATCH_BATTERY,
                 watchBatteryPct >= 100,
                 if (watchBatteryPct >= 100) "Watch battery is full" else
-                    "Watch battery is at $watchBatteryPct%: charge it to 100% before a night. Recording uses about " +
-                        "8% an hour, so a full charge lasts about 12 hours.",
+                    "Watch battery is at $watchBatteryPct%. Charge it to 100% first: recording uses about 8% an hour.",
             ),
         )
     }

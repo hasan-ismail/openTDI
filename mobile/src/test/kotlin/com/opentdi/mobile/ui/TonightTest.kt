@@ -126,6 +126,15 @@ class TonightTest {
         )
     }
 
+    @Test
+    fun nightPlan_wrapsPastMidnight() {
+        val cfg = SessionConfig(alarms = AlarmConfig(wakeEnabled = true, wakeAtMin = 7 * 60))
+        val plan = nightPlan(cfg, 23 * 60)
+        assertEquals(PlanMark("wake-up", 480), plan.last()) // 23:00 to 7:00
+        assertEquals(PlanMark("Cues", 10, 180), plan.first())
+        assertEquals("Cues from about 23:10 until 2:00 at the latest · wake-up 7:00", nightPlanLine(cfg, 23 * 60))
+    }
+
     private companion object {
         const val NOW = 1_000_000L
     }

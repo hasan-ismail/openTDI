@@ -13,11 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,45 +50,44 @@ fun SessionsScreen(viewModel: MainViewModel) {
     val chosen = deletable.filter { it in selected }
     LaunchedEffect(status.running) { viewModel.loadSessions() } // again when a session starts or ends
 
-    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("Sessions", style = MaterialTheme.typography.headlineMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { confirm = chosen }, enabled = chosen.isNotEmpty()) { Text("Delete selected") }
-                OutlinedButton(onClick = { confirm = deletable }, enabled = deletable.isNotEmpty()) {
-                    Text("Delete all")
-                }
-            }
-            if (sessions?.isEmpty() == true) Text("No sessions yet.")
-            LazyColumn {
-                items(list, key = { it.id }) { s ->
-                    val running = s.id == runningId
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .toggleable(value = s.id in chosen, enabled = !running, role = Role.Checkbox) { on ->
-                                selected = if (on) selected + s.id else selected - s.id
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(checked = s.id in chosen, onCheckedChange = null, enabled = !running)
-                        Column(Modifier.padding(start = 12.dp)) {
-                            Text(DateUtils.formatDateTime(context, s.startMs, DATE_TIME))
-                            Text(
-                                if (running) "Running" else details(context, s),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+    // No Scaffold of its own: the night sky shows through, as on every other tab.
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Sessions", style = MaterialTheme.typography.headlineMedium)
+        if (sessions?.isEmpty() == true) Text("No nights recorded yet. Each session you run shows up here.")
+        if (list.isNotEmpty()) Help("Tap sessions to select them for deleting.")
+        LazyColumn(Modifier.weight(1f)) {
+            items(list, key = { it.id }) { s ->
+                val running = s.id == runningId
+                Row(
+                    Modifier
+                        .animateItem() // a deleted session slides out
+                        .fillMaxWidth()
+                        .toggleable(value = s.id in chosen, enabled = !running, role = Role.Checkbox) { on ->
+                            selected = if (on) selected + s.id else selected - s.id
                         }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = s.id in chosen, onCheckedChange = null, enabled = !running)
+                    Column(Modifier.padding(start = 12.dp)) {
+                        Text(DateUtils.formatDateTime(context, s.startMs, DATE_TIME))
+                        Text(
+                            if (running) "Running" else details(context, s),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
+            }
+        }
+        // Quiet buttons under the list: deleting is never the page's main action.
+        if (list.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = { confirm = chosen }, enabled = chosen.isNotEmpty()) { Text("Delete selected") }
+                TextButton(onClick = { confirm = deletable }, enabled = deletable.isNotEmpty()) { Text("Delete all") }
             }
         }
     }

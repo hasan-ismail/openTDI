@@ -17,6 +17,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PointMode
@@ -44,7 +47,7 @@ fun WatchScreen() {
         if (p != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Tile("Heart rate", format("%.0f", p.hr), "bpm", Modifier.weight(1f))
-                Tile("EDA", format("%.2f", p.skinConductance), "µS", Modifier.weight(1f))
+                Tile("Skin response", format("%.2f", p.skinConductance), "µS", Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Tile(
@@ -53,24 +56,26 @@ fun WatchScreen() {
                     "% still",
                     Modifier.weight(1f),
                 )
-                Tile("Skin", format("%.1f", p.skinTemperature), "°C at ${time(p.timestamp)}", Modifier.weight(1f))
+                Tile("Skin temp", format("%.1f", p.skinTemperature), "°C", Modifier.weight(1f))
             }
             Tile(
-                "Last SpO2",
+                "Blood oxygen",
                 p.spo2?.toString() ?: "—",
-                if (p.spo2 == null) "no spot check yet" else "% at ${time(live.spo2AtMs)}",
+                if (p.spo2 == null) "no check yet" else "% · checked ${time(live.spo2AtMs)}",
                 Modifier.fillMaxWidth(),
             )
             Section("Last 3 minutes") {
                 SparkRow("Heart rate", "%.0f–%.0f bpm", live.frames) { it.hr }
-                SparkRow("EDA", "%.3f–%.3f µS", live.frames) { it.skinConductance }
+                SparkRow("Skin response", "%.3f–%.3f µS", live.frames) { it.skinConductance }
                 SparkRow("Stillness", "%.0f–%.0f", live.frames, fixedRange = 0f..1f) { it.stillnessScore }
             }
-            Section("Details") {
-                Help("RMSSD ${format("%.0f", p.rmssd)} ms · EDA status ${p.edaStatus ?: "—"}")
-                Help("Stillness ${format("%.2f", p.stillnessScore)} · accel mean ${format("%.3f", p.accelMean)} g")
-                Help("Jerks ${live.jerkEvents} · limp events ${live.limpEvents} · gravity ${live.gravityMode}")
-                Help("Sensors ${live.sensorStatus ?: "—"}")
+            Section(null) {
+                Fold("Technical details") {
+                    Help("RMSSD ${format("%.0f", p.rmssd)} ms · EDA status ${p.edaStatus ?: "—"}")
+                    Help("Stillness ${format("%.2f", p.stillnessScore)} · accel mean ${format("%.3f", p.accelMean)} g")
+                    Help("Jerks ${live.jerkEvents} · limp events ${live.limpEvents} · gravity ${live.gravityMode}")
+                    Help("Sensors ${live.sensorStatus ?: "—"}")
+                }
             }
         }
         WatchSetupCard()
@@ -81,20 +86,24 @@ fun WatchScreen() {
 // The only part that changes every second, so the clock never redraws the sparklines.
 @Composable
 private fun StreamStatus(receivedAtMs: Long?, status: SensorStatus?) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val now by produceState(SystemClock.elapsedRealtime()) {
-        while (true) {
-            value = SystemClock.elapsedRealtime()
-            delay(1000)
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { // no ticking while the screen is off
+            while (true) {
+                value = SystemClock.elapsedRealtime()
+                delay(1000)
+            }
         }
     }
     val ageMs = receivedAtMs?.let { (now - it).coerceAtLeast(0) }
     Section(null) {
         if (ageMs == null || ageMs > STALE_MS) {
             Text(
-                "Watch not streaming — start recording on the watch",
+                "No live data from the watch",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.tertiary,
             )
+            Help("It starts when you tap Start session, or Start recording on the watch.")
         } else {
             Text(sensorWords(status), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
         }

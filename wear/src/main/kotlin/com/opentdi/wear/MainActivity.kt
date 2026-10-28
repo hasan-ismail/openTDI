@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,8 +50,11 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.ColorScheme
+import androidx.wear.compose.material3.EdgeButton
+import androidx.wear.compose.material3.EdgeButtonSize
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.ListHeader
+import androidx.wear.compose.material3.LocalTextStyle
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SwipeToDismissBox
@@ -95,7 +100,16 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = NightColors) {
                 AppScaffold {
                     BackHandler(enabled = page != Page.MAIN) { page = Page.MAIN }
-                    SwipeToDismissBox(
+                    // On every page, not only MAIN: "I'm awake" must be on screen whichever page was left open.
+                    val ringing = state.alarmRinging
+                    if (ringing != null) {
+                        AlarmScreen(
+                            kind = ringing,
+                            snoozesLeft = state.snoozesLeft,
+                            onAlarmStop = { HealthTrackingForegroundService.stopAlarm(this@MainActivity) },
+                            onSnooze = { HealthTrackingForegroundService.snoozeAlarm(this@MainActivity) },
+                        )
+                    } else SwipeToDismissBox(
                         onDismissed = { page = Page.MAIN },
                         userSwipeEnabled = page != Page.MAIN,
                     ) { isBackground ->
@@ -110,8 +124,6 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
                                 onStatusTap = ::onStatusTap,
-                                onAlarmStop = { HealthTrackingForegroundService.stopAlarm(this@MainActivity) },
-                                onSnooze = { HealthTrackingForegroundService.snoozeAlarm(this@MainActivity) },
                                 onReport = { page = Page.REPORT },
                                 onDetails = { page = Page.DETAILS },
                                 onSessions = { page = Page.SESSIONS },
@@ -241,71 +253,83 @@ private fun MainScreen(
     onStop: () -> Unit,
     onBasicSensors: () -> Unit,
     onStatusTap: (SensorStatus) -> Unit,
-    onAlarmStop: () -> Unit,
-    onSnooze: () -> Unit,
     onReport: () -> Unit,
     onDetails: () -> Unit,
     onSessions: () -> Unit,
 ) {
+    // Off in ambient and with the screen off: the stars stop, and the clock ticks once a minute (shown as h:mm).
+    val awake = rememberInteractive()
     var nowMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     if (state.running) {
-        LaunchedEffect(state.sessionId) {
+        LaunchedEffect(state.sessionId, awake) {
             while (true) {
                 nowMs = SystemClock.elapsedRealtime()
-                delay(1000)
+                delay(if (awake) 1000 else 60_000)
             }
         }
     }
     val packet = state.lastPacket?.packet
     val listState = rememberTransformingLazyColumnState()
     val moon = remember { moonPhase(System.currentTimeMillis()) }
+    val waitingOnly = state.waiting && !state.running
     ScreenScaffold(scrollState = listState) { contentPadding ->
-        WatchStars()
+        if (awake) WatchStars()
+        if (awake && waitingOnly) BreathingRing(MaterialTheme.colorScheme.primary)
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item {
                 ListHeader {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Canvas(Modifier.size(16.dp)) { drawMoon(moon) } // tonight's real moon phase
-                        Spacer(Modifier.width(6.dp))
+                        if (!waitingOnly) { // while waiting, the big moon below shows it
+                            Canvas(Modifier.size(16.dp)) { drawMoon(moon) } // tonight's real moon phase
+                            Spacer(Modifier.width(6.dp))
+                        }
                         Text("OpenTDI")
                     }
                 }
             }
-            state.alarmRinging?.let { kind ->
-                item { BigLine(if (kind == "WAKE") "Good morning" else "Wake back to bed") }
-                item { Button(onClick = onAlarmStop, modifier = Modifier.fillMaxWidth(), label = { Text("I'm awake") }) }
-                if (state.snoozesLeft > 0) {
-                    item {
-                        FilledTonalButton(onClick = onSnooze, modifier = Modifier.fillMaxWidth()) { Text("Snooze") }
-                    }
-                }
-            }
             state.wbtbBackToSleepAtMs?.let { at ->
+                item { Line("Pinch your nose and try to breathe in. If you can, you're dreaming.") }
+                item { Line("Stay up until ${WakeAlarms.hhmm(at)}. Keep the light dim and drink only water.") }
+                item { Line("Recall your last dream and its odd moments.") }
                 item {
-                    Text(
-                        "First, pinch your nose and try to breathe: if you can, you are dreaming. Stay up until " +
-                            "${WakeAlarms.hhmm(at)}. Recall your last dream and its odd moments, then picture going " +
-                            "back into it and noticing you are dreaming: next time I'm dreaming, I'll remember I'm " +
-                            "dreaming. Keep the light dim and drink only water. A buzz says go back to sleep.",
+                    Line(
+                        "Picture going back into it and noticing you're dreaming: next time I'm dreaming, I'll " +
+                            "remember I'm dreaming.",
                     )
                 }
+                item { Line("A buzz says go back to sleep.") }
             }
             if (state.lateCuesTraining && state.wbtbBackToSleepAtMs != null) {
-                item { Text("Tonight, when you hear this soft three-note sound, you are dreaming. Notice it.") }
+                item {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                            .padding(12.dp),
+                    ) { Line("Tonight, when you hear this soft three-note sound, you are dreaming. Notice it.") }
+                }
             }
-            if (state.alarmRinging == null) state.lastWakeText?.let { item { Text(it) } }
-            if (state.alarmRinging == null && state.reportAfter != null) {
-                item { Button(onClick = onReport, modifier = Modifier.fillMaxWidth(), label = { Text("Dream report") }) }
+            state.lastWakeText?.let { item { Line(it) } }
+            if (state.reportAfter != null) {
+                item {
+                    Button(onClick = onReport, modifier = Modifier.fillMaxWidth(), label = { Text("Record your dream") })
+                }
             }
-            if (!state.running && state.waiting) {
-                item { BigLine("Waiting for the phone") }
-                item { Text("Tap Start session on your phone, or start recording here.") }
+            if (waitingOnly) {
+                item { Canvas(Modifier.fillMaxWidth().height(56.dp)) { drawMoon(moon) } } // tonight's real moon phase
+                item { BigLine("Ready for tonight") }
+                item { Line("Tap Start session on your phone. The watch starts with it.") }
                 item {
                     val context = LocalContext.current
                     // Apps cannot read or change Always On Display, so the watch offers its display settings instead.
-                    FilledTonalButton(onClick = { openDisplaySettings(context) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Always On Display off (saves battery)")
-                    }
+                    Button(
+                        onClick = { openDisplaySettings(context) },
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Turn off Always On Display") },
+                        secondaryLabel = { Text("Saves watch battery overnight") },
+                    )
                 }
             } else if (!state.running) {
                 item { BigLine("Not recording") }
@@ -328,20 +352,26 @@ private fun MainScreen(
                         onClick = onStop,
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         modifier = Modifier.fillMaxWidth(),
-                        secondaryLabel = { Text(elapsed(nowMs - state.startedElapsedMs)) },
+                        secondaryLabel = { Text(elapsed(nowMs - state.startedElapsedMs, seconds = awake)) },
                         label = { Text("Stop recording") },
                     )
                 } else {
-                    Button(onClick = onStart, modifier = Modifier.fillMaxWidth(), label = { Text("Start recording") })
+                    Button(
+                        onClick = onStart,
+                        // While waiting, the phone's Start session is the main way to start.
+                        colors = if (waitingOnly) ButtonDefaults.filledTonalButtonColors() else ButtonDefaults.buttonColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Start recording") },
+                    )
                 }
             }
-            if (state.waiting && !state.running) {
+            if (waitingOnly) {
                 item {
                     Button(
                         onClick = onStop,
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Stop waiting") },
+                        label = { Text("Stop and close") },
                     )
                 }
             }
@@ -424,20 +454,66 @@ private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (Sensor
     }
 }
 
+/**
+ * A ringing alarm, whichever page was open: a dawn rising behind "Good morning", or tonight's moon for the early
+ * (WBTB) wake, with "I'm awake" in the large button at the bottom edge.
+ */
+@Composable
+private fun AlarmScreen(kind: String, snoozesLeft: Int, onAlarmStop: () -> Unit, onSnooze: () -> Unit) {
+    val listState = rememberTransformingLazyColumnState()
+    val moon = remember { moonPhase(System.currentTimeMillis()) }
+    val morning = kind == "WAKE"
+    ScreenScaffold(
+        scrollState = listState,
+        edgeButton = {
+            EdgeButton(onClick = onAlarmStop, buttonSize = EdgeButtonSize.Large) { Text("I'm awake") }
+        },
+    ) { contentPadding ->
+        if (morning) Sunrise() else NightGlow()
+        TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
+            if (!morning) item { Canvas(Modifier.fillMaxWidth().height(72.dp)) { drawMoon(moon) } }
+            item {
+                Text(
+                    if (morning) "Good morning" else "Early wake",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                Line(if (morning) "Keep your eyes closed and replay your dream first." else "Wake back to bed (WBTB)")
+            }
+            if (snoozesLeft > 0) {
+                item {
+                    Button(
+                        onClick = onSnooze,
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Snooze") },
+                        secondaryLabel = { Text("$snoozesLeft left") },
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun BigLine(text: String) {
     Text(
         text,
-        style = MaterialTheme.typography.titleMedium,
+        style = MaterialTheme.typography.titleLarge,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.fillMaxWidth(),
         textAlign = TextAlign.Center,
     )
 }
 
+/** Centred text: left-aligned lines are clipped by the round screen. */
 @Composable
-internal fun Line(text: String) {
-    Text(text, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+internal fun Line(text: String, style: TextStyle = LocalTextStyle.current) {
+    Text(text, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, style = style)
 }
 
 @Composable
@@ -487,9 +563,14 @@ private fun liveValues(state: SensingState): List<String> {
 
 private fun format(pattern: String, value: Float?) = value?.let { String.format(Locale.ROOT, pattern, it) } ?: "—"
 
-private fun elapsed(ms: Long): String {
+/** h:mm:ss, or h:mm without [seconds] (the screen is dim and updates once a minute). */
+private fun elapsed(ms: Long, seconds: Boolean): String {
     val s = ms.coerceAtLeast(0) / 1000
-    return String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+    return if (seconds) {
+        String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+    } else {
+        String.format(Locale.ROOT, "%d:%02d", s / 3600, s / 60 % 60)
+    }
 }
 
 /** The watch's display settings, where Always On Display is switched off; a watch without that screen does nothing. */

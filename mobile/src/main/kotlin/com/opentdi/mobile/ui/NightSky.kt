@@ -1,5 +1,6 @@
 package com.opentdi.mobile.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -85,7 +86,7 @@ fun NightSky(modifier: Modifier = Modifier) {
 fun MoonHeader(nowMs: Long) {
     val phase = moonPhase(nowMs)
     val glow by rememberInfiniteTransition(label = "moon").animateFloat(
-        0.10f, 0.22f, infiniteRepeatable(tween(4000), RepeatMode.Reverse), label = "glow",
+        0.10f, 0.22f, infiniteRepeatable(tween(5000, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "glow",
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
         Canvas(Modifier.size(56.dp)) { drawMoon(phase, glow) }

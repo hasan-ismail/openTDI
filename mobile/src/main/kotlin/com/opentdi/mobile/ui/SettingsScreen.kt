@@ -9,6 +9,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import android.Manifest
 import java.util.Locale
+import java.util.Optional
+import kotlinx.coroutines.flow.map
 import com.opentdi.shared.model.AlarmTone
 import com.opentdi.shared.model.AlarmConfig
 import androidx.compose.runtime.setValue
@@ -18,6 +20,9 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import android.content.pm.PackageManager
+import android.text.format.DateFormat
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -73,10 +78,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
     var advanced by rememberSaveable { mutableStateOf(false) }
 
     Page("Settings") {
-        if (status.running) Help("Settings are locked while a session runs.")
+        when {
+            status.running -> Help("Settings are locked while a session runs.")
+            !idle -> Help("Settings are locked while the cues are prepared or tested.")
+        }
         SwitchRow("Show advanced settings", advanced, enabled = true) { advanced = it }
         CompositionLocalProvider(LocalAdvanced provides advanced) { SettingsCards(viewModel, ui, idle, volumeOff, cueProblem) }
-        if (advanced) {
+        AnimatedVisibility(advanced, label = "defaults") {
             Section("Defaults") {
                 Help(
                     "The default timing follows MIT Dormio's timer method (first cue after 10–15 min, 3 min drifting " +
@@ -127,12 +135,12 @@ private fun SettingsCards(viewModel: MainViewModel, ui: UiState, idle: Boolean, 
     val config = ui.config
     val edit: Edit = viewModel::edit
     run {
-        CueWordsCard(config, idle, edit, viewModel, ui.recordingCue)
-        VoiceCard(viewModel, ui, idle, volumeOff, cueProblem)
-        TimingCard(config, idle, edit)
-        AlarmsCard(config, idle, edit, viewModel)
-        SoundCard(config, idle, edit)
         WatchAudioCard(config, idle, edit, viewModel)
+        AlarmsCard(config, idle, edit, viewModel)
+        VoiceCard(viewModel, ui, idle, volumeOff, cueProblem)
+        CueWordsCard(config, idle, edit, viewModel, ui.recordingCue)
+        TimingCard(config, idle, edit)
+        SoundCard(config, idle, edit)
     }
 }
 
@@ -147,15 +155,16 @@ internal fun VoiceCard(viewModel: MainViewModel, ui: UiState, idle: Boolean, vol
         Row(
             Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .toggleable(value = neural, enabled = idle, role = Role.Switch) { on ->
                     edit { it.copy(audio = it.audio.copy(ttsEngine = if (on) TtsEngine.NEURAL else TtsEngine.SYSTEM)) }
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Natural voice (on-device model)", modifier = Modifier.weight(1f))
+            Text("Natural-sounding voice", modifier = Modifier.weight(1f))
             Switch(checked = neural, onCheckedChange = null, enabled = idle)
         }
-        Help("A natural-sounding voice that runs on the phone itself. Off: your phone's text-to-speech voice.")
+        Help("It runs on the phone itself. Off: your phone's own text-to-speech voice.")
         if (neural) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (speaker in NEURAL_VOICE_CHOICES) {
@@ -178,9 +187,9 @@ internal fun VoiceCard(viewModel: MainViewModel, ui: UiState, idle: Boolean, vol
         ) { v -> edit { it.copy(audio = it.audio.copy(phrasePauseMs = v)) } }
         Text(
             when {
-                ui.preparing -> "Preparing the cues with text-to-speech…"
+                ui.preparing -> "Preparing the voice cues…"
                 ui.testing -> "Playing the test cue…"
-                cueProblem == null -> "Cues ready (voice ${ui.cues?.voice})."
+                cueProblem == null -> "Cues are ready."
                 else -> cueProblem
             },
             style = MaterialTheme.typography.bodyMedium,
@@ -198,11 +207,11 @@ internal fun VoiceCard(viewModel: MainViewModel, ui: UiState, idle: Boolean, vol
                 enabled = idle && cueProblem == null &&
                     (!volumeOff || config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER),
                 modifier = Modifier.weight(1f),
-            ) { Text("Test cue") }
+            ) { Text("Play test cue") }
         }
         Help(
-            "Prepare cues turns the words into speech on the phone. Test cue plays the first cue once: " +
-                "play it at your bedtime volume, because cues never play louder than that.",
+            "Prepare cues turns the words into speech on the phone. Play test cue plays the first cue once: " +
+                "play it at the volume you'll sleep with, because cues never get louder than that.",
         )
     }
 }
@@ -237,11 +246,14 @@ private fun CueWordsCard(
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Use MIT theme wording") }
         Help("MIT Dormio's wording asks you to think of the theme instead.")
-        for (cue in PHASE1_CUES) CueWords(cue, config, enabled, edit, viewModel, recordingCue)
-        TextButton(
-            onClick = { edit { it.copy(audio = it.audio.copy(cueTexts = emptyMap())) } },
-            enabled = enabled && config.audio.cueTexts.isNotEmpty(),
-        ) { Text("Reset all to the default words") }
+        // Kept open while a cue is being recorded, so its Stop button never hides.
+        Fold("Edit the words", forceOpen = recordingCue != null) {
+            for (cue in PHASE1_CUES) CueWords(cue, config, enabled, edit, viewModel, recordingCue)
+            TextButton(
+                onClick = { edit { it.copy(audio = it.audio.copy(cueTexts = emptyMap())) } },
+                enabled = enabled && config.audio.cueTexts.isNotEmpty(),
+            ) { Text("Reset all to the default words") }
+        }
     }
 }
 
@@ -313,28 +325,23 @@ private fun OwnVoiceRow(
 
 private fun cueLabel(cue: PromptCue) = when (cue) {
     PromptCue.INITIAL_INCUBATION -> "As you fall asleep"
-    PromptCue.WAKE_PROMPT -> "Wake prompt (the question)"
+    PromptCue.WAKE_PROMPT -> "The question that wakes you lightly"
     PromptCue.SLEEP_STATE_QUESTION -> "Sleep-state question"
     PromptCue.RE_INCUBATION -> "Back to sleep"
-    PromptCue.SESSION_END -> "Session end, after the chime"
-    PromptCue.MORNING_WAKE -> "Spoken wake-up alarm (watch)"
+    PromptCue.SESSION_END -> "When the session ends"
+    PromptCue.MORNING_WAKE -> "Spoken morning alarm (on the watch)"
 }
 
 @Composable
 private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
     val timed = config.timed
     Section("Timing: ${presetOf(config)?.label ?: "Custom"}") {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            for (preset in TimingPreset.entries) {
-                OutlinedButton(onClick = { edit(preset::applyTo) }, enabled = enabled, modifier = Modifier.weight(1f)) {
-                    Text(preset.label)
-                }
-            }
-        }
+        PresetButtons(config, enabled, edit)
         val still = timed.waitForStillness
         Row(
             Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .toggleable(value = still, enabled = enabled, role = Role.Switch) { on ->
                     edit { it.copy(timed = it.timed.copy(waitForStillness = on)) }
                 },
@@ -364,7 +371,7 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
             timed.firstSleepMaxMin, 1..90, 1, "min", enabled,
         ) { v -> edit { it.copy(timed = it.timed.copy(firstSleepMaxMin = v)) } }
         IntSetting(
-            "Drifting off (dwell)", "Time between the dream cue and the question that wakes you lightly.",
+            "Drifting off", "Time between the dream cue and the question that wakes you lightly.",
             config.countdownS, 60..300, 15, "s", enabled,
         ) { v -> edit { it.copy(countdownS = v) } }
         IntSetting(
@@ -421,7 +428,7 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        SwitchRow("Wake back to bed (WBTB)", alarms.wbtbEnabled, enabled) { on ->
+        SwitchRow("Early wake, then back to bed (WBTB)", alarms.wbtbEnabled, enabled) { on ->
             // Late cues follow a WBTB alarm, so they go off with it (else Start would be blocked by validation).
             change { it.copy(wbtbEnabled = on, lateCues = if (on) it.lateCues else LateCueMode.OFF) }
         }
@@ -496,7 +503,10 @@ private fun LateCuesSettings(
 @Composable
 private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, modifier = Modifier.weight(1f))
@@ -508,12 +518,13 @@ private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean, onChang
 @Composable
 private fun TimeRow(label: String, minuteOfDay: Int, enabled: Boolean, onChange: (Int) -> Unit) {
     var picking by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("$label ${hhmm(minuteOfDay)}", modifier = Modifier.weight(1f))
         TextButton(onClick = { picking = true }, enabled = enabled) { Text("Change") }
     }
     if (picking) {
-        val state = rememberTimePickerState(minuteOfDay / 60, minuteOfDay % 60, is24Hour = true)
+        val state = rememberTimePickerState(minuteOfDay / 60, minuteOfDay % 60, is24Hour = DateFormat.is24HourFormat(context))
         AlertDialog(
             onDismissRequest = { picking = false },
             confirmButton = {
@@ -528,7 +539,7 @@ private fun TimeRow(label: String, minuteOfDay: Int, enabled: Boolean, onChange:
     }
 }
 
-/** The tone choices; tapping the selected one again plays it on the watch for a few seconds. */
+/** The tone choices, and a button that plays the selected one on the watch for a few seconds. */
 @Composable
 private fun ToneChips(selected: AlarmTone, enabled: Boolean, onTest: (AlarmTone) -> Unit, onSelect: (AlarmTone) -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -555,11 +566,42 @@ private fun toneLabel(tone: AlarmTone) = when (tone) {
 
 private fun hhmm(minuteOfDay: Int) = String.format(Locale.ROOT, "%d:%02d", minuteOfDay / 60, minuteOfDay % 60)
 
-/** Where the watch plays cues, late cues and alarms: its speaker, or earbuds paired with the watch. */
+/** Where the cues play (phone or watch), and where the watch plays them and its alarms: speaker or its earbuds. */
 @Composable
 private fun WatchAudioCard(config: SessionConfig, enabled: Boolean, edit: Edit, viewModel: MainViewModel) {
-    val watch by viewModel.watchStatus.collectAsStateWithLifecycle(initialValue = null)
-    Section("Watch audio") {
+    // null until the watch's first answer (up to 5 s), so it does not flash "No earbuds connected" on opening.
+    val watchAnswer by remember(viewModel) { viewModel.watchStatus.map { Optional.ofNullable(it) } }
+        .collectAsStateWithLifecycle(initialValue = null)
+    Section("Where you hear it") {
+        val onWatch = config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .toggleable(value = onWatch, enabled = enabled, role = Role.Switch) { on ->
+                    edit {
+                        val route = if (on) AudioRouteMode.WATCH_WRIST_SPEAKER else AudioRouteMode.NIGHTSTAND_SPEAKER
+                        // Settings saved before the wrist speaker have no cap for it: it takes the nightstand's.
+                        val caps = it.audio.routeCapGain
+                        val cap = caps[route] ?: caps[AudioRouteMode.NIGHTSTAND_SPEAKER] ?: 0.6f
+                        it.copy(audio = it.audio.copy(route = route, routeCapGain = caps + (route to cap)))
+                    }
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Play cues on the watch")
+                Help(
+                    if (onWatch) {
+                        "The watch plays the cues, at its media volume. The phone can be in another room."
+                    } else {
+                        "Cues play from the phone speaker (nightstand)."
+                    },
+                )
+            }
+            Switch(checked = onWatch, onCheckedChange = null, enabled = enabled)
+        }
+        Text("The watch plays through:")
         Help("Where the watch plays cues and alarms. Earbuds let you sleep with one or both in without waking anyone.")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for ((output, label) in listOf(WatchOutput.SPEAKER to "Watch speaker", WatchOutput.EARBUDS to "Earbuds")) {
@@ -573,8 +615,10 @@ private fun WatchAudioCard(config: SessionConfig, enabled: Boolean, edit: Edit, 
         }
         if (config.audio.watchOutput == WatchOutput.EARBUDS) {
             Text(
-                watch?.earbuds?.let { "Connected to the watch: $it" }
-                    ?: "No earbuds connected to the watch right now: the speaker plays instead.",
+                watchAnswer?.let { answer ->
+                    answer.orElse(null)?.earbuds?.let { "Earbuds connected to the watch: $it" }
+                        ?: "No earbuds connected to the watch right now: the speaker plays instead."
+                } ?: "Checking the watch…",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Help(
@@ -591,18 +635,20 @@ private fun SoundCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
     val cap = config.audio.routeCapGain[AudioRouteMode.NIGHTSTAND_SPEAKER] ?: 0f
     val gain = config.audio.userGain.coerceIn(0f, cap)
     Section("Sound") {
-        if (LocalAdvanced.current) Column {
-            Text("Cue volume: ${percent(gain)}")
-            Help("Never above the speaker cap of ${percent(cap)}, and never louder than your test cue.")
-            // The slider stops at the speaker cap (§7.7 step 3); playback clamps to it as well.
-            Slider(
-                value = gain,
-                onValueChange = { g ->
-                    edit { it.copy(audio = it.audio.copy(userGain = (g * 100).roundToInt() / 100f)) }
-                },
-                valueRange = 0f..cap,
-                enabled = enabled,
-            )
+        AnimatedVisibility(LocalAdvanced.current, label = "volume") {
+            Column {
+                Text("Cue volume: ${percent(gain)}")
+                Help("Never above the speaker cap of ${percent(cap)}, and never louder than your test cue.")
+                // The slider stops at the speaker cap (§7.7 step 3); playback clamps to it as well.
+                Slider(
+                    value = gain,
+                    onValueChange = { g ->
+                        edit { it.copy(audio = it.audio.copy(userGain = (g * 100).roundToInt() / 100f)) }
+                    },
+                    valueRange = 0f..cap,
+                    enabled = enabled,
+                )
+            }
         }
         IntSetting(
             "Fade-in", "The voice rises gently over this time so it does not startle you.",
@@ -612,6 +658,7 @@ private fun SoundCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
         Row(
             Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .toggleable(value = chime, enabled = enabled, role = Role.Switch) { on ->
                     edit { it.copy(audio = it.audio.copy(endAlarm = if (on) EndAlarm.CHIME else EndAlarm.NONE)) }
                 },
@@ -622,33 +669,6 @@ private fun SoundCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
                 Help("A soft chime and a sentence when the session ends.")
             }
             Switch(checked = chime, onCheckedChange = null, enabled = enabled)
-        }
-        val onWatch = config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .toggleable(value = onWatch, enabled = enabled, role = Role.Switch) { on ->
-                    edit {
-                        val route = if (on) AudioRouteMode.WATCH_WRIST_SPEAKER else AudioRouteMode.NIGHTSTAND_SPEAKER
-                        // Settings saved before the wrist speaker have no cap for it: it takes the nightstand's.
-                        val caps = it.audio.routeCapGain
-                        val cap = caps[route] ?: caps[AudioRouteMode.NIGHTSTAND_SPEAKER] ?: 0.6f
-                        it.copy(audio = it.audio.copy(route = route, routeCapGain = caps + (route to cap)))
-                    }
-                },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Play cues on the watch")
-                Help(
-                    if (onWatch) {
-                        "The watch speaker plays the cues, at the watch's media volume. The phone can be in another room."
-                    } else {
-                        "Cues play from the phone speaker (nightstand)."
-                    },
-                )
-            }
-            Switch(checked = onWatch, onCheckedChange = null, enabled = enabled)
         }
     }
 }

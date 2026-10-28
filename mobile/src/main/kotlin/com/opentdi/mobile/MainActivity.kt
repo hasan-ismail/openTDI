@@ -1,5 +1,7 @@
 package com.opentdi.mobile
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opentdi.mobile.ui.OnboardingScreen
@@ -88,18 +90,21 @@ class MainActivity : ComponentActivity() {
                     bottomBar = { BottomTabs(tab) { tab = it } },
                 ) { padding ->
                     Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
-                        when (tab) {
-                            0 -> TonightScreen(
-                                viewModel,
-                                onStart = ::start,
-                                onStop = ::stop,
-                                onAllowBattery = ::allowBattery,
-                                onRaiseVolume = ::raiseVolume,
-                                onOpenDnd = ::openDndSettings,
-                            )
-                            1 -> WatchScreen()
-                            2 -> SessionsScreen(viewModel)
-                            else -> SettingsScreen(viewModel)
+                        // Both tabs show for 220 ms while they cross-fade; their effects are safe to repeat.
+                        Crossfade(tab, animationSpec = tween(220), label = "tab") { shown ->
+                            when (shown) {
+                                0 -> TonightScreen(
+                                    viewModel,
+                                    onStart = ::start,
+                                    onStop = ::stop,
+                                    onAllowBattery = ::allowBattery,
+                                    onRaiseVolume = ::raiseVolume,
+                                    onOpenDnd = ::openDndSettings,
+                                )
+                                1 -> WatchScreen()
+                                2 -> SessionsScreen(viewModel)
+                                else -> SettingsScreen(viewModel)
+                            }
                         }
                     }
                 }

@@ -1,6 +1,30 @@
 package com.opentdi.mobile.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -117,7 +141,8 @@ fun Section(title: String?, content: @Composable ColumnScope.() -> Unit) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.86f)),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Every card grows and shrinks smoothly when a row appears or goes.
+        Column(Modifier.animateContentSize(tween(250)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (title != null) Text(title, style = MaterialTheme.typography.titleLarge)
             content()
         }
@@ -131,7 +156,7 @@ fun Help(text: String) {
 }
 
 /** True while Settings shows its sliders (owner, 2026-10-28: sliders live behind "Show advanced settings"). */
-val LocalAdvanced = staticCompositionLocalOf { true }
+val LocalAdvanced = staticCompositionLocalOf { false } // Settings provides it; the set-up guide shows no sliders
 
 /** A slider setting; hidden unless [LocalAdvanced]. */
 @Composable
@@ -145,19 +170,62 @@ fun IntSetting(
     enabled: Boolean,
     onChange: (Int) -> Unit,
 ) {
-    if (!LocalAdvanced.current) return
-    Column {
-        Text("$label: $value $unit".trimEnd())
-        Help(help)
-        Slider(
-            value = value.coerceIn(range).toFloat(),
-            onValueChange = {
-                val snapped = (range.first + ((it - range.first) / step).roundToInt() * step).coerceIn(range)
-                if (snapped != value) onChange(snapped)
-            },
-            valueRange = range.first.toFloat()..range.last.toFloat(),
-            steps = (range.last - range.first) / step - 1,
-            enabled = enabled,
-        )
+    AnimatedVisibility(
+        LocalAdvanced.current,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+        label = "advanced",
+    ) {
+        Column {
+            Text("$label: $value $unit".trimEnd())
+            Help(help)
+            Slider(
+                value = value.coerceIn(range).toFloat(),
+                onValueChange = {
+                    val snapped = (range.first + ((it - range.first) / step).roundToInt() * step).coerceIn(range)
+                    if (snapped != value) onChange(snapped)
+                },
+                valueRange = range.first.toFloat()..range.last.toFloat(),
+                steps = (range.last - range.first) / step - 1,
+                enabled = enabled,
+            )
+        }
+    }
+}
+
+// A state change (not a tap): fade in over 500 ms, out over 300 ms.
+internal val Appear = fadeIn(tween(500)) + expandVertically()
+internal val Disappear = fadeOut(tween(300)) + shrinkVertically()
+
+/** A text button that shows and hides [content] (closed at first), with a chevron that turns as it opens. */
+@Composable
+fun ColumnScope.Fold(label: String, forceOpen: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val shown = open || forceOpen
+    TextButton(
+        onClick = { open = !open },
+        modifier = Modifier.semantics { stateDescription = if (shown) "Shown" else "Hidden" },
+    ) {
+        Text(label)
+        Spacer(Modifier.width(6.dp))
+        Chevron(shown)
+    }
+    AnimatedVisibility(shown, label = "fold") {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
+    }
+}
+
+/** A small down-pointing chevron that turns up when [open]; drawn, as the app has no icon library. */
+@Composable
+fun Chevron(open: Boolean, modifier: Modifier = Modifier) {
+    val turn by animateFloatAsState(if (open) 180f else 0f, tween(250), label = "chevron")
+    val color = LocalContentColor.current
+    Canvas(modifier.size(14.dp).graphicsLayer { rotationZ = turn }) {
+        val v = Path().apply {
+            moveTo(size.width * 0.15f, size.height * 0.35f)
+            lineTo(size.width * 0.5f, size.height * 0.7f)
+            lineTo(size.width * 0.85f, size.height * 0.35f)
+        }
+        drawPath(v, color, style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round))
     }
 }

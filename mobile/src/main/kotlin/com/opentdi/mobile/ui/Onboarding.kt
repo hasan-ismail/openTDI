@@ -1,8 +1,21 @@
 package com.opentdi.mobile.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -24,6 +37,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opentdi.mobile.MainViewModel
+import com.opentdi.mobile.UiState
 import com.opentdi.mobile.cues.cueSetProblem
 import com.opentdi.mobile.session.SessionMonitor
 
@@ -46,16 +60,51 @@ private enum class Step(val title: String) {
 fun OnboardingScreen(viewModel: MainViewModel, onAllowBattery: () -> Unit, onDone: () -> Unit) {
     var index by rememberSaveable { mutableIntStateOf(0) }
     var agreed by rememberSaveable { mutableStateOf(false) }
-    val step = Step.entries[index]
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val status by SessionMonitor.status.collectAsStateWithLifecycle()
     val volumeOff by viewModel.mediaVolumeOff.collectAsStateWithLifecycle(initialValue = false)
     val cueProblem = remember(ui.config, ui.cues) { cueSetProblem(ui.cues, ui.config) }
     val idle = !status.running && !ui.preparing && !ui.testing
 
+    BackHandler(enabled = index > 0) { index-- } // Back goes back a step instead of closing the app
+    Column(Modifier.fillMaxSize()) {
+        val progress by animateFloatAsState((index + 1f) / Step.entries.size, tween(400), label = "progress")
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        // Each step is its own page, so each one opens scrolled to the top.
+        AnimatedContent(
+            index,
+            Modifier.weight(1f),
+            label = "step",
+            transitionSpec = {
+                val d = if (targetState > initialState) 1 else -1
+                (slideInHorizontally { d * it / 4 } + fadeIn()) togetherWith (slideOutHorizontally { -d * it / 4 } + fadeOut())
+            },
+        ) { i -> // the step this page shows; never index, which moves on before the old page has gone
+            StepPage(i, agreed, { agreed = it }, { index = it }, viewModel, ui, idle, volumeOff, cueProblem, onAllowBattery, onDone)
+        }
+    }
+}
+
+@Composable
+private fun StepPage(
+    i: Int,
+    agreed: Boolean,
+    onAgree: (Boolean) -> Unit,
+    goTo: (Int) -> Unit,
+    viewModel: MainViewModel,
+    ui: UiState,
+    idle: Boolean,
+    volumeOff: Boolean,
+    cueProblem: String?,
+    onAllowBattery: () -> Unit,
+    onDone: () -> Unit,
+) {
+    val step = Step.entries[i]
     Page(step.title) {
-        Help("Step ${index + 1} of ${Step.entries.size}")
-        LinearProgressIndicator(progress = { (index + 1f) / Step.entries.size }, modifier = Modifier.fillMaxWidth())
+        Help("Step ${i + 1} of ${Step.entries.size}")
         when (step) {
             Step.WELCOME -> Section(null) {
                 Text("OpenTDI helps you notice that you are dreaming: a lucid dream.", style = MaterialTheme.typography.titleMedium)
@@ -79,7 +128,10 @@ fun OnboardingScreen(viewModel: MainViewModel, onAllowBattery: () -> Unit, onDon
                         "little; take nights off when you need them.",
                 )
                 Row(
-                    Modifier.fillMaxWidth().toggleable(value = agreed, role = Role.Checkbox) { agreed = it },
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .toggleable(value = agreed, role = Role.Checkbox, onValueChange = onAgree),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Checkbox(checked = agreed, onCheckedChange = null)
@@ -96,7 +148,7 @@ fun OnboardingScreen(viewModel: MainViewModel, onAllowBattery: () -> Unit, onDon
             }
 
             Step.VOICE -> {
-                Help("Choose a voice, tap Prepare cues, then Test cue at the volume you will sleep with.")
+                Help("Choose a voice, tap Prepare cues, then Play test cue at the volume you'll sleep with.")
                 VoiceCard(viewModel, ui, idle, volumeOff, cueProblem)
             }
             Step.ALARMS -> {
@@ -106,7 +158,7 @@ fun OnboardingScreen(viewModel: MainViewModel, onAllowBattery: () -> Unit, onDon
             Step.FIRST_NIGHT -> Section(null) {
                 Text("Every night:", style = MaterialTheme.typography.titleMedium)
                 Bullets(
-                    "Go through Your bedtime routine on the Tonight tab.",
+                    "Go through the Bedtime routine on the Tonight tab.",
                     "Open OpenTDI on the watch: it waits for the phone.",
                     "Tap Start session on the phone, lie down and let go.",
                     "In the morning, tell the watch your dream and answer its few questions.",
@@ -115,14 +167,14 @@ fun OnboardingScreen(viewModel: MainViewModel, onAllowBattery: () -> Unit, onDon
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            if (index > 0) OutlinedButton(onClick = { index-- }, modifier = Modifier.weight(1f)) { Text("Back") }
+            if (i > 0) OutlinedButton(onClick = { goTo(i - 1) }, modifier = Modifier.weight(1f)) { Text("Back") }
             Button(
-                onClick = { if (index == Step.entries.lastIndex) onDone() else index++ },
+                onClick = { if (i == Step.entries.lastIndex) onDone() else goTo(i + 1) },
                 enabled = step != Step.SAFETY || agreed,
                 modifier = Modifier.weight(1f),
-            ) { Text(if (index == Step.entries.lastIndex) "Start using OpenTDI" else "Next") }
+            ) { Text(if (i == Step.entries.lastIndex) "Start using OpenTDI" else "Next") }
         }
-        if (step != Step.SAFETY && index != Step.entries.lastIndex) {
+        if (step != Step.SAFETY && i != Step.entries.lastIndex) {
             TextButton(onClick = onDone) { Text("Skip the guide") }
         }
     }
