@@ -5,8 +5,8 @@ Source: Samsung's **public** API reference,
 `…/api-reference/com/samsung/android/service/health/tracking/` plus `constant-values.html` — every signature
 below is marked VERIFIED against those pages in `samsung_health_sensor_sdk.md` §2. The `:samsung-health-stub`
 module is written from this public documentation only; the build itself (compiling `:wear` against the real AAR)
-
-the AAR's classes. Where another note in `docs/references/` disagrees with this file, this file wins.
+is the check that the two agree. Do not decompile or inspect the AAR's classes: the stub follows the public
+documentation only. Where another note in `docs/references/` disagrees with this file, this file wins.
 
 ## SDK package facts
 
@@ -18,8 +18,8 @@ the AAR's classes. Where another note in `docs/references/` disagrees with this 
   the watch as 1.7.00.05 (`device_audit.md`) — and for Galaxy Store (`com.sec.android.app.samsungapps`, used by
   `HealthTrackerException.resolve()`), sets `minSdkVersion 26`, and declares **no permissions**.
 - The zip's `Announcement.txt` covers only the open-source components bundled inside the SDK (Apache-2.0, BSD,
-  MPL-2.0). The SDK itself is under the Samsung Health Partner Service & SDK License Agreement (accepted at
-
+  MPL-2.0). The SDK itself comes from Samsung under Samsung's own terms, accepted at download, so the AAR is
+  never committed (it is gitignored).
 
 ## Public API (package `com.samsung.android.service.health.tracking`)
 
