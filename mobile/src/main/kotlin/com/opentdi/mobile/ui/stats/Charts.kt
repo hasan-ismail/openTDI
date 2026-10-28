@@ -78,6 +78,9 @@ import kotlin.math.roundToInt
 // 3 (aqua) of the skill's reference palette; the only status colour on Stats is the error pink (ΔE 19.2 from violet).
 internal val SERIES_1 = Color(0xFF9085E9)
 internal val SERIES_2 = Color(0xFF199E70)
+// The night timeline's possible-REM strip: dark slot 2 (orange). All three --pairs all on the card pass: worst CVD
+// ΔE 9.4 (deutan, against aqua), normal-vision ΔE 24.6. Slot 1 (blue) failed beside violet (ΔE 1.9 protan).
+internal val SERIES_3 = Color(0xFFD95926)
 
 // Morning outcomes are ordered, so one hue steps from dark (no dream) to light (lucid): the reference blue ramp's
 // steps 600/450/350/250, checked --ordinal on both surfaces (the darkest at 2.33:1 on the card).

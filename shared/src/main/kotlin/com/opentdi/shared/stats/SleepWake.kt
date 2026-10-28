@@ -49,6 +49,10 @@ internal class Seconds(
     val angle: FloatArray?,
     /** Off the wrist: the Samsung SDK's hr_status −3 or eda_status −5. */
     val detached: BooleanArray,
+    /** [hr] where Samsung's hr_status is 1 (good), or with no status (Android's sensor): what [remLikely] uses. */
+    val hrGood: FloatArray,
+    /** Skin conductance in μS where Samsung's eda_status is 0 (normal). */
+    val eda: FloatArray,
 ) {
     val size: Int get() = hr.size
 
@@ -89,7 +93,7 @@ internal fun estimate(sec: Seconds, knownWake: List<Span>, wbtb: WbtbOutcome?): 
     }
     val (sleep, night) = window?.let { measure(sec, method.name, kind, inBreak, it) }
         ?: return Estimate(null, timeline(sec, major) { null })
-    return Estimate(sleep, timeline(sec, major) { minute ->
+    val minutes = timeline(sec, major) { minute ->
         val epochs = EPOCHS_PER_MIN * minute until minOf(EPOCHS_PER_MIN * (minute + 1), n)
         // §B9: half the minute's epochs valid, and asleep when half are sleep between onset and final wake.
         if (epochs.count { method.valid[it] } < EPOCHS_PER_MIN / 2) {
@@ -97,7 +101,9 @@ internal fun estimate(sec: Seconds, knownWake: List<Span>, wbtb: WbtbOutcome?): 
         } else {
             epochs.count { it in night && kind[it] == Kind.SLEEP } >= EPOCHS_PER_MIN / 2
         }
-    })
+    }
+    val onsetMinute = ((sleep.onsetMs - sec.startMs) / 60_000).toInt()
+    return Estimate(sleep, minutes.copy(remLikely = remLikely(sec, minutes.asleep, onsetMinute)))
 }
 
 /** `arm-angle v1` where enough epochs have the angle, else `stillness v1` where enough have stillness, else null. */
@@ -272,7 +278,7 @@ private fun BooleanArray.mark(startMs: Long, span: Span) {
 }
 
 /** The maximal runs of indices in 0 until [n] where [inRun] holds. */
-private inline fun runs(n: Int, inRun: (Int) -> Boolean): List<IntRange> {
+internal inline fun runs(n: Int, inRun: (Int) -> Boolean): List<IntRange> {
     val out = ArrayList<IntRange>()
     var k = 0
     while (k < n) {
@@ -287,6 +293,6 @@ private inline fun runs(n: Int, inRun: (Int) -> Boolean): List<IntRange> {
     return out
 }
 
-private val IntRange.length: Int get() = last - first + 1
+internal val IntRange.length: Int get() = last - first + 1
 
 private fun minutes(epochs: Int) = (epochs * EPOCH_S / 60.0).roundToInt()

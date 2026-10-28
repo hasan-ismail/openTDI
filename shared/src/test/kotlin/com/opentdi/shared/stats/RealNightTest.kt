@@ -37,6 +37,12 @@ class RealNightTest {
             if (m - from >= 5) println("awake from ${clock(s.recordStartMs + from * 60_000L)} for ${m - from} min")
             if (m == from) m++
         }
+        val rem = s.epochs.remLikely
+        val remRuns = (rem.indices).filter { rem[it] == true && rem.getOrNull(it - 1) != true }
+            .map { from -> from to (from until rem.size).takeWhile { rem[it] == true }.size }
+        println("REM-likely ${rem.count { it == true }} min: " + remRuns.joinToString { (from, len) ->
+            "${clock(s.recordStartMs + from * 60_000L)} for $len min"
+        })
         println("wake ${s.wake}, wbtb ${s.wbtb}, cues ${s.lateCues}, ${s.reports.size} reports, ${s.promptedWakings} prompts")
     }
 }

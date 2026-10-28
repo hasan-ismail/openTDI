@@ -14,7 +14,9 @@ private const val WBTB = "WBTB"
 private const val CUES = "CUES"
 private const val REPORT_MS = 5 * 60_000L // GUESSED (§B7 F5): awake for this long before saving a morning report
 private const val HR_DETACHED = -3 // Samsung SDK HEART_RATE_STATUS: off the wrist (samsung_health_sensor_sdk.md)
+private const val HR_GOOD = 1 // HEART_RATE_STATUS: a successful measurement
 private const val EDA_DETACHED = -5 // Samsung SDK EdaSet STATUS: off the wrist
+private const val EDA_NORMAL = 0 // EdaSet STATUS: normal
 // shortcut: a recording spanning over 3 days (a clock jump: no watch battery lasts that long) is not summarised;
 // split it at the jump if that ever happens.
 private const val MAX_RECORDING_MS = 3 * 24 * 3_600_000L
@@ -61,7 +63,15 @@ fun summarizeNight(sessionId: String, zone: ZoneId, open: (fileName: String) -> 
 }
 
 /** One w_packets.csv row: the fields the summary uses. */
-private class Packet(val tsMs: Long, val hr: Float?, val detached: Boolean, val stillness: Float?, val angle: Float?)
+private class Packet(
+    val tsMs: Long,
+    val hr: Float?,
+    val detached: Boolean,
+    val stillness: Float?,
+    val angle: Float?,
+    val hrGood: Float?,
+    val eda: Float?,
+)
 
 /** w_packets.csv, read line by line (a night is about 25,000 rows), on a 1-s grid; null without a whole row. */
 private fun readPackets(reader: Reader): Seconds? {
@@ -74,14 +84,24 @@ private fun readPackets(reader: Reader): Seconds? {
     val edaStatus = header.indexOf("eda_status")
     val stillness = header.indexOf("stillness")
     val angle = header.indexOf("angle_z_deg")
+    val edaUs = header.indexOf("eda_us")
     val packets = ArrayList<Packet>()
     for (line in lines) {
         val f = line.split(',') // numbers and enum names only, never a quoted field
         if (f.size != header.size) continue // cut short when the watch died
         val tsMs = f.getOrNull(ts)?.toLongOrNull() ?: continue
-        val detached = f.getOrNull(hrStatus)?.toIntOrNull() == HR_DETACHED ||
-            f.getOrNull(edaStatus)?.toIntOrNull() == EDA_DETACHED
-        packets += Packet(tsMs, f.float(hr), detached, f.float(stillness), f.float(angle))
+        val hrStat = f.getOrNull(hrStatus)?.toIntOrNull()
+        val edaStat = f.getOrNull(edaStatus)?.toIntOrNull()
+        val bpm = f.float(hr)
+        packets += Packet(
+            tsMs = tsMs,
+            hr = bpm,
+            detached = hrStat == HR_DETACHED || edaStat == EDA_DETACHED,
+            stillness = f.float(stillness),
+            angle = f.float(angle),
+            hrGood = bpm.takeIf { hrStat == null || hrStat == HR_GOOD },
+            eda = f.float(edaUs).takeIf { edaStat == EDA_NORMAL },
+        )
     }
     if (packets.isEmpty()) return null
     packets.sortBy { it.tsMs } // stable: of rows with one ts_ms, the first in the file is kept below
@@ -90,7 +110,9 @@ private fun readPackets(reader: Reader): Seconds? {
     if (lastMs - startMs >= MAX_RECORDING_MS) return null
     val size = ((lastMs - startMs) / 1000 + 1).toInt()
     fun none() = FloatArray(size) { Float.NaN }
-    val sec = Seconds(startMs, lastMs + 1000, none(), none(), if (angle < 0) null else none(), BooleanArray(size))
+    val sec = Seconds(
+        startMs, lastMs + 1000, none(), none(), if (angle < 0) null else none(), BooleanArray(size), none(), none(),
+    )
     val filled = BooleanArray(size)
     for (p in packets) {
         val s = ((p.tsMs - startMs) / 1000).toInt()
@@ -100,6 +122,8 @@ private fun readPackets(reader: Reader): Seconds? {
         sec.stillness[s] = p.stillness ?: Float.NaN
         sec.angle?.set(s, p.angle ?: Float.NaN)
         sec.detached[s] = p.detached
+        sec.hrGood[s] = p.hrGood ?: Float.NaN
+        sec.eda[s] = p.eda ?: Float.NaN
     }
     return sec
 }

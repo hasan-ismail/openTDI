@@ -82,6 +82,10 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
                         val low = sleep.hrSleepMinBpm?.let { ", lowest ${it.roundToInt()}" }.orEmpty()
                         Text("Heart rate while asleep (estimated): average ${mean.roundToInt()} bpm$low")
                     }
+                    if (s.epochs.remLikely.isNotEmpty()) {
+                        val rem = s.epochs.remLikely.count { it == true } * s.epochs.stepS / 60
+                        Text("Possibly REM: about ${hm(rem)} (a rough guess, not a measured sleep stage)")
+                    }
                 }
             }
         }
@@ -236,8 +240,9 @@ private val GUTTER = 40.dp
 
 /**
  * The night's timeline: movement as thin bars and heart rate as a line, two charts with their own y-axes sharing one
- * time axis, the estimated asleep time shaded behind both, and the alarms, WBTB steps, reports and the phone's cues
- * marked above. Tap or drag for the values at a moment; the table lists half hours.
+ * time axis, the estimated asleep time shaded behind both, the possible REM as a strip between them, and the alarms,
+ * WBTB steps, reports and the phone's cues marked above. Tap or drag for the values at a moment; the table lists half
+ * hours.
  */
 @Composable
 private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone: ZoneId) {
@@ -248,6 +253,8 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
     val per = ((e.movement.size + 119) / 120).coerceAtLeast(1) // at most about 120 bars
     val bs = remember(e) { buckets(e, per) }
     val runs = remember(e) { asleepRuns(e.asleep) }
+    val remRuns = remember(e) { asleepRuns(e.remLikely) }
+    val hasRem = e.remLikely.isNotEmpty()
     val events = remember(s) { marks(s).filter { it.atMs in t0..t1 } }
     val movePct = (bs.mapNotNull { it.movement }.maxOrNull() ?: 0f) * 100
     val moveAxis = YAxis(niceTicks(0f, maxOf(movePct, 1f), 2), { "${it.roundToInt()}%" })
@@ -264,27 +271,30 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
     val takeaway = buildString {
         append("Night timeline from ${clock(t0)} to ${clock(t1)}.")
         s.sleep?.let { append(" Estimated asleep ${hm(it.sleepMin)}.") }
+        if (hasRem) append(" Possibly REM about ${hm(e.remLikely.count { it == true } * e.stepS / 60)}, a rough guess.")
         if (events.isNotEmpty()) append(" " + events.joinToString(", ") { "${it.label} ${clock(it.atMs)}" } + ".")
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Legend(
-            listOf(
+            listOfNotNull(
                 Key("Asleep (estimated)", colors.onSurface.copy(alpha = 0.16f), KeyShape.BAR), // the wash, a little stronger to show
                 Key("Movement", SERIES_2, KeyShape.BAR),
                 Key("Heart rate", SERIES_1, KeyShape.LINE),
+                Key("Possible REM (rough guess)", SERIES_3, KeyShape.BAR).takeIf { hasRem },
             ),
         )
         Crossfade(table, animationSpec = tween(250), label = "table") { asTable ->
             if (asTable) {
                 Table(
-                    listOf("Time", "Movement", "Heart rate", "Asleep (est.)"),
+                    listOf("Time", "Movement", "Heart rate", "Asleep (est.)", "REM (guess)"),
                     buckets(e, (30 * 60 / e.stepS).coerceAtLeast(1)).map { b ->
                         listOf(
                             clock(b.startMs),
                             b.movement?.let { "${(it * 100).roundToInt()}%" } ?: "—",
                             b.hr?.let { "${it.roundToInt()} bpm" } ?: "—",
                             "${b.asleepMin} min",
+                            if (hasRem) "${b.remMin} min" else "—",
                         ) to null
                     },
                     onOpen = {},
@@ -337,6 +347,12 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                             if (moveBottom - top >= 0.5f) {
                                 drawRect(SERIES_2, Offset(x(b.startMs), top), Size(w, moveBottom - top))
                             }
+                        }
+                        val remY = moveBottom + BAND_GAP.toPx() / 2 // its own lane in the gap between the charts
+                        for (r in remRuns) {
+                            val a = x(t0 + r.first * stepMs)
+                            val to = Offset(maxOf(x(t0 + (r.last + 1) * stepMs), a + 2.dp.toPx()), remY)
+                            drawLine(SERIES_3, Offset(a, remY), to, 4.dp.toPx(), StrokeCap.Round)
                         }
                         var previous: Offset? = null
                         for (b in bs) {
@@ -394,10 +410,17 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                     selected?.let { t ->
                         val b = bs[((t - t0) / (per * stepMs)).toInt().coerceIn(0, bs.size - 1)]
                         val asleep = e.asleep.getOrNull(((t - t0) / stepMs).toInt())
+                        val rem = e.remLikely.getOrNull(((t - t0) / stepMs).toInt()) == true
                         val values = listOfNotNull(
                             b.hr?.let { "heart rate" to "${it.roundToInt()} bpm" },
                             b.movement?.let { "movement" to "${(it * 100).roundToInt()}%" },
-                            asleep?.let { "" to if (it) "Asleep (estimated)" else "Awake (estimated)" },
+                            asleep?.let {
+                                "" to when {
+                                    !it -> "Awake (estimated)"
+                                    rem -> "Asleep, possibly REM (rough guess)"
+                                    else -> "Asleep (estimated)"
+                                }
+                            },
                         ) + events.filter { abs(it.atMs - t) <= 10 * 60_000L }.map { it.label to clock(it.atMs) }
                         Floating(gutter + (t - t0).toFloat() / (t1 - t0) * (widthPx - gutter - right)) {
                             Readout(clock(t), values.ifEmpty { null }, null) {}

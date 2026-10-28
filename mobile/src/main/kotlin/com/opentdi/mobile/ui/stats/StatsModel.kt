@@ -335,8 +335,8 @@ fun takeaway(what: String, values: List<Float>, format: (Float) -> String): Stri
         "${format(values.min())} to ${format(values.max())}."
 }
 
-/** A stretch of the night's [Epochs]: mean movement share and heart rate (gaps skipped) and minutes asleep. */
-data class Bucket(val startMs: Long, val movement: Float?, val hr: Float?, val asleepMin: Int)
+/** A stretch of the night's [Epochs]: mean movement share and heart rate (gaps skipped), minutes asleep and REM-likely. */
+data class Bucket(val startMs: Long, val movement: Float?, val hr: Float?, val asleepMin: Int, val remMin: Int = 0)
 
 /** [e] in buckets of [per] epochs; lists of unequal length are read as far as each goes. */
 fun buckets(e: Epochs, per: Int): List<Bucket> = e.movement.indices.chunked(per.coerceAtLeast(1)).map { idx ->
@@ -346,6 +346,7 @@ fun buckets(e: Epochs, per: Int): List<Bucket> = e.movement.indices.chunked(per.
         avg(e.movement),
         avg(e.hrBpm),
         idx.count { e.asleep.getOrNull(it) == true } * e.stepS / 60,
+        idx.count { e.remLikely.getOrNull(it) == true } * e.stepS / 60,
     )
 }
 
