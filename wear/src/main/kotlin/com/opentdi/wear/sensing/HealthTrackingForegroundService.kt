@@ -112,7 +112,9 @@ class HealthTrackingForegroundService : LifecycleService() {
             alarms?.close()
             alarmsJson = json
             val dir = File(filesDir, "sessions/${s.sessionId}")
-            alarms = WakeAlarms(applicationContext, dir, System.currentTimeMillis(), WakeAlarms.parse(json))
+            val now = System.currentTimeMillis()
+            val recordingStart = now - (SystemClock.elapsedRealtime() - SensingStateHolder.state.value.startedElapsedMs)
+            alarms = WakeAlarms(applicationContext, dir, now, WakeAlarms.parse(json), recordingStart)
         }
         val p = SensingStateHolder.state.value.lastPacket?.packet
         alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr)

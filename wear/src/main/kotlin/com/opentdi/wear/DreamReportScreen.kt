@@ -39,12 +39,15 @@ import kotlinx.coroutines.delay
 /** The questions, their answers as written to w_morning.csv, and the button labels. */
 private val QUESTIONS = listOf(
     "Remember a dream?" to listOf("YES", "VAGUE", "NO"),
-    "Lucid?" to listOf("YES", "NO", "UNSURE"),
-    "Heard a cue in the dream?" to listOf("YES", "NO"),
+    "Lucid?" to listOf("YES", "ALMOST", "NO"),
+    "Woke up inside a dream (false awakening)?" to listOf("YES", "NO"),
+    "A cue in the dream, even disguised?" to listOf("YES", "NO"),
     "Did a cue wake you?" to listOf("YES", "NO"),
     "Refreshed? (1 = not at all)" to listOf("1", "2", "3", "4", "5"),
     "Sleep paralysis?" to listOf("YES", "NO"),
+    "Unusual night (ill, alcohol, very late)?" to listOf("YES", "NO"),
 )
+private const val SLEEP_PARALYSIS = 6 // its index in QUESTIONS
 
 /**
  * The morning report (owner, 2026-10-28; lucid_induction.md §5.3), also after WBTB: say the dream into the watch, then
@@ -118,11 +121,12 @@ fun DreamReportScreen(after: String, dir: File, requestMic: (then: () -> Unit) -
                     }
                 }
             }
-            if (answers[QUESTIONS.lastIndex] == "YES") {
+            if (answers[SLEEP_PARALYSIS] == "YES") {
                 item {
                     Text(
-                        "If sleep paralysis keeps happening, take a break from WBTB and cues, and talk to a doctor " +
-                            "if it worries you.",
+                        "Sleep paralysis is harmless and passes: stay calm and move one finger or toe. Sleeping on " +
+                            "your side and WBTB at most once a week make it less likely. Talk to a doctor if it keeps " +
+                            "happening or frightens you.",
                     )
                 }
             }

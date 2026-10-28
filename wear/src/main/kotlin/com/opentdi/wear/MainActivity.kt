@@ -281,8 +281,10 @@ private fun MainScreen(
             state.wbtbBackToSleepAtMs?.let { at ->
                 item {
                     Text(
-                        "Stay up until ${WakeAlarms.hhmm(at)}. Recall your last dream, then repeat: next time I'm " +
-                            "dreaming, I'll remember I'm dreaming. A buzz says go back to sleep.",
+                        "First, pinch your nose and try to breathe: if you can, you are dreaming. Stay up until " +
+                            "${WakeAlarms.hhmm(at)}. Recall your last dream and its odd moments, then picture going " +
+                            "back into it and noticing you are dreaming: next time I'm dreaming, I'll remember I'm " +
+                            "dreaming. A buzz says go back to sleep.",
                     )
                 }
             }

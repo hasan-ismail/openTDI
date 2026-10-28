@@ -220,3 +220,64 @@ Schredl 2021 was read only through the PsyPost summary.
 - Konkoly et al. 2024, home app attrition (summary): https://www.psypost.org/lucid-dreaming-app-triples-users-awareness-in-dreams-study-finds/
 
 The Robbins snooze numbers come from press coverage, and the Paul 2014 and Peters 2024 numbers from abstracts or search summaries; the publishers' pages were blocked. No repo files were edited.
+
+## 6. Practitioner reports from Reddit (2026-10-28)
+
+Three reads of r/LucidDreaming (techniques, alarms/devices, pitfalls): ~1,000 posts and 43 comment threads, via Reddit RSS and the Arctic Shift archive (Reddit's JSON API returned 403). Counts are approximate. All of it is anecdote; §1–5 outrank it.
+
+### 6.1 Lessons
+
+| Lesson | How widely reported | OpenTDI should |
+|---|---|---|
+| Nearly all lucid dreams follow a night waking plus a technique; bedtime techniques rarely work | Strong: 6 long logs put 70–100% after a waking (1lf4bhp: 99 of 101); 1 dissent | Centre Lucid nights on WBTB + one technique |
+| WBTB ~5 h after *bed* (4–6 h); lucid dreams cluster around 5–6 AM | 20 of 51 posts naming a time | Keep 6 h from onset; timestamp lucid reports |
+| Awake 5–20 min, tuned to how fast sleep returns; under ~10 min also fails | ~19 of 25 posts ≤20 min; 3 too-short failures | Adapt awake time to measured latency |
+| 2–4 WBTB nights a week; WBTB insomnia can snowball into sleep anxiety | Consistent among regulars | Active and light nights; guard sleep |
+| MILD = replaying a recent dream and its dream sign just before sleep, not a mantra. SSILD: "less is more" | ~6 guides each; 2 MILD dissents | MILD from tonight's report; SSILD audio |
+| Natural wakings as "micro-WBTBs": don't move, eyes closed | 22 posts; a 250-dream log credits most success to it | Opt-in guidance at natural late wakings |
+| Touchless alarms that stop themselves; dismissing "wakes me up more" | ≥6 threads + ~12 of 100 recent alarm posts | Experimental only, blinded |
+| Watch vibration often fails; people dismiss it and fall back asleep | 8 of 100 alarm posts | Proof of waking at WBTB |
+| Untrained cues (masks) are woven into the dream (lights → police car) or wake you | ~12 of 15 first-hand mask reports negative | No cues without training; ask if the cue appeared disguised |
+| Fear of sleep paralysis (SP) stops many; SP often features one's name called; a name in a dream cue woke one user | 25 of 100 SP posts; 4 name reports; 1 anecdote | Name only on real wake alarms; no WILD by default |
+| False awakenings are common after WBTB/SSILD, even dreamed journaling | 41 of 100 first-lucid posts | Nose-pinch check at every waking prompt |
+| Quitters stop after 3–10 nights; regulars say ≥30 days per technique; dry spells are normal | ~half of 24 "give up" posts | 30-night blocks; recall as the main chart |
+
+### 6.2 Versus the literature
+
+**Agrees:** WBTB needs a technique (Schredl 2021, Klofat 2024); falling asleep fast predicts success (ILDIS); untrained cues fail (TLR); vibration alone is unreliable (Attali 2020); recall tracks lucidity; no daytime reality-check reminders; 1–3 WBTB nights a week.
+
+**Differs:**
+- **Awake time:** Reddit's 5–20 min is shorter than LaBerge's ≥30 min. Start at 30; let latency move it.
+- **WBTB time:** Reddit's ~5 h counts from bedtime; Erlacher 2022 found 4.5 h worse. Keep 6 h from onset.
+- **SSILD counts:** the author's tutorial (4–6 fast, 3–4 slow, ≥30 s per sense) differs from §2. Use the tutorial.
+- **"Lucid snooze"** on Reddit is a few-second self-stopping alarm, not a 9-min snooze. Unstudied, as is natural-waking WBTB.
+- **Spoken name:** Stucky's recall gain is for waking; on Reddit a name in an in-dream cue woke the dreamer. Use the name only to wake.
+
+### 6.3 App changes, ranked by expected value
+
+1. **Cheap:** Lucid night = WBTB + one technique; bedtime only a short intention and cue training.
+2. MILD from tonight's report: read back a line, name its odd element, ≤5 min re-entering it lucid, then silence.
+3. **Cheap:** WBTB proof of waking: no report or movement within 60 s → ring again in 2 min. Distinct WBTB and morning patterns.
+4. **Cheap:** Adaptive awake time: start 30 min; −5–10 after 2 nights with back-in-bed→still >20 min; +5–10 if asleep <5 min with no recall; floor 10.
+5. **Cheap:** Sleep guard: skip WBTB <4.5 h after onset; warn if bed-to-alarm <8.5 h; suggest rest after 2 low "refreshed" scores or rising latency.
+6. **Cheap:** His name only on morning and WBTB alarms, never in night cues (code comment says why).
+7. **Cheap:** Waking prompts open "Before you move: pinch your nose and try to breathe."
+8. **Cheap:** Report one-taps: false awakening; almost lucid; cue in dream, even disguised; WBTB natural/alarm/none; technique; unusual night (excluded from cue/no-cue analysis).
+9. Progress view: recall first; lucid rate by WBTB vs not and per 30-night block; odds of the current blank run (at 15%, 5 blank nights happen 44% of the time).
+10. Natural-waking WBTB (opt-in): from 4.5 h, movement after long stillness gets one soft tap; tapping runs WBTB and cancels the alarm.
+11. SSILD audio guide (tutorial counts plus a 5 × 10 s version), then silence.
+12. **Cheap:** SP explainer (stay calm, move one finger); after logged SP: side sleeping, WBTB at most weekly, tones-only cues.
+13. Experimental still-wake: ≤8 s own-voice "stay still" + faint haptic, self-stopping, late at night when still, ≤3 a night, blinded with the tones. May just wake him.
+
+**Don't build:** binaural beats, "lucid music", subliminals (the subreddit removes them as pseudoscience), supplements, reality-check reminders, default WILD.
+
+### 6.4 Caveats
+
+Lucidity is self-reported and unverified. Survivorship: success logs and top posts come from people it worked for; quitters rarely post logs. Self-selection: motivated posters stacking techniques. Samples are not random (top RSS, archive date windows). 1rujsir is flagged as promotion (only its comments used); Luzide, Lucid Waker and Totem posts are by their developers. Wiki and r/AstralProjection not reached.
+
+### 6.5 Threads used
+
+- **WBTB and timing:** [1lf4bhp](https://www.reddit.com/r/LucidDreaming/comments/1lf4bhp/), [1mz61ff](https://www.reddit.com/r/LucidDreaming/comments/1mz61ff/), [1vf4sfk](https://www.reddit.com/r/LucidDreaming/comments/1vf4sfk/), [1l308ob](https://www.reddit.com/r/LucidDreaming/comments/1l308ob/), [3j317d](https://www.reddit.com/r/LucidDreaming/comments/3j317d/), [phoj9l](https://www.reddit.com/r/LucidDreaming/comments/phoj9l/), [1rujsir](https://www.reddit.com/r/LucidDreaming/comments/1rujsir/), [94ou02](https://www.reddit.com/r/LucidDreaming/comments/94ou02/), [28x5fj](https://www.reddit.com/r/LucidDreaming/comments/28x5fj/), [1iep6ak](https://www.reddit.com/r/LucidDreaming/comments/1iep6ak/)
+- **Techniques:** [f43h14](https://www.reddit.com/r/LucidDreaming/comments/f43h14/), [4cpb6o](https://www.reddit.com/r/LucidDreaming/comments/4cpb6o/), [18h2bi](https://www.reddit.com/r/LucidDreaming/comments/18h2bi/), [o8wc4k](https://www.reddit.com/r/LucidDreaming/comments/o8wc4k/), [58uecj](https://www.reddit.com/r/LucidDreaming/comments/58uecj/), [dm55ck](https://www.reddit.com/r/LucidDreaming/comments/dm55ck/)
+- **Alarms and devices:** [fnvmk4](https://www.reddit.com/r/LucidDreaming/comments/fnvmk4/), [dm03so](https://www.reddit.com/r/LucidDreaming/comments/dm03so/), [1sq21xf](https://www.reddit.com/r/LucidDreaming/comments/1sq21xf/), [1jop4lc](https://www.reddit.com/r/LucidDreaming/comments/1jop4lc/), [1jus48p](https://www.reddit.com/r/LucidDreaming/comments/1jus48p/), [xdrjoa](https://www.reddit.com/r/LucidDreaming/comments/xdrjoa/), [15h489j](https://www.reddit.com/r/LucidDreaming/comments/15h489j/), [1fur5bl](https://www.reddit.com/r/LucidDreaming/comments/1fur5bl/), [1lwhcdz](https://www.reddit.com/r/LucidDreaming/comments/1lwhcdz/), [ecknz4](https://www.reddit.com/r/LucidDreaming/comments/ecknz4/), [1x2j1m5](https://www.reddit.com/r/LucidDreaming/comments/1x2j1m5/)
+- **Pitfalls:** [1gjl0tg](https://www.reddit.com/r/LucidDreaming/comments/1gjl0tg/), [1copt2o](https://www.reddit.com/r/LucidDreaming/comments/1copt2o/), [1jj2y1v](https://www.reddit.com/r/LucidDreaming/comments/1jj2y1v/), [f5jups](https://www.reddit.com/r/LucidDreaming/comments/f5jups/), [1dtxj8c](https://www.reddit.com/r/LucidDreaming/comments/1dtxj8c/), [1dvpqyc](https://www.reddit.com/r/LucidDreaming/comments/1dvpqyc/), [1iltwas](https://www.reddit.com/r/LucidDreaming/comments/1iltwas/)

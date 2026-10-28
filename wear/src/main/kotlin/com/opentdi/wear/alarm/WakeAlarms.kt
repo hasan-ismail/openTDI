@@ -29,7 +29,13 @@ import java.util.Locale
  * w_alarm.csv in the session folder: when an alarm rang, the first movement after it (stillness below 0.5, the
  * accelerometer's own "moving" line) and when it was stopped, so the morning shows how long waking up took.
  */
-class WakeAlarms(private val context: Context, private val dir: File, startMs: Long, private val config: AlarmConfig) {
+class WakeAlarms(
+    private val context: Context,
+    private val dir: File,
+    startMs: Long,
+    private val config: AlarmConfig,
+    private val recordingStartMs: Long = startMs,
+) {
     private val zone = ZoneId.systemDefault()
     private var wakeAt = if (config.wakeEnabled) nextAlarmAt(config.wakeAtMin, startMs, zone) else null
     private var firstRingAt: Long? = null // the first ring of a snoozed wake-up
@@ -88,7 +94,12 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
         }
         if (wbtbAt?.let { nowMs >= it } == true) {
             wbtbAt = null
-            ring(nowMs, "WBTB", config.wbtbTone, gentle = true, stillness, hr)
+            // Too early a WBTB cuts the first, deep half of the night and did worse (4.5 h vs 6 h, Erlacher 2022).
+            if (nowMs - recordingStartMs < MIN_SLEEP_BEFORE_WBTB_MS) {
+                log(nowMs, "WBTB", "SKIPPED", stillness, hr, "recording_ms=${nowMs - recordingStartMs}")
+            } else {
+                ring(nowMs, "WBTB", config.wbtbTone, gentle = true, stillness, hr)
+            }
         } else if (wakeAt?.let { nowMs >= it } == true) {
             wakeAt = null
             ring(nowMs, "WAKE", config.wakeTone, gentle = false, stillness, hr)
@@ -119,7 +130,8 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
         log(nowMs, r.kind, how, stillness, hr, "after_ms=${nowMs - r.startMs};first_movement_ms=${moved ?: ""}")
         val total = nowMs - (firstRingAt ?: r.startMs) // snoozes count as part of waking up
         val summary = if (r.kind == "WAKE") {
-            "Stay still with your eyes closed and replay your dream before you move. You moved after " +
+            "Before you move: pinch your nose and try to breathe through it; if you can, you are dreaming. " +
+                "Then, eyes closed, replay your dream. You moved after " +
                 "${clock(moved)} and stopped the alarm after ${clock(total)}" +
                 (if (snoozes > 0) " ($snoozes snoozes)." else ".")
         } else {
@@ -197,6 +209,7 @@ class WakeAlarms(private val context: Context, private val dir: File, startMs: L
     companion object {
         private const val MOVING = 0.5f // AccelConfig.moveStillness: below it a second counts as moving
         private const val ESCALATE_MS = 120_000L
+        private const val MIN_SLEEP_BEFORE_WBTB_MS = 270 * 60_000L // 4.5 h
         private const val CHANNEL_ID = "alarms"
         private const val NOTIFICATION_ID = 2
         private const val PREFS = "alarms"

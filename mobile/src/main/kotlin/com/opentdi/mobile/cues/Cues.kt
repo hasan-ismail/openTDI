@@ -71,6 +71,7 @@ fun cueText(cue: PromptCue, config: SessionConfig): String {
     val name = config.alarms.sleeperName.trim()
     return when {
         own != null -> own
+        // Only the wake-up alarm says the name: in a night cue it woke a dreamer (lucid_induction.md §6).
         cue == PromptCue.MORNING_WAKE && name.isNotEmpty() ->
             cueText(cue, config.theme).replaceFirst("Good morning.", "Good morning, $name.")
         else -> cueText(cue, config.theme)
