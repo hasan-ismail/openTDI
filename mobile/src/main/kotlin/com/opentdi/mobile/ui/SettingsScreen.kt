@@ -456,6 +456,14 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 ) { Text("Wake briefly at ${hhmm(alarms.wbtbAtMinBeforeWake())} instead") }
             }
             ToneChips(alarms.wbtbTone, enabled, onTest) { t -> change { it.copy(wbtbTone = t) } }
+            SwitchRow(
+                "Guided back-to-sleep (about 19 min, on the watch). Practice aid; unproven.",
+                alarms.wbtbGuide,
+                enabled,
+            ) { on -> change { it.copy(wbtbGuide = on) } }
+            if (alarms.wbtbGuide) {
+                Help("After the buzz, tap I'm in bed on the watch. Prepare cues sends the guide to the watch.")
+            }
             LateCuesSettings(alarms, enabled, viewModel, ::change)
         }
         if (alarms.wakeEnabled || alarms.wbtbEnabled) {
@@ -509,8 +517,8 @@ private fun LateCuesSettings(
         }
         IntSetting(
             "Cues start after",
-            "Minutes after you fall back asleep: the watch takes your first 10 still minutes after the buzz as " +
-                "sleep. REM came about 42 min after falling back asleep in a lab study.",
+            "Minutes after you fall back asleep: the watch takes your first 10 still minutes after the buzz, or " +
+                "after the guide, as sleep. REM came about 42 min after falling back asleep in a lab study.",
             alarms.lateCueAfterOnsetMin, 10..120, 5, "min", enabled,
         ) { v -> change { it.copy(lateCueAfterOnsetMin = v) } }
     }

@@ -61,6 +61,16 @@ class HealthTrackingForegroundService : LifecycleService() {
                 val p = SensingStateHolder.state.value.lastPacket?.packet
                 alarms?.snooze(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
             }
+        } else if (intent?.action == ACTION_START_GUIDE) {
+            handler.post {
+                val p = SensingStateHolder.state.value.lastPacket?.packet
+                alarms?.startGuide(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
+            }
+        } else if (intent?.action == ACTION_STOP_GUIDE) {
+            handler.post {
+                val p = SensingStateHolder.state.value.lastPacket?.packet
+                alarms?.stopGuide(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
+            }
         } else if (intent?.action == ACTION_WAIT) {
             if (!foreground) startInForeground(WAITING_TEXT)
             if (ticker == null) SensingStateHolder.update { it.copy(waiting = true) }
@@ -174,6 +184,8 @@ class HealthTrackingForegroundService : LifecycleService() {
         private const val ACTION_WAIT = "com.opentdi.wear.action.WAIT_FOR_PHONE"
         private const val ACTION_STOP_ALARM = "com.opentdi.wear.action.STOP_ALARM"
         private const val ACTION_SNOOZE_ALARM = "com.opentdi.wear.action.SNOOZE_ALARM"
+        private const val ACTION_START_GUIDE = "com.opentdi.wear.action.START_GUIDE"
+        private const val ACTION_STOP_GUIDE = "com.opentdi.wear.action.STOP_GUIDE"
         private const val ACTION_START_FROM_PHONE = "com.opentdi.wear.action.START_FROM_PHONE"
         private const val WAITING_TEXT = "Waiting for the phone"
         private const val RECORDING_TEXT = "Logging sensors"
@@ -225,6 +237,20 @@ class HealthTrackingForegroundService : LifecycleService() {
 
         fun stopAlarm(context: Context) {
             context.startService(stopAlarmIntent(context))
+        }
+
+        /** "I'm in bed": the guided back-to-sleep starts (WakeAlarms.startGuide). */
+        fun startGuide(context: Context) {
+            context.startService(
+                Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_START_GUIDE),
+            )
+        }
+
+        /** A tap or a bezel turn during the guide stops it. */
+        fun stopGuide(context: Context) {
+            context.startService(
+                Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_STOP_GUIDE),
+            )
         }
 
         fun stop(context: Context) {

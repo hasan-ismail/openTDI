@@ -107,10 +107,10 @@ class CsvTest {
         // New packet columns go at the end of w_packets.csv, so older column positions never move.
         assertEquals(listOf("emitted_wall_ms", "skin_temp_c", "spo2_pct"), CsvFiles.W_PACKETS.columns.takeLast(3))
         assertEquals("event", CsvFiles.W_SPO2.columns[5])
-        // The watch's DreamReportScreen writes one column per question, in this order.
+        // The watch's DreamReportScreen writes one column per question, in this order; new ones only ever go last.
         assertEquals(
             "wall_ms,after,recording,recalled,insight,control,nightmare,false_awakening,cue_in_dream,cue_woke," +
-                "refreshed,sleep_paralysis,unusual_night",
+                "refreshed,sleep_paralysis,unusual_night,guide_sleep,odd,sign_seen",
             CsvFiles.W_MORNING.columns.joinToString(","),
         )
         assertEquals(

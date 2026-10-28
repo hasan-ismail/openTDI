@@ -33,11 +33,12 @@ object CsvFiles {
     val W_ALARM = file("w_alarm.csv", "wall_ms,alarm(WAKE/WBTB/CUES),event,stillness,hr_bpm,detail")
     // 2026-10-28: recalled VAGUE became WHITE, lucid became insight and control, nightmare was added
     // (sleep_and_dreams.md §3, §4, §6). No rows to map: the report shipped after the only recorded night.
+    // Owner, 2026-10-28: the guided back-to-sleep and dream-sign answers go last, so older columns keep their places.
     val W_MORNING = file(
         "w_morning.csv",
         "wall_ms,after(WAKE/WBTB),recording,recalled(YES/WHITE/NO),insight(0-5),control(0-5),nightmare(YES/NO)," +
             "false_awakening(YES/NO),cue_in_dream(YES/NO),cue_woke(YES/NO),refreshed(1-5),sleep_paralysis(YES/NO)," +
-            "unusual_night(YES/NO)",
+            "unusual_night(YES/NO),guide_sleep(YES/NO/UNSURE),odd(FORM/ACTION/CONTEXT/NONE),sign_seen(YES/NO)",
     )
     val W_SPO2 = file(
         "w_spo2.csv",

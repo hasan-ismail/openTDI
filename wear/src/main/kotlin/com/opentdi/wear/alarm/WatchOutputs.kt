@@ -1,8 +1,11 @@
 package com.opentdi.wear.alarm
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioTrack
 
 /**
  * Where the watch plays sound (owner, 2026-10-28): its own speaker, or earbuds paired with the watch (e.g. Galaxy Buds,
@@ -36,5 +39,66 @@ object WatchOutputs {
 
     fun saveChoice(context: Context, earbuds: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_EARBUDS, earbuds).apply()
+    }
+}
+
+/**
+ * Short sounds on the watch's output: a late cue, or a clip of the guided back-to-sleep. Each plays once on a static
+ * track that frees itself when done; [stop] silences them all at once.
+ */
+class OneShots(context: Context) {
+    private val audioManager = context.getSystemService(AudioManager::class.java)
+    private val playing = mutableSetOf<AudioTrack>() // held until done: an unreferenced track may be collected
+
+    /**
+     * [samples] once at [volume] of the media stream, on the speaker or, with [earbuds], the earbuds paired with the
+     * watch. A track the system refuses is skipped: a missed sound must not stop the night's recording.
+     */
+    fun play(samples: FloatArray, sampleRate: Int, volume: Float, earbuds: Boolean) {
+        val track = try {
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build(),
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build(),
+                )
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(samples.size * Float.SIZE_BYTES)
+                .build()
+        } catch (e: RuntimeException) { // the builder's UnsupportedOperationException or IllegalArgumentException
+            return
+        }
+        try {
+            track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+            WatchOutputs.pick(audioManager, earbuds)?.let { track.setPreferredDevice(it) }
+            track.setVolume(volume)
+            track.setNotificationMarkerPosition(samples.size)
+            playing += track
+            track.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
+                override fun onMarkerReached(t: AudioTrack) {
+                    t.release()
+                    playing -= t
+                }
+
+                override fun onPeriodicNotification(t: AudioTrack) = Unit
+            })
+            track.play()
+        } catch (e: IllegalStateException) { // a track that did not initialise
+            playing -= track
+            track.release()
+        }
+    }
+
+    fun stop() {
+        playing.forEach { it.release() }
+        playing.clear()
     }
 }

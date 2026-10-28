@@ -45,6 +45,8 @@ class WakeAlarms(
     private var backToSleepAt: Long? = null
     private var snoozes = 0
     private var lateCues = makeLateCues()
+    private var guideOfferedAt: Long? = null // the back-to-sleep buzz, while "I'm in bed" waits for a tap
+    private var guide: GuideRoutine? = null // the guided back-to-sleep, while it plays
 
     private fun makeLateCues(): LateCues? = if (config.wbtbEnabled && config.lateCues != LateCueMode.OFF) {
         LateCues(context, { config }) { event, still, hr, detail ->
@@ -87,6 +89,7 @@ class WakeAlarms(
 
     fun tick(nowMs: Long, stillness: Float?, hr: Float?) {
         lateCues?.tick(nowMs, stillness, hr)
+        guide?.tick(nowMs, stillness, hr)
         val r = ringing
         if (r != null) {
             if (r.movedAtMs == null && stillness != null && stillness < MOVING) {
@@ -111,8 +114,18 @@ class WakeAlarms(
                 backToSleepAt = null
                 player.buzz()
                 log(nowMs, "WBTB", "BACK_TO_SLEEP", stillness, hr, null)
-                lateCues?.arm(nowMs)
-                SensingStateHolder.update { s -> s.copy(wbtbBackToSleepAtMs = null) }
+                // With the guide, "I'm in bed" starts it and the late cues arm at its end: lying still through it is
+                // not falling back asleep. Without it (switched off, or no clips from the phone) they arm now.
+                if (guideReady()) guideOfferedAt = nowMs else lateCues?.arm(nowMs)
+                val offered = guideOfferedAt != null
+                SensingStateHolder.update { s -> s.copy(wbtbBackToSleepAtMs = null, guideOffered = offered) }
+            }
+        }
+        guideOfferedAt?.let { buzz ->
+            if (nowMs - buzz >= GUIDE_OFFER_MS) { // never tapped: as without the guide, counted from the buzz
+                guideOfferedAt = null
+                lateCues?.arm(buzz)
+                SensingStateHolder.update { it.copy(guideOffered = false) }
             }
         }
         if (wbtbAt?.let { nowMs >= it } == true) {
@@ -160,9 +173,11 @@ class WakeAlarms(
         } else {
             null
         }
+        // With the guide the cue is trained in bed instead, not now while the sleeper is groggy.
+        val trains = r.kind == "WBTB" && how == "STOPPED" && lateCues != null && !guideReady()
         if (r.kind == "WBTB" && how == "STOPPED") {
             backToSleepAt = nowMs + config.wbtbAwakeMin * 60_000L
-            lateCues?.train(nowMs)
+            if (trains) lateCues?.train(nowMs)
         }
         if (r.kind == "WAKE") { // the morning is over: the next wake-up starts its own count
             snoozes = 0
@@ -172,27 +187,69 @@ class WakeAlarms(
             it.copy(
                 alarmRinging = null,
                 wbtbBackToSleepAtMs = backToSleepAt,
-                lateCuesTraining = r.kind == "WBTB" && how == "STOPPED" && lateCues != null,
+                lateCuesTraining = trains,
                 lastWakeText = summary ?: it.lastWakeText,
                 reportAfter = if (how == "STOPPED") r.kind else it.reportAfter,
             )
         }
     }
 
+    /** "I'm in bed" after the buzz: the guided back-to-sleep plays, and its end or a stop arms the late cues. */
+    fun startGuide(nowMs: Long, stillness: Float?, hr: Float?) {
+        val buzz = guideOfferedAt ?: return
+        guideOfferedAt = null
+        guide = watchGuide(
+            context,
+            config.lateCueVolume,
+            log = { event, s, h, detail -> log(System.currentTimeMillis(), "WBTB", event, s, h, detail) },
+        ) { at ->
+            guide = null
+            lateCues?.arm(at)
+            SensingStateHolder.update { it.copy(guideRunning = false) }
+        }
+        if (guide == null) lateCues?.arm(buzz) // a clip went bad since the buzz: as without the guide
+        SensingStateHolder.update { it.copy(guideOffered = false, guideRunning = guide != null) }
+        guide?.start(nowMs, stillness, hr)
+    }
+
+    /** Any tap or bezel turn while the guide plays. */
+    fun stopGuide(nowMs: Long, stillness: Float?, hr: Float?) {
+        guide?.stop(nowMs, stillness, hr)
+    }
+
     fun close() {
         player.stop()
         if (ringing != null) context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         lateCues?.close()
-        SensingStateHolder.update { it.copy(alarmRinging = null, wbtbBackToSleepAtMs = null, lateCuesTraining = false) }
+        lateCues = null // the night is over: a guide stopped now arms nothing
+        guide?.stop(System.currentTimeMillis(), null, null)
+        SensingStateHolder.update {
+            it.copy(
+                alarmRinging = null,
+                wbtbBackToSleepAtMs = null,
+                lateCuesTraining = false,
+                guideOffered = false,
+                guideRunning = false,
+            )
+        }
     }
 
+    /** The guide is on and every clip of it is on the watch; otherwise WBTB runs as it did before the guide. */
+    private fun guideReady() = config.wbtbGuide && guideClipsPresent(context)
+
     private fun ring(nowMs: Long, kind: String, tone: AlarmTone, gentle: Boolean, stillness: Float?, hr: Float?) {
-        if (kind == "WAKE") lateCues?.disarm()
+        if (kind == "WAKE") { // the morning: no guide and no lucidity cue during the ring, the replay or the report
+            guide?.stop(nowMs, stillness, hr)
+            guideOfferedAt = null
+            lateCues?.disarm()
+        }
         ringing = Ringing(kind, tone, nowMs)
         player.start(tone, if (config.rampS == 0) 1f else 0.05f, gentle, WatchOutputs.earbudsChosen(context))
         log(nowMs, kind, "RING", stillness, hr, "tone=$tone;alarm_volume=${player.alarmVolumeIndex()}")
         val left = if (kind == "WAKE") config.maxSnoozes - snoozes else 0
-        SensingStateHolder.update { it.copy(alarmRinging = kind, snoozesLeft = left) }
+        SensingStateHolder.update {
+            it.copy(alarmRinging = kind, snoozesLeft = left, guideOffered = guideOfferedAt != null)
+        }
         notifyRinging(kind, left > 0)
     }
 
@@ -242,6 +299,7 @@ class WakeAlarms(
         private const val MOVING = 0.5f // AccelConfig.moveStillness: below it a second counts as moving
         private const val ESCALATE_MS = 120_000L
         private const val MIN_SLEEP_BEFORE_WBTB_MS = 270 * 60_000L // 4.5 h
+        private const val GUIDE_OFFER_MS = 30 * 60_000L // GUESSED: how long after the buzz "I'm in bed" stays
         private const val CHANNEL_ID = "alarms"
         private const val NOTIFICATION_ID = 2
         private const val PREFS = "alarms"

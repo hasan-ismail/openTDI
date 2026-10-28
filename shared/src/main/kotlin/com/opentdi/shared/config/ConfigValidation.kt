@@ -144,6 +144,10 @@ fun SessionConfig.validate(): List<String> {
         int("alarms.lateCueAfterOnsetMin", lateCueAfterOnsetMin, 10..120)
         float("alarms.lateCueVolume", lateCueVolume, 0.02f..1f)
         rule(lateCues == LateCueMode.OFF || wbtbEnabled) { "alarms.lateCues need the WBTB alarm (alarms.wbtbEnabled)" }
+        rule(dreamSigns.size <= 3) { "alarms.dreamSigns holds ${dreamSigns.size} signs, more than 3" }
+        rule(dreamSigns.all { it.isNotBlank() && it.length <= 40 }) {
+            "alarms.dreamSigns must be labels of 1..40 characters"
+        }
     }
     return errors
 }

@@ -2,10 +2,6 @@ package com.opentdi.wear.alarm
 
 import com.opentdi.shared.model.LateCueMode
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioManager
-import android.media.AudioTrack
 import androidx.core.content.edit
 import com.opentdi.shared.audio.lucidCue
 import com.opentdi.shared.config.StructuralConstants.MAJOR_MOVEMENT_MIN_S
@@ -15,8 +11,9 @@ import kotlin.random.Random
 
 /**
  * Late-night lucidity cues after WBTB (owner, 2026-10-28; docs/references/lucid_induction.md §5). During the WBTB
- * awake time the cue is trained: it plays [TRAINING_CUES] times while the watch says what it means. After the
- * back-to-sleep buzz the first still stretch of [RE_ONSET_MS] is taken as falling back asleep (RE_ONSET, logged with
+ * awake time the cue is trained: it plays [TRAINING_CUES] times while the watch says what it means; with the guided
+ * back-to-sleep the guide trains it in bed instead ([GuideRoutine]), and [arm] comes at the guide's end, not at the
+ * buzz. After the arm the first still stretch of [RE_ONSET_MS] is taken as falling back asleep (RE_ONSET, logged with
  * its latency); from lateCueAfterOnsetMin after it, once the sleeper has had no major movement (§8.10) for
  * [STILL_MS], one soft cue plays every 20–30 s, at most [CUES_PER_BOUT] per still stretch; a movement pauses it until
  * 5 min of stillness again. REM came 42.1 ± 24.7 min after falling back asleep, not after the buzz (sleep_and_dreams.md §1
@@ -31,8 +28,7 @@ class LateCues(
     /** Tonight's arm: always cues when ON; EXPERIMENT randomises in pairs of nights at arming, unseen (§5.4). */
     var cueNight = true
         private set
-    private val playing = mutableSetOf<AudioTrack>() // held until done: an unreferenced track may be collected
-    private val audioManager = context.getSystemService(AudioManager::class.java)
+    private val sound = OneShots(context)
     private val cue = lucidCue(SAMPLE_RATE)
     private val recentMoving = ArrayDeque<Boolean>()
     private var stillSinceMs: Long? = null
@@ -50,7 +46,8 @@ class LateCues(
     }
 
     /**
-     * The back-to-sleep buzz: cues may start lateCueAfterOnsetMin after the sleeper falls back asleep. In the
+     * The back-to-sleep buzz, or the guide's end or stop ([nowMs] the buzz when the guide was offered but never
+     * started): cues may start lateCueAfterOnsetMin after the sleeper falls back asleep. In the
      * EXPERIMENT the first night of a pair tosses a coin and the second gets the other arm, so season and slow drift
      * cannot load one side (sleep_and_dreams.md §3 [49]); the pending arm stays in private preferences the sleeper
      * never sees, and lapses after [PAIR_MAX_MS] so a pair cannot span seasons.
@@ -93,10 +90,7 @@ class LateCues(
         log("ENDED", null, null, null)
     }
 
-    fun close() {
-        playing.forEach { it.release() }
-        playing.clear()
-    }
+    fun close() = sound.stop()
 
     fun tick(nowMs: Long, stillness: Float?, hr: Float?) {
         if (trainingLeft > 0 && nowMs >= nextTrainingAtMs) {
@@ -132,41 +126,10 @@ class LateCues(
 
     /**
      * One cue at [volume] of the media stream, on the watch speaker or, when chosen ([earbuds], by default the choice
-     * the phone sent), the earbuds paired with the watch; the static track frees itself when done.
+     * the phone sent), the earbuds paired with the watch.
      */
-    fun play(volume: Float, earbuds: Boolean = WatchOutputs.earbudsChosen(context)) {
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build(),
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                    .setSampleRate(SAMPLE_RATE)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build(),
-            )
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .setBufferSizeInBytes(cue.size * Float.SIZE_BYTES)
-            .build()
-        track.write(cue, 0, cue.size, AudioTrack.WRITE_BLOCKING)
-        WatchOutputs.pick(audioManager, earbuds)?.let { track.setPreferredDevice(it) }
-        track.setVolume(volume)
-        track.setNotificationMarkerPosition(cue.size)
-        playing += track
-        track.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
-            override fun onMarkerReached(t: AudioTrack) {
-                t.release()
-                playing -= t
-            }
-
-            override fun onPeriodicNotification(t: AudioTrack) = Unit
-        })
-        track.play()
-    }
+    fun play(volume: Float, earbuds: Boolean = WatchOutputs.earbudsChosen(context)) =
+        sound.play(cue, SAMPLE_RATE, volume, earbuds)
 
     private companion object {
         const val PREFS = "late_cues"
@@ -182,9 +145,11 @@ class LateCues(
         const val TRAINING_CUES = 4
         const val TRAINING_FIRST_MS = 20_000L
         const val TRAINING_GAP_MS = 30_000L
-        const val TRAINING_VOLUME = 0.4f
     }
 }
+
+/** GUESSED: the cue while awake, in training or the guide; louder than the night's lateCueVolume. */
+internal const val TRAINING_VOLUME = 0.4f
 
 /** GUESSED: a still stretch this long after the buzz is taken as falling back asleep; its start is the re-onset. */
 internal const val RE_ONSET_MS = 10 * 60_000L

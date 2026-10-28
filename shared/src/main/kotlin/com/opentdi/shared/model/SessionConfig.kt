@@ -161,4 +161,10 @@ data class AlarmConfig(
     // 10..120 after falling back asleep (still-bout start); no sooner than ~40 (lucid_induction.md §5.2), REM ~42 [12]
     val lateCueAfterOnsetMin: Int = 40,
     val lateCueVolume: Float = 0.15f, // 0.02..1.0 of the watch's media volume: "notice it, not wake to it"
+    // Owner, 2026-10-28: after the back-to-sleep buzz, "I'm in bed" on the watch plays a guided routine that also
+    // trains the late cue (GuideRoutine). GUESSED: on. Only with wbtbEnabled; without its clips on the watch, as before.
+    val wbtbGuide: Boolean = true,
+    // Owner, 2026-10-28: the sleeper's dream signs, at most 3 labels of 1..40 characters (GUESSED: one clear cue at a
+    // time). The guide's MILD recap says the first as an if-then line; the morning report asks if one showed up.
+    val dreamSigns: List<String> = emptyList(),
 )

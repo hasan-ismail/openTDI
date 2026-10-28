@@ -1,7 +1,9 @@
 package com.opentdi.wear.link
 
 import com.opentdi.wear.alarm.WatchOutputs
+import com.opentdi.wear.alarm.guideFile
 import java.io.File
+import java.io.IOException
 import com.opentdi.wear.alarm.AlarmPlayer
 import com.opentdi.shared.audio.WavIo
 import android.media.AudioAttributes
@@ -44,10 +46,14 @@ class WristSpeakerService : WearableListenerService() {
                 guard.removeCallbacksAndMessages(null)
             }
             val stream = Tasks.await(channels.getOutputStream(channel)).also { out = it }
-            if (cue.store) { // the spoken wake-up alarm: kept for the morning, not played now
-                val bytes = WavIo.writePcm16Mono(cue.audio.samples, cue.audio.sampleRate)
-                File(filesDir, AlarmPlayer.WAKE_VOICE_FILE).writeBytes(bytes)
-                Log.i(TAG, "WAKE_VOICE_STORED samples=${cue.audio.samples.size}")
+            val name = cue.storeAs
+            if (name != null) { // kept, not played now: the spoken wake-up alarm or a clip of the guided back-to-sleep
+                val file =
+                    if (name == WristCue.WAKE_VOICE) File(filesDir, AlarmPlayer.WAKE_VOICE_FILE) else guideFile(this, name)
+                val part = File(file.path + ".part").apply { parentFile?.mkdirs() } // a crash never leaves half a clip
+                part.writeBytes(WavIo.writePcm16Mono(cue.audio.samples, cue.audio.sampleRate))
+                if (!part.renameTo(file)) throw IOException("could not keep $name")
+                Log.i(TAG, "CLIP_STORED name=$name samples=${cue.audio.samples.size}")
                 WristCue.writeReply(stream, WristCue.Reply(WristCue.PLAYED))
             } else {
                 WristCue.writeReply(stream, play(cue, stream))

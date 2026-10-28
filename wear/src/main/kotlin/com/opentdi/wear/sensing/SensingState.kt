@@ -20,6 +20,8 @@ data class SensingState(
     val lastWakeText: String? = null, // how long the last morning wake-up took
     val snoozesLeft: Int = 0, // while the wake-up alarm rings
     val lateCuesTraining: Boolean = false, // after a WBTB alarm with late cues: the cue is being trained
+    val guideOffered: Boolean = false, // after the back-to-sleep buzz: "I'm in bed" starts the guided back-to-sleep
+    val guideRunning: Boolean = false, // the guide plays; any tap or bezel turn stops it
     val reportAfter: String? = null, // "WAKE" or "WBTB": a dream report is due (DreamReport)
     val sessionId: String? = null,
     val startedElapsedMs: Long = 0L,

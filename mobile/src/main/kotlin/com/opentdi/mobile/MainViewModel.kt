@@ -27,9 +27,15 @@ import com.opentdi.mobile.audio.dndState
 import com.opentdi.mobile.audio.toLogLine
 import com.opentdi.mobile.cues.CueException
 import com.opentdi.mobile.cues.CueSet
+import com.opentdi.mobile.cues.guideOn
 import com.opentdi.mobile.cues.loadCueSet
+import com.opentdi.mobile.cues.loadGuideClip
 import com.opentdi.mobile.cues.loadPreparedCues
 import com.opentdi.mobile.cues.renderCues
+import com.opentdi.shared.audio.FadeEnvelope
+import com.opentdi.shared.audio.GuideClip
+import com.opentdi.shared.audio.WavAudio
+import com.opentdi.shared.audio.targetGain
 import com.opentdi.mobile.session.SESSIONS_DIR
 import com.opentdi.mobile.session.SessionMonitor
 import com.opentdi.shared.csv.CsvFiles
@@ -68,6 +74,9 @@ data class UiState(
     val batteryUnrestricted: Boolean = true, // as checked at the last resume
     val batteryManual: Boolean = false, // no battery settings screen opened: show the path instead
 )
+
+private const val GUIDE_NOT_SENT =
+    "The watch did not get the guided back-to-sleep. Connect it, then tap Prepare cues again."
 
 /** One row of the Sessions screen: a filesDir/sessions directory (§12.1) and its p_transitions.csv summary. */
 data class SessionItem(val id: String, val startMs: Long, val bytes: Long, val summary: PhoneSessionSummary?)
@@ -229,7 +238,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun sessionsRoot() = File(app.filesDir, SESSIONS_DIR)
 
-    /** The Prepare step: renders the cues for the current theme and cue settings (§7.3), never during a session. */
+    /**
+     * The Prepare step: renders the cues for the current theme and cue settings (§7.3), never during a session. With
+     * the guided back-to-sleep on, it also sends the guide's clips to the watch, which plays them after WBTB.
+     */
     fun prepareCues() {
         if (ui.value.preparing) return
         val config = ui.value.config
@@ -238,13 +250,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             var fallback: String? = null
             val error = try {
                 renderCues(app, config) { fallback = it }
-                fallback
+                val guideMissed = guideOn(config) && !sendGuide(config)
+                listOfNotNull(fallback, GUIDE_NOT_SENT.takeIf { guideMissed }).joinToString(" ").ifEmpty { null }
             } catch (e: CueException) {
                 e.message
             } catch (e: IOException) {
                 "Could not store the cues: ${e.message}"
             }
             mutableUi.update { it.copy(preparing = false, cues = loadCueSet(app), cueMessage = error) }
+        }
+    }
+
+    /**
+     * Sends the guide's clips to the watch, faded in at the cue volume as a cue sent there would be (the watch plays
+     * them at full track volume); false as soon as the watch does not keep one.
+     */
+    private suspend fun sendGuide(config: SessionConfig): Boolean {
+        val player = CuePlayer(app)
+        return GuideClip.entries.all { clip ->
+            val clipAudio = withContext(Dispatchers.IO) { loadGuideClip(app, clip) }
+            val faded = FadeEnvelope(clipAudio.sampleRate, config.audio.fadeInMs)
+                .applyTo(clipAudio.samples, config.audio.targetGain())
+            player.storeOnWatch(WavAudio(faded, clipAudio.sampleRate), clip.file)
         }
     }
 

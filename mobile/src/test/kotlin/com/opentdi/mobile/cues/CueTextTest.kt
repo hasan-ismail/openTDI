@@ -1,10 +1,12 @@
 package com.opentdi.mobile.cues
 
+import com.opentdi.shared.audio.GuideClip
 import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.AudioConfig
 import com.opentdi.shared.model.PromptCue
 import com.opentdi.shared.model.SessionConfig
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -62,6 +64,26 @@ class CueTextTest {
         // A new own recording asks for Prepare cues again.
         val recorded = named.copy(audio = AudioConfig(ownVoice = mapOf(PromptCue.WAKE_PROMPT to "abc")))
         assertTrue(cueFingerprint(named, "v") != cueFingerprint(recorded, "v"))
+    }
+
+    @Test
+    fun guide_saysTheFirstSignAsAnIfThenLine_andJoinsTheFingerprintOnlyWhenOn() {
+        val wbtb = SessionConfig(alarms = AlarmConfig(wbtbEnabled = true))
+        assertTrue(guideOn(wbtb)) // on by default once WBTB is
+        assertFalse(guideOn(SessionConfig()))
+        val off = SessionConfig(alarms = AlarmConfig(wbtbEnabled = true, wbtbGuide = false))
+        assertFalse(guideOn(off))
+        val settle = guideText(GuideClip.SETTLE, wbtb)
+        assertTrue(settle.contains("about twelve minutes, then only the soft sound will play for a few more."))
+        val generic = guideText(GuideClip.MILD, wbtb)
+        assertTrue(generic.endsWith("next time I'm dreaming, I will remember I'm dreaming."))
+        val signed = wbtb.copy(alarms = wbtb.alarms.copy(dreamSigns = listOf("my old school", "flying")))
+        val ifThen = " Next time I see my old school, I'll know I'm dreaming."
+        assertEquals(generic + ifThen, guideText(GuideClip.MILD, signed)) // the first sign only
+        // The guide on, or a new first sign, asks for Prepare cues; switched off, the cues stay ready.
+        assertNotEquals(cueFingerprint(SessionConfig(), "v"), cueFingerprint(wbtb, "v"))
+        assertNotEquals(cueFingerprint(wbtb, "v"), cueFingerprint(signed, "v"))
+        assertEquals(cueFingerprint(SessionConfig(), "v"), cueFingerprint(off, "v"))
     }
 
     @Test

@@ -240,8 +240,14 @@ class CuePlayer(private val context: Context) {
         }
     }
 
-    /** Sends [audio] for the watch to keep, not play: the spoken wake-up alarm. True when the watch stored it. */
-    suspend fun storeOnWatch(audio: WavAudio): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * Sends [audio] for the watch to keep under [name], not play: the spoken wake-up alarm, or a clip of the guided
+     * back-to-sleep (GuideClip). True when the watch stored it.
+     */
+    suspend fun storeOnWatch(
+        audio: WavAudio,
+        name: String = WristCue.WAKE_VOICE,
+    ): Boolean = withContext(Dispatchers.IO) {
         val channels = Wearable.getChannelClient(context)
         val channel = openWatchChannel(channels) ?: return@withContext false
         try {
@@ -255,7 +261,7 @@ class CuePlayer(private val context: Context) {
                 }
                 try {
                     val out = channels.getOutputStream(channel).await()
-                    WristCue.write(out, audio.samples, audio.sampleRate, calibrate = false, store = true)
+                    WristCue.write(out, audio.samples, audio.sampleRate, calibrate = false, storeAs = name)
                     WristCue.readReply(channels.getInputStream(channel).await()) {}?.status == WristCue.PLAYED
                 } finally {
                     watchdog.cancel()

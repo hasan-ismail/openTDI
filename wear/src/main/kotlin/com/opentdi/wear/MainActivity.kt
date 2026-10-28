@@ -13,11 +13,14 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -124,6 +127,7 @@ class MainActivity : ComponentActivity() {
                                     onStop = { if (state.running) page = Page.END_NIGHT else stop() },
                                     onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
                                     onStatusTap = ::onStatusTap,
+                                    onInBed = { HealthTrackingForegroundService.startGuide(this@MainActivity) },
                                     onReport = { page = Page.REPORT },
                                     onDetails = { page = Page.DETAILS },
                                     onSessions = { page = Page.SESSIONS },
@@ -144,6 +148,9 @@ class MainActivity : ComponentActivity() {
                                 Page.END_NIGHT -> EndNightScreen(onEnd = stop, onKeep = { page = Page.MAIN })
                             }
                         }
+                        if (state.guideRunning && ringing == null) {
+                            GuideScreen { HealthTrackingForegroundService.stopGuide(this@MainActivity) }
+                        }
                         // Over every page, not instead of it: an open report keeps its recording and answers underneath.
                         if (ringing != null) {
                             // The empty pointerInput keeps taps and swipes from the page underneath; BackHandler, back.
@@ -161,6 +168,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // A bezel turn stops the guided back-to-sleep here, before any view: rotary input goes only to the focused one.
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_SCROLL && ev.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER) &&
+            SensingStateHolder.state.value.guideRunning
+        ) {
+            HealthTrackingForegroundService.stopGuide(this)
+            return true
+        }
+        return super.dispatchGenericMotionEvent(ev)
     }
 
     /** Runs [then] once the microphone may be used, asking for it first; refused, nothing happens. */
@@ -266,6 +284,7 @@ private fun MainScreen(
     onStop: () -> Unit,
     onBasicSensors: () -> Unit,
     onStatusTap: (SensorStatus) -> Unit,
+    onInBed: () -> Unit,
     onReport: () -> Unit,
     onDetails: () -> Unit,
     onSessions: () -> Unit,
@@ -316,6 +335,10 @@ private fun MainScreen(
                 item { Line("A buzz says go back to sleep.") }
                 item { Line("Lie on your side to fall back asleep.") }
             }
+            if (state.guideOffered) {
+                item { Button(onClick = onInBed, modifier = Modifier.fillMaxWidth(), label = { Text("I'm in bed") }) }
+            }
+            // Only without the guided back-to-sleep: with it the cue is trained in bed, and the guide says this aloud.
             if (state.lateCuesTraining && state.wbtbBackToSleepAtMs != null) {
                 item {
                     Column(
@@ -495,6 +518,24 @@ private fun EndNightScreen(onEnd: () -> Unit, onKeep: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+/**
+ * While the guided back-to-sleep plays (owner, 2026-10-28), over every page: black, and any tap or back press stops it,
+ * as a bezel turn does ([MainActivity.dispatchGenericMotionEvent]).
+ */
+@Composable
+private fun GuideScreen(onStop: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) { detectTapGestures(onPress = { onStop() }) },
+        contentAlignment = Alignment.Center,
+    ) {
+        BackHandler(onBack = onStop)
+        Line("Tap to stop the guide", style = MaterialTheme.typography.labelSmall)
     }
 }
 

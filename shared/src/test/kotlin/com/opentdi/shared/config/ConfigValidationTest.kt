@@ -217,6 +217,16 @@ class ConfigValidationTest {
     }
 
     @Test
+    fun dreamSigns_atMostThreeShortLabels_andTheGuideIsOnByDefault() {
+        assertTrue(AlarmConfig().wbtbGuide) // GUESSED default; it applies only with the WBTB alarm on
+        assertValid(SessionConfig(alarms = AlarmConfig(wbtbEnabled = true, wbtbGuide = false)))
+        assertValid(SessionConfig(alarms = AlarmConfig(dreamSigns = listOf("flying", "my old school", "x".repeat(40)))))
+        for (signs in listOf(listOf("a", "b", "c", "d"), listOf(" "), listOf("x".repeat(41)))) {
+            assertRejected(SessionConfig(alarms = AlarmConfig(dreamSigns = signs)), "alarms.dreamSigns")
+        }
+    }
+
+    @Test
     fun theWbtbFix_leaves2hFromBackToBedToTheWakeUp() {
         val late = AlarmConfig(wakeEnabled = true, wbtbEnabled = true, wbtbAtMin = 330)
         assertEquals(270, late.wbtbAtMinBeforeWake())
@@ -297,9 +307,11 @@ class ConfigValidationTest {
         assertEquals("15", map["sensors.spo2IntervalMin"])
         assertEquals("60", map["sensors.spo2TimeoutS"])
         assertEquals("", map["simulation"])
+        assertEquals("1", map["alarms.wbtbGuide"])
+        assertEquals("", map["alarms.dreamSigns"]) // no signs: one empty row
         // One row per leaf: 7 top-level, 21 detection, 12 accel, 8 timed, 17 audio (2 caps), 12 recording, 3 link,
-        // 6 sensors, 15 alarms; audio.ownVoice is one empty row, plus audio.watchOutput.
-        assertEquals(103, rows.size)
+        // 6 sensors, 17 alarms; audio.ownVoice is one empty row, plus audio.watchOutput.
+        assertEquals(105, rows.size)
 
         val words = "You are dreaming. You are in control."
         val custom = SessionConfig(audio = AudioConfig(cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to words)))

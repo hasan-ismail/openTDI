@@ -121,10 +121,16 @@ data class DreamReport(
     val refreshed: Int? = null,
     val sleepParalysis: Boolean? = null,
     val unusualNight: Boolean? = null,
+    /** After a guided WBTB: fell asleep during the guide, YES, NO or UNSURE. */
+    val guideSleep: String? = null,
+    /** What was odd in the dream: FORM, ACTION, CONTEXT or NONE; asked only when [recalled] is YES. */
+    val odd: String? = null,
+    /** One of the sleeper's dream signs showed up; asked only when the phone had sent signs. */
+    val signSeen: Boolean? = null,
 )
 
 /** Bump whenever [summarizeNight]'s output changes for the same files. */
-const val SUMMARY_VERSION = 1
+const val SUMMARY_VERSION = 2
 
 /** The evening a time belongs to: noon to noon, so an evening and the night after it share one date. */
 fun nightDate(epochMs: Long, zone: ZoneId): LocalDate =

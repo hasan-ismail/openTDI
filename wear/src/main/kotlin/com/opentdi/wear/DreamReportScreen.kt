@@ -57,7 +57,10 @@ import kotlinx.coroutines.delay
 /**
  * The questions, in w_morning.csv's column order, and their answers as written there; a button shows [LABELS] or the
  * answer. Recall offers a white dream (sure you dreamed, no content) [38][49]; lucidity is two 0–5 ratings, insight
- * and control, as in the LuCiD scale [64]; nightmares are tagged [96][97] (sleep_and_dreams.md §8).
+ * and control, as in the LuCiD scale [64]; nightmares are tagged [96][97] (sleep_and_dreams.md §8). Owner, 2026-10-28:
+ * whether you fell asleep during the guided back-to-sleep (ILDIS asked it of MILD [67]); what was odd, in the lab
+ * dreamwork's terms "odd form, action, context" [12]; and whether a dream sign turned up, the sleeper's own test
+ * (no study has one). [shownQuestions] says when each of these three is asked.
  */
 private val QUESTIONS = listOf(
     "Do you remember a dream?" to listOf("YES", "WHITE", "NO"),
@@ -70,10 +73,35 @@ private val QUESTIONS = listOf(
     "How refreshed do you feel?" to listOf("1", "2", "3", "4", "5"),
     "Any sleep paralysis (awake but unable to move)?" to listOf("YES", "NO"),
     "Unusual night (ill, alcohol, very late)?" to listOf("YES", "NO"),
+    "Fell asleep during the guide?" to listOf("YES", "NO", "UNSURE"),
+    "What was odd?" to listOf("FORM", "ACTION", "CONTEXT", "NONE"),
+    "Did one of your signs show up?" to listOf("YES", "NO"),
 )
-private val LABELS = mapOf("WHITE" to "Sure I dreamed, no content")
-private const val NIGHTMARE = 3 // its index in QUESTIONS
-private const val SLEEP_PARALYSIS = 8 // its index in QUESTIONS
+private val LABELS = mapOf(
+    "WHITE" to "Sure I dreamed, no content",
+    "CONTEXT" to "Place or situation",
+    "NONE" to "Nothing odd",
+)
+private const val RECALLED = 0 // its index in QUESTIONS, as the ones below
+private const val NIGHTMARE = 3
+private const val SLEEP_PARALYSIS = 8
+internal const val GUIDE_SLEEP = 10
+internal const val ODD = 11
+internal const val SIGN_SEEN = 12
+
+/**
+ * The indices of the questions this report asks, in order: the guide's after a guided WBTB ([guided]), what was odd
+ * only about a remembered dream, the dream-sign question only when the phone sent signs ([signs]).
+ */
+internal fun shownQuestions(answers: Map<Int, String>, guided: Boolean, signs: Boolean): List<Int> =
+    QUESTIONS.indices.filter {
+        when (it) {
+            GUIDE_SLEEP -> guided
+            ODD -> answers[RECALLED] == "YES"
+            SIGN_SEEN -> signs
+            else -> true
+        }
+    }
 
 /**
  * The morning report (owner, 2026-10-28; lucid_induction.md §5.3), also after WBTB: say the dream into the watch, then
@@ -90,6 +118,8 @@ fun DreamReportScreen(
 ) {
     val context = LocalContext.current
     val answers = remember { mutableStateMapOf<Int, String>() }
+    val guided = remember { guideStarted(dir) }
+    val signs = remember { WakeAlarms.parse(WakeAlarms.loadConfigJson(context)).dreamSigns.isNotEmpty() }
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
     var recording by remember { mutableStateOf<String?>(null) } // the saved file's name
     var startedMs by remember { mutableLongStateOf(0L) }
@@ -107,7 +137,8 @@ fun DreamReportScreen(
         recorder?.let { stopRecorder(it) }
         recorder = null
         if (saved) return
-        save(dir, after, recording, QUESTIONS.indices.map { answers[it] })
+        val asked = shownQuestions(answers, guided, signs) // an answer to a question no longer asked is dropped
+        save(dir, after, recording, QUESTIONS.indices.map { i -> answers[i]?.takeIf { i in asked } })
         saved = true
         onSaved() // also when saved on leaving, so "Record your dream" cannot write a second row
     }
@@ -121,7 +152,7 @@ fun DreamReportScreen(
         view.keepScreenOn = recorder != null
         onDispose { view.keepScreenOn = false }
     }
-    // 0 is the recording, 1..QUESTIONS.size the questions, then Save.
+    // 0 is the recording, 1..asked.size the questions asked, then Save.
     var step by remember { mutableIntStateOf(0) }
     BackHandler(enabled = step > 0) { step-- }
     val listState = rememberTransformingLazyColumnState()
@@ -142,6 +173,7 @@ fun DreamReportScreen(
                     fun next() {
                         if (settled()) step = s + 1
                     }
+                    val asked = shownQuestions(answers, guided, signs)
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         when {
                             s == 0 -> {
@@ -196,12 +228,12 @@ fun DreamReportScreen(
                                     )
                                 }
                             }
-                            s <= QUESTIONS.size -> {
-                                val i = s - 1
+                            s <= asked.size -> {
+                                val i = asked[s - 1]
                                 val (question, options) = QUESTIONS[i]
-                                Line("$s of ${QUESTIONS.size}", style = MaterialTheme.typography.labelSmall)
+                                Line("$s of ${asked.size}", style = MaterialTheme.typography.labelSmall)
                                 Line(question, style = MaterialTheme.typography.titleMedium)
-                                val scale = options.size > 3
+                                val scale = options.first().toIntOrNull() != null
                                 // A scale in rows of three (1 to 5: three and two; 0 to 5: three and three) of
                                 // 52 dp buttons; the others one full-width button each.
                                 for (row in options.chunked(if (scale) 3 else 1)) {
@@ -328,7 +360,7 @@ private fun stopRecorder(recorder: MediaRecorder) {
 }
 
 /** Appends one w_morning.csv row, writing the header first in a new file. */
-private fun save(dir: File, after: String, recording: String?, answers: List<String?>) {
+internal fun save(dir: File, after: String, recording: String?, answers: List<String?>) {
     dir.mkdirs()
     val file = File(dir, CsvFiles.W_MORNING.name)
     val row: List<Any?> = listOf<Any?>(System.currentTimeMillis(), after, recording) + answers
@@ -337,6 +369,19 @@ private fun save(dir: File, after: String, recording: String?, answers: List<Str
     } else {
         CsvWriter(file.bufferedWriter(), CsvFiles.W_MORNING.columns).use { it.row(*row.toTypedArray<Any?>()) }
     }
+}
+
+/** True when the night in [dir] played the guided back-to-sleep: its w_alarm.csv has a GUIDE_START row. */
+internal fun guideStarted(dir: File): Boolean {
+    val rows = try {
+        File(dir, CsvFiles.W_ALARM.name).reader().use(::readCsv)
+    } catch (e: IOException) { // no alarm rang in this recording
+        return false
+    } catch (e: IllegalArgumentException) { // a row cut short when the watch died
+        return false
+    }
+    val event = rows.firstOrNull().orEmpty().indexOf("event")
+    return event >= 0 && rows.drop(1).any { it.getOrNull(event) == "GUIDE_START" }
 }
 
 /**
