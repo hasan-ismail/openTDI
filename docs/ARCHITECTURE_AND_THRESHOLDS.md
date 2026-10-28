@@ -594,7 +594,8 @@ media volume. The phone's DND, media-volume and focus rules (§7.7) do not apply
 output is not its speaker or its media volume is 0, and the watch's last test cue is its calibration: a later cue at a
 higher watch volume is scaled down with the §7.7 step 5 correction. The route's cap is the nightstand's (GUESSED).
 The phone retries reaching the watch for 30 s (GUESSED) before skipping a cue (a skipped `WAKE_PROMPT` aborts its
-cycle, row 15). Start requires a test cue played on the watch since the app started and the watch recording, whose
+cycle, row 15). A Stop closes the channel at once, but a cue already playing on the watch plays to its end. Start
+requires a test cue played on the watch since the app started and the watch recording, whose
 health FGS keeps the watch app running all night.
 
 `setPreferredDevice` is only a hint (FACT: `Engine.cpp:824-825`, `AudioPolicyManager.cpp:7986-7987`, [U] §2.4). So:

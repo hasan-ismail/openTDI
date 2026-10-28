@@ -6,6 +6,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,6 +27,15 @@ class WristCueTest {
     @Test(expected = IOException::class)
     fun read_refusesAnotherAppVersion() {
         WristCue.read(ByteArray(16) { 0x7f }.inputStream())
+    }
+
+    @Test
+    fun read_refusesMoreThanTwoMinutesOfAudio_beforeReadingSamples() { // bounds what the watch allocates
+        val header = ByteArrayOutputStream().also { WristCue.write(it, FloatArray(0), 48_000, calibrate = false) }
+            .toByteArray()
+        header[12] = 0x01 // the sample count becomes 2^24, far past the limit
+        val e = assertThrows(IOException::class.java) { WristCue.read(header.inputStream()) }
+        assertTrue(e.message.orEmpty().startsWith("bad wrist cue header")) // not a later EOF
     }
 
     @Test
