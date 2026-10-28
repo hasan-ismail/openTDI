@@ -30,7 +30,7 @@ Base URL for javadoc: `https://developer.samsung.com/health/sensor/api-reference
 | 9 | Batched heart rate: "IBI values for the complete tracking times are stored in the first data point. The other data points contain NULL." | FACT, data-specifications page; `…/tracking/data/ValueKey.HeartRateSet.html#IBI_LIST` | The parser must accept a null `IBI_LIST` and must not assume per-second IBI. |
 | 10 | Multiple continuous trackers may run at once. Only one on-demand tracker at a time. One listener per tracker type. | FACT, `…/sensor/faq.html`; `HealthTracker.setEventListener` javadoc | HR + EDA + accelerometer together is allowed. |
 | 11 | Emulator not supported. | FACT, overview, introduction and FAQ pages | Requirement A3 is confirmed. |
-
+| 12 | The SDK is Samsung's, under Samsung's license | FACT, Samsung's download page | Never commit or ship the SDK; each user downloads it from Samsung (bring your own kit). See §6. |
 | 13 | Samsung: "The developer mode is intended only for testing or debugging your app. It is not intended for app users. **Do not share the developer mode guide with app users.**" | FACT, developer-mode page; app-verification page; process page | **Tension with requirement A1**, which wants the dev-mode steps in the setup docs. Mitigation: write the setup doc for developers building from source and link to Samsung's page instead of copying it (§4). |
 | 14 | `hasResolution()` / `resolve()` require `android.permission.INTERNET` and a network connection. | FACT, `…/tracking/HealthTrackerException.html` | Add `INTERNET` to the `:wear` manifest. |
 
@@ -186,7 +186,7 @@ public final class TrackerUserProfile {                         // …/tracking/
 
 **Kotlin notes (INFERENCE, consistent with public Kotlin code):** the SDK is Java without nullability annotations, so Kotlin sees platform types. Kotlin overrides in public projects use `onDataReceived(data: MutableList<DataPoint>)` and `onConnectionFailed(e: HealthTrackerException?)`. Examples: Kaist-ICLab/EnPULSE@599cf37 `tracker-library/src/main/java/kaist/iclab/tracker/listener/SamsungHealthSensorInitializer.kt:43,120`, and Samsung's Apache-2.0 EDA sample as copied in M1chaelfmike/SamsungWatchHealthDataMonitorApplication@ef82e7b `…/edatracking/tracking/EDATrackingManager.kt:93,210-212`. Treat every `getValue` result as nullable (see `IBI_LIST` below).
 
-
+**The stub:** written from the names in Samsung's public API documentation only, never from the SDK itself, with no copied documentation text, and kept to the members OpenTDI calls.
 
 ### 2.3 Data semantics
 
@@ -334,33 +334,17 @@ FACT, `https://developer.android.com/develop/background-work/services/fgs/servic
 
 ---
 
-## 6. License (requirement A5) and the medical-use statement
+## 6. License and the wellness statement
 
-The license text is embedded in the download button on `…/sensor/overview.html` (attribute `data-terms="terms/sdk-license-partner-service-agreement.txt"`). It is titled "SAMSUNG HEALTH PARTNER SERVICE & SDK LICENSE AGREEMENT" and dated "UPDATED ON October 7, 2021". The watch's developer-mode screen also requires agreeing to "Samsung Health Partner Service & SDK License". Relevant clauses, quoted verbatim (FACT):
+The Samsung Health Sensor SDK is Samsung's own software under Samsung's license, which each developer accepts when
+downloading it from Samsung (and again when switching on the watch's developer mode). OpenTDI therefore never
+contains, commits or ships the SDK: each user downloads it from Samsung and adds it to their own phone, which converts
+it and passes it to their own watch (bring your own kit). Samsung's pages describe registering an app with Samsung
+before distributing it; without that, the SDK's sensors work only in the watch's developer mode. Read Samsung's
+license yourself before using the SDK; nothing here is legal advice.
 
-- **Definition of SDK:** "…SDK is Samsung's proprietary information and is not open source nor available in the public domain."
-
-
-
-
-
-
-
-
-**Answers (INFERENCE from the clauses above; not legal advice):**
-1. *May the AAR be committed to the public repo?* **No.** That would "redistribute … part of the SDK" (3.4). Gitignore `/wear/libs/*.aar` (the repo's `.gitignore` already does) and have each developer download it themselves, which also makes each of them accept the license. Some public repos commit it anyway (e.g. Tecdaz/remote-monitor `watch/app/libs/README.md` says the AAR is "committed for reproducibility"). That is not a precedent to follow.
-
-3. *The stub:* keep it independent of the AAR (§2.2 note).
-4. *OpenTDI's own license:* a permissive license (Apache-2.0/MIT) with a NOTICE saying the Samsung SDK is not covered avoids the copyleft conflict in 4.1(g). A GPL-family license could conflict.
-
-
-**Fitness and wellness only (FACT, for requirement G23):**
-- Release note, introduction and data-specifications pages: "Data measured by the Samsung Health Sensor SDK is for fitness and wellness information only, not for the diagnosis or treatment of any medical condition."
-
-
-- §8.2: "the SDK is not intended to be used in the development of any Service where death, personal injury, or severe physical or environmental damage could result from errors…"
-
----
+Samsung's SDK pages say its data is for fitness and wellness information only, not for diagnosing or treating any
+medical condition. OpenTDI says the same in the README and in the app.
 
 ## 7. AAR file, Gradle, dependencies, ProGuard
 

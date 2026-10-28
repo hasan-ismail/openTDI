@@ -101,7 +101,7 @@ Could not be obtained (FACT, [P] §0): P20 Appendix A (PMC proof-of-work page), 
 | `openSleep` | No LICENSE file; GitHub reports `license: null`; Swift headers say "Copyright © 2017-2019 Tomas Vega. All rights reserved." | FACT [C] §7 |
 | `dormio` | No LICENSE file; `license: null`; author Christina Chen | FACT [C] §7 |
 | Dormio Device Duo Wearable | "MIT license", stated only as a README line (`README.md:9-11`); no LICENSE file, no copyright line | FACT [D] §1 |
-
+| Samsung Health Sensor SDK | Proprietary, under Samsung's license, which each user accepts when downloading it from Samsung | FACT [S] §6 |
 
 ### 1.3 What that implies (INFERENCE, not legal advice)
 
@@ -114,17 +114,18 @@ Could not be obtained (FACT, [P] §0): P20 Appendix A (PMC proof-of-work page), 
    package facts"; `wear/libs/README.md` step 2; the file in `wear/libs/` is 61 063 bytes). Samsung's own pages call it
    `samsung-health-sensor-api.aar` ([S] §7), so the build matches both names (§11.5). `wear/libs/README.md` documents
    the step and records the file name and SHA-256 (`893cd5d6…0344c`).
-
-   ship source only.
+3. **Published apps carry no Samsung code** (owner, 2026-10-28: bring your own kit). The user downloads the SDK from
+   Samsung and adds it to the phone app, which converts it (D8) and sends it to the watch app (`SamsungKit`). Samsung's
+   pages describe registering an app with Samsung before distributing it; until then its sensors work in developer
+   mode only. Checked per release: no `com.samsung` class is defined in either APK or in the phone's `assets/watch.apk`.
 4. **The compile stub** `:samsung-health-stub` is written only from the public javadoc signatures in [S] §2, with no
    copied javadoc text, and contains only the members OpenTDI calls ([S] §2.2 license caution).
 5. **OpenTDI's own license is decided: GPL-3.0** (FACT: `LICENSE` line 1 "GNU GENERAL PUBLIC LICENSE Version 3"; commit
    9901e3d "Scaffold OpenTDI: … GPL-3.0") **with a GPL §7 additional permission for linking with the Samsung SDK**
    (`NOTICE`: "… linking or combining it with the Samsung Health Sensor SDK … the Samsung Health Sensor SDK is not made
-
-   forbids making the SDK "subject to the licensing terms" of third-party software; the §7 exception is what addresses
-   that (INFERENCE, not legal advice). Do not relicense. §17.2 O1 is closed.
-
+   subject to the terms of this License"). The exception keeps the Samsung SDK out of the GPL's terms (INFERENCE, not
+   legal advice). Do not relicense. §17.2 O1 is closed.
+6. **Disclaimers.** Show the wellness statement (§17.4) before first use (the set-up guide's safety step, the README).
 
 ---
 
@@ -2271,7 +2272,7 @@ Inputs are synthetic packet lists built from the generator of §13 or small hand
 
 | ID | Decision | Options / recommendation |
 |---|---|---|
-
+| O1 | OpenTDI license | **Decided** (closed): GPL-3.0 with a GPL §7 additional permission for linking with the Samsung SDK (`LICENSE`, `NOTICE`), which keeps the SDK out of the GPL's terms (INFERENCE, not legal advice) |
 | O2 | Enum name `MIT_STANDARD` | Keep (D10) with the "Standard" label, or rename to `STANDARD` before Phase 2 freezes the wire format |
 | O3 | `SDK_POLICY_ERROR` text | Samsung: "Do not share the developer mode guide with app users" vs owner A2. Current text names developer mode and points to the developer guide |
 | O4 | Fixed vs random countdown | P20's lab protocol drew 1–5 min at random per loop ([P] §1.2 #5); the app presets were fixed (1 / 1.5 / 3 min). Current: fixed 180 s; a "random 60–300 s per cycle" option is cheap to add |

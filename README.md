@@ -40,12 +40,16 @@ The phone shows these live.
 
 ## What you need
 
-- A **Samsung Galaxy Watch8 or Watch8 Classic**, for all the sensors. Older Galaxy Watches (Watch4 and later) should
-  work with fewer sensors (no skin response, for example); only the Watch8 Classic has been tested.
-- An **Android phone** with Android 13 or newer.
-- **A computer, for now.** OpenTDI is not in any app store yet: you build it and copy it to your devices yourself
-  (see [For developers](#for-developers)). That is because Samsung only allows apps that use its watch sensors to be
-  shared once Samsung has approved them.
+- A **Samsung Galaxy Watch** with Wear OS (Watch4 and later; only the Watch8 Classic has been tested) and an
+  **Android phone** with Android 13 or newer, on the same Wi-Fi.
+- That's all for the cues, the alarms and the dream report: they use the watch's heart rate and movement.
+- **Optional: Samsung's sensor kit**, for skin response, skin temperature, blood oxygen and the raw pulse signal. OpenTDI
+  contains no Samsung code: you download the kit yourself from Samsung and add it in the phone app, which passes it to
+  your watch. Samsung's sensors then also need the watch's developer mode, which Samsung explains on its
+  [developer-mode page](https://developer.samsung.com/health/sensor/guide/developer-mode.html).
+
+**Installing:** download `OpenTDI-phone.apk` from the [Releases](../../releases) page and open it on the phone. Its set-up
+guide walks you through the rest, including putting OpenTDI on the watch over Wi-Fi.
 
 ## What works today
 
@@ -151,10 +155,9 @@ asks that this guide is not given to ordinary app users: it is a developer step 
 OpenTDI is free software under the **GNU General Public License, version 3** ([LICENSE](LICENSE)). In short: you may
 use, study, change and share it, and anything you share that is built from it must stay open under the same license.
 
-[NOTICE](NOTICE) adds one exception so OpenTDI can work with Samsung's sensor kit, which is Samsung's own property under
-Samsung's license and is never part of this repository. Samsung's terms do not allow the kit to be redistributed, and
-require Samsung's approval before an app using it is published. So for now OpenTDI is shared as source code only. (This
-is our reading of Samsung's license, not legal advice.)
+[NOTICE](NOTICE) adds one exception so OpenTDI can work with Samsung's sensor kit. The kit is Samsung's own property
+under Samsung's license, which each user accepts when downloading it from Samsung; it is never part of this
+repository or of OpenTDI's apps. Read Samsung's license before you use the kit. (This is not legal advice.)
 
 ## Thanks
 

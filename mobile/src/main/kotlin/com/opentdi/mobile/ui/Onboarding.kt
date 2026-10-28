@@ -137,12 +137,9 @@ private fun Bullets(vararg lines: String) {
 private fun SensorsStep(onAllowBattery: () -> Unit) {
     Section(null) {
         Text("Optional: Samsung's own sensors. The cues work with the watch's basic sensors too.")
-        Text("Samsung only lets approved apps read the watch's sensors, or any app in developer mode.")
-        Bullets(
-            "On the watch: Settings > Apps > Health Platform (or Health Sensor Service).",
-            "Tap the title at the top about 10 times, not the version number.",
-            "Tap Developer mode, accept Samsung's terms and switch it on.",
-        )
+        Text("Samsung only lets approved apps read its sensors, or any app while the watch is in developer mode.")
+        // Samsung asks that its developer-mode guide come from Samsung, so the app links to it instead of copying it.
+        Help("Samsung explains developer mode on developer.samsung.com/health/sensor/guide/developer-mode.html.")
         Text("Then add Samsung's kit below (it stays on your devices).")
         Text("So Android does not stop a night's session:")
         Button(onClick = onAllowBattery, modifier = Modifier.fillMaxWidth()) { Text("Allow unrestricted battery") }
