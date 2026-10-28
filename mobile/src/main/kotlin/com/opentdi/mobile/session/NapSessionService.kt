@@ -39,6 +39,7 @@ import com.opentdi.mobile.cues.loadPreparedCues
 import com.opentdi.mobile.loadCalibratedIndex
 import com.opentdi.mobile.loadConfig
 import com.opentdi.mobile.logLine
+import com.opentdi.mobile.stats.NightsRepository
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.audio.WavAudio
 import com.opentdi.shared.audio.renderEndChime
@@ -303,6 +304,7 @@ class NapSessionService : LifecycleService() {
             lifecycleScope.launch {
                 last?.join()
                 release()
+                NightsRepository.syncInBackground(applicationContext) // outlives the service; best effort
                 SessionMonitor.update { it.copy(running = false, nextEventAtRealtimeMs = null) }
                 session = null
                 stopForeground(STOP_FOREGROUND_REMOVE)

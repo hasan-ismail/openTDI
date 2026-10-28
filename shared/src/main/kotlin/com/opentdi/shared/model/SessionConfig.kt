@@ -147,7 +147,9 @@ data class AlarmConfig(
     val wakeAtMin: Int = 420, // 0..1439 (07:00)
     val wakeTone: AlarmTone = AlarmTone.MELODY,
     val wbtbEnabled: Boolean = false,
-    val wbtbAtMin: Int = 330, // 0..1439 (05:30): about 6 h after a 23:30 sleep onset (lucid_induction.md §5)
+    // 0..1439 (04:30; owner, 2026-10-28: "do earlier wbtb"), GUESSED: with 30 min awake it leaves 2 h before a 07:00
+    // wake-up (wakeTooSoonAfterWbtb); about 5 h after a 23:30 sleep onset, inside lucid_induction.md §5.2's 4.5–6.5 h
+    val wbtbAtMin: Int = 270,
     val wbtbTone: AlarmTone = AlarmTone.VIBRATE_ONLY, // rarely wakes anyone else; adds sound after 2 min
     val wbtbAwakeMin: Int = 30, // 5..60: 30+ min awake predicted success (LaBerge 2018); then a buzz says sleep
     val rampS: Int = 30, // 0..300: the tone rises from quiet to the watch's alarm volume

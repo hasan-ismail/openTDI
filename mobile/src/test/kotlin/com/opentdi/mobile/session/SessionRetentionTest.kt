@@ -68,12 +68,14 @@ class SessionRetentionTest {
             File(root, "keep-me").mkdirs()
             File(root, "20260101T000000Z-0000").writeText("a file, not a session directory")
             File(filesDir, "cues").mkdirs()
+            val watchCopy = File(filesDir, "watch/20250101T000000Z-0001").apply { mkdirs() } // older than all of them
 
             deleteOldSessions(filesDir)
 
             val left = root.list()!!.toSet()
             assertEquals(ids.sorted().drop(2).toSet() + "keep-me" + "20260101T000000Z-0000", left)
             assertTrue(File(filesDir, "cues").isDirectory)
+            assertTrue(watchCopy.isDirectory) // the stats' copies of watch sessions are not phone sessions
         } finally {
             filesDir.deleteRecursively()
         }

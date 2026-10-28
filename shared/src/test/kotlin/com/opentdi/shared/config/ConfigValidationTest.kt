@@ -4,6 +4,7 @@ import com.opentdi.shared.audio.targetGain
 import com.opentdi.shared.config.StructuralConstants.nEdaMin
 import com.opentdi.shared.config.StructuralConstants.nHrMin
 import com.opentdi.shared.config.StructuralConstants.nStillMin
+import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.AudioConfig
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.model.DetectionConfig
@@ -18,6 +19,7 @@ import com.opentdi.shared.model.SimulationMode
 import com.opentdi.shared.model.TimedCueConfig
 import com.opentdi.shared.model.TtsEngine
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -194,6 +196,33 @@ class ConfigValidationTest {
         assertEquals(1, warnings.size)
         assertTrue(warnings[0], warnings[0].startsWith("USER_GAIN_CLAMPED"))
         assertEquals(0.3f, config.audio.targetGain(), 0f)
+    }
+
+    @Test
+    fun wakeUpLessThan2hAfterBackToBed_warnsOnlyWithBothAlarmsOn() {
+        fun warned(alarms: AlarmConfig): Boolean {
+            val config = SessionConfig(alarms = alarms)
+            assertValid(config) // a warning, never an error
+            return config.warnings().any { it.startsWith("WAKE_SOON_AFTER_WBTB") }
+        }
+        val both = AlarmConfig(wakeEnabled = true, wbtbEnabled = true) // 04:30, 30 min up, wake-up 07:00
+        assertFalse(warned(both)) // exactly 2 h
+        assertTrue(warned(both.copy(wbtbAtMin = 330))) // the old 05:30 left 1 h
+        assertEquals(1, SessionConfig(alarms = both.copy(wbtbAtMin = 330)).warnings().size)
+        assertFalse(warned(both.copy(wbtbAtMin = 330, wakeEnabled = false)))
+        assertFalse(warned(both.copy(wbtbAtMin = 330, wbtbEnabled = false)))
+        assertTrue(warned(both.copy(wbtbAtMin = 400, wakeAtMin = 410))) // the wake-up rings while still up
+        assertTrue(warned(both.copy(wbtbAtMin = 23 * 60, wakeAtMin = 60))) // across midnight: 1 h 30 min
+        assertFalse(warned(both.copy(wbtbAtMin = 22 * 60 + 30, wakeAtMin = 60))) // 2 h
+    }
+
+    @Test
+    fun theWbtbFix_leaves2hFromBackToBedToTheWakeUp() {
+        val late = AlarmConfig(wakeEnabled = true, wbtbEnabled = true, wbtbAtMin = 330)
+        assertEquals(270, late.wbtbAtMinBeforeWake())
+        assertFalse(late.copy(wbtbAtMin = late.wbtbAtMinBeforeWake()).wakeTooSoonAfterWbtb())
+        assertEquals(22 * 60 + 30, AlarmConfig(wakeAtMin = 60).wbtbAtMinBeforeWake()) // across midnight
+        assertEquals(23 * 60 + 15, AlarmConfig(wakeAtMin = 120, wbtbAwakeMin = 45).wbtbAtMinBeforeWake())
     }
 
     @Test

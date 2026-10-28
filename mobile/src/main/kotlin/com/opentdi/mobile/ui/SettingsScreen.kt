@@ -57,6 +57,8 @@ import com.opentdi.mobile.cues.cueText
 import com.opentdi.mobile.cues.mitThemeCueText
 import com.opentdi.mobile.cues.speakerLabel
 import com.opentdi.mobile.session.SessionMonitor
+import com.opentdi.shared.config.wakeTooSoonAfterWbtb
+import com.opentdi.shared.config.wbtbAtMinBeforeWake
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.model.EndAlarm
 import com.opentdi.shared.model.PromptCue
@@ -435,13 +437,24 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
         if (alarms.wbtbEnabled) {
             TimeRow("Wake briefly at", alarms.wbtbAtMin, enabled) { m -> change { it.copy(wbtbAtMin = m) } }
             Help(
-                "About 6 hours after you fall asleep. Stay up for a while, recall your last dream and repeat " +
+                "About 5 to 6 hours after you fall asleep. Stay up for a while, recall your last dream and repeat " +
                     "\"next time I'm dreaming, I'll remember I'm dreaming\"; a buzz then says go back to sleep. " +
-                    "1 to 3 nights a week; set the wake-up alarm at least 30 min later.",
+                    "1 to 3 nights a week; set the wake-up alarm at least 2 h after you go back to bed.",
             )
             IntSetting(
                 "Stay up for", "Before the back-to-sleep buzz.", alarms.wbtbAwakeMin, 5..60, 5, "min", enabled,
             ) { v -> change { it.copy(wbtbAwakeMin = v) } }
+            if (alarms.wakeTooSoonAfterWbtb()) {
+                Text(
+                    "Your wake-up is less than 2 h after you go back to bed: dreams after WBTB usually start about " +
+                        "75 min later.",
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+                TextButton(
+                    onClick = { change { it.copy(wbtbAtMin = it.wbtbAtMinBeforeWake()) } },
+                    enabled = enabled,
+                ) { Text("Wake briefly at ${hhmm(alarms.wbtbAtMinBeforeWake())} instead") }
+            }
             ToneChips(alarms.wbtbTone, enabled, onTest) { t -> change { it.copy(wbtbTone = t) } }
             LateCuesSettings(alarms, enabled, viewModel, ::change)
         }

@@ -3,6 +3,7 @@ package com.opentdi.shared.config
 import com.opentdi.shared.config.StructuralConstants.nEdaMin
 import com.opentdi.shared.config.StructuralConstants.nHrMin
 import com.opentdi.shared.config.StructuralConstants.nStillMin
+import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.LateCueMode
 import com.opentdi.shared.model.NEURAL_SPEAKERS
 import com.opentdi.shared.model.SessionConfig
@@ -147,15 +148,43 @@ fun SessionConfig.validate(): List<String> {
     return errors
 }
 
-/** Non-fatal issues. USER_GAIN_CLAMPED: userGain above the route's cap is clamped at playback (§7.7 step 3). */
-fun SessionConfig.warnings(): List<String> {
-    val cap = audio.routeCapGain[audio.route] ?: return emptyList()
-    return if (audio.userGain > cap) {
-        listOf(
+/**
+ * Non-fatal issues. USER_GAIN_CLAMPED: userGain above the route's cap is clamped at playback (§7.7 step 3).
+ * WAKE_SOON_AFTER_WBTB: [wakeTooSoonAfterWbtb].
+ */
+fun SessionConfig.warnings(): List<String> = buildList {
+    val cap = audio.routeCapGain[audio.route]
+    if (cap != null && audio.userGain > cap) {
+        add(
             "USER_GAIN_CLAMPED: audio.userGain = ${audio.userGain} exceeds audio.routeCapGain.${audio.route} = $cap; " +
                 "cues play at $cap",
         )
-    } else {
-        emptyList()
+    }
+    if (alarms.wakeTooSoonAfterWbtb()) {
+        add(
+            "WAKE_SOON_AFTER_WBTB: alarms.wakeAtMin = ${alarms.wakeAtMin} is less than " +
+                "$MIN_WAKE_AFTER_BACK_TO_BED_MIN min after alarms.wbtbAtMin = ${alarms.wbtbAtMin} + " +
+                "alarms.wbtbAwakeMin = ${alarms.wbtbAwakeMin}",
+        )
     }
 }
+
+/**
+ * The least time from going back to bed after WBTB (wbtbAtMin + wbtbAwakeMin) to the wake-up (owner, 2026-10-28: "do
+ * earlier wbtb"). GUESSED from sleep_and_dreams.md: after a WBTB break REM came back about 75 min after going back to
+ * bed (31.5 min to fall asleep + 42.1 min, §1 [12]), and late-night REM episodes run up to 30–40 min (§1 [4]).
+ */
+const val MIN_WAKE_AFTER_BACK_TO_BED_MIN = 120
+
+/**
+ * Both alarms on, and the wake-up comes less than wbtbAwakeMin + [MIN_WAKE_AFTER_BACK_TO_BED_MIN] after the WBTB alarm
+ * (minutes of day, across midnight). A wake-up inside the time awake counts too.
+ */
+fun AlarmConfig.wakeTooSoonAfterWbtb(): Boolean = wakeEnabled && wbtbEnabled &&
+    Math.floorMod(wakeAtMin - wbtbAtMin, MINUTES_PER_DAY) < wbtbAwakeMin + MIN_WAKE_AFTER_BACK_TO_BED_MIN
+
+/** The WBTB alarm time that leaves exactly [MIN_WAKE_AFTER_BACK_TO_BED_MIN] from back to bed to the wake-up. */
+fun AlarmConfig.wbtbAtMinBeforeWake(): Int =
+    Math.floorMod(wakeAtMin - wbtbAwakeMin - MIN_WAKE_AFTER_BACK_TO_BED_MIN, MINUTES_PER_DAY)
+
+private const val MINUTES_PER_DAY = 24 * 60
