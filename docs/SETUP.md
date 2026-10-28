@@ -31,7 +31,7 @@ W=<WATCH_SERIAL>; P=<PHONE_SERIAL>
 Build everything and run the unit tests:
 
 ```bash
-./gradlew :shared:test :wear:assembleDebug :mobile:assembleDebug
+./gradlew :shared:test :wear:testDebugUnitTest :mobile:testDebugUnitTest :wear:assembleDebug :mobile:assembleDebug
 ```
 
 ## 2. Samsung Health Sensor SDK
@@ -178,10 +178,11 @@ adb -s $W exec-out run-as --user 0 com.opentdi cat files/sessions/<sessionId>/w_
   files.
 - Run these in a POSIX shell (Git Bash on Windows). Windows PowerShell 5.1's `>` re-encodes the output as text and
   corrupts the tar file.
-- Phase 1 files: on the watch `w_config.csv`, `w_sensor_raw.csv`, `w_packets.csv` and `w_accel_events.csv`; on the
-  phone `p_config.csv`, `p_transitions.csv` and `p_audio.csv`. Spec §12.2–12.3 describes every file and column. From
-  Phase 2 the phone also keeps `files/journal/`.
-- The apps delete all but the last 30 sessions when they start, so copy what you want to keep.
+- Phase 1 files: on the watch `w_config.csv`, `w_sensor_raw.csv`, `w_packets.csv`, `w_accel_events.csv` and, only
+  when "Log raw accelerometer" is on, `w_accel_raw.csv`; on the phone `p_config.csv`, `p_transitions.csv` and
+  `p_audio.csv`. Spec §12.2–12.3 describes every file and column. From Phase 2 the phone also keeps `files/journal/`.
+- All but the last 30 sessions are deleted, on the phone when the app starts and on the watch when a logging session
+  starts, so copy what you want to keep.
 
 ## 9. Hardware checks
 

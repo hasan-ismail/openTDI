@@ -9,8 +9,10 @@ license, which does not grant redistribution — so the AAR is gitignored and ev
    (`wear/libs/`). SHA-256 of the copy this project was built against:
    `893cd5d6564db0f304bf511a555c1d65ca6bccc8475fc979ff1d71d50680344c`.
 3. Build normally. Without the AAR, `:wear` compiles against `:samsung-health-stub` and falls back to Android's
-   `SensorManager` heart rate + accelerometer (no EDA, no IBI); the watch shows "Samsung SDK not bundled".
+   `SensorManager` heart rate + accelerometer (no EDA, no IBI); the watch shows "This build has no Samsung sensor
+   SDK. Using basic watch sensors (no EDA or beat-to-beat data)." `-Popentdi.forceSamsungStub=true` builds that stub
+   path even when the AAR is present.
 
-On the watch, the SDK only serves apps registered with Samsung unless **Health Platform developer mode** is on:
-Settings → Apps → Health Platform → tap the title ~10 times until "[Dev mode]" appears. SDK 1.4.x needs
-Health Platform (`com.samsung.android.service.health`) 1.6.5 or newer. The emulator is not supported.
+On the watch, the SDK only serves apps registered with Samsung unless Health Sensor Service developer mode is on:
+see [docs/SETUP.md](../../docs/SETUP.md) sections 3–4, which also give the 1.6.5 minimum version. The emulator is not
+supported.

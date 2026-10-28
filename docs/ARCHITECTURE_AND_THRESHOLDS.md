@@ -570,7 +570,9 @@ log `route_mismatch` and skip the cue; keep an `OnRoutingChangedListener` on the
 | `WAKE_PROMPT` | `AUDIOFOCUS_GAIN_TRANSIENT` | cycle aborted: `CycleStage(CYCLE_COMPLETE, ABORTED_AUDIO)` (row 15) | stop; cycle aborted |
 | Recording | `AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE` for the whole of `RECORDING_DREAM` | record anyway, log | keep recording, log |
 
-Focus is abandoned with the same `AudioFocusRequest` instance after each cue.
+Focus is abandoned with the same `AudioFocusRequest` instance after each cue. A loss is `AUDIOFOCUS_LOSS` or
+`AUDIOFOCUS_LOSS_TRANSIENT`; `AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK` (e.g. a notification sound) is ignored, because the
+system never ducks a speech track and the cue plays on.
 
 **Do Not Disturb** (FACT, AOSP `ZenModeHelper.java:2281-2321`, [U] §3.2): Total silence mutes `USAGE_MEDIA`; Priority
 mode mutes media unless media is allowed (AOSP default allows it; the One UI default is unknown); Alarms-only does not
