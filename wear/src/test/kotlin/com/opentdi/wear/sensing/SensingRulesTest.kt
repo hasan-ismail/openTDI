@@ -106,7 +106,11 @@ class SensingRulesTest {
         val activity = "android.permission.ACTIVITY_RECOGNITION"
         val notifications = "android.permission.POST_NOTIFICATIONS"
         assertEquals(
-            listOf("android.permission.health.READ_HEART_RATE", READ_ADDITIONAL_HEALTH_DATA, activity, notifications),
+            listOf(
+                "android.permission.health.READ_HEART_RATE", READ_ADDITIONAL_HEALTH_DATA, activity,
+                "android.permission.health.READ_SKIN_TEMPERATURE", "android.permission.health.READ_OXYGEN_SATURATION",
+                notifications,
+            ),
             runtimePermissions(36),
         )
         assertEquals(
@@ -117,6 +121,27 @@ class SensingRulesTest {
             listOf("android.permission.BODY_SENSORS", READ_ADDITIONAL_HEALTH_DATA, activity),
             runtimePermissions(30),
         )
+    }
+
+    @Test
+    fun extraPermissions_followSamsungsTable() {
+        assertEquals("android.permission.health.READ_SKIN_TEMPERATURE", extraPermission(ExtraTracker.SKIN_TEMP, 36))
+        assertEquals("android.permission.health.READ_OXYGEN_SATURATION", extraPermission(ExtraTracker.SPO2, 36))
+        assertEquals(READ_ADDITIONAL_HEALTH_DATA, extraPermission(ExtraTracker.PPG, 36))
+        ExtraTracker.entries.forEach { assertEquals("android.permission.BODY_SENSORS", extraPermission(it, 35)) }
+        // Every extra's API 36 permission is requested with the others, so starting a session asks for it.
+        ExtraTracker.entries.forEach { assertTrue(extraPermission(it, 36) in runtimePermissions(36)) }
+    }
+
+    @Test
+    fun spo2Checks_firstAt2Min_thenEveryInterval() {
+        val due = (0L..3_000L).filter { spo2CheckDue(it, intervalMin = 15) }
+        assertEquals(listOf(120L, 1020L, 1920L, 2820L), due)
+        assertTrue(spo2CheckDue(420, intervalMin = 5))
+        assertFalse(spo2CheckDue(419, intervalMin = 5))
+        assertTrue(spo2Finished(2)) // completed
+        assertTrue(spo2Finished(-6)) // Samsung's own timeout
+        listOf(0, -4, -5, null).forEach { assertFalse("$it", spo2Finished(it)) } // calculating, moved, weak signal
     }
 
     @Test

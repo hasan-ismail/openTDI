@@ -2,6 +2,7 @@ package com.opentdi.shared.sensing
 
 import com.opentdi.shared.model.BiosignalPacket
 import com.opentdi.shared.model.SensorSource
+import com.opentdi.shared.model.SensorsConfig
 import com.opentdi.shared.model.SessionConfig
 import kotlin.math.sqrt
 import org.junit.Assert.assertEquals
@@ -139,6 +140,41 @@ class PacketAggregatorTest {
         val packets = agg.poll(T + 3150).map { it.packet }
         assertEquals(listOf(2.0f, null, 2.2f), packets.map { it.skinConductance })
         assertEquals(listOf(0, -5, 0), packets.map { it.edaStatus })
+    }
+
+    @Test
+    fun skinTemp_heldUpTo120s_errorStatusIgnored() {
+        val agg = aggregator(Tracker.HR)
+        agg.addSkinTempBatch(
+            listOf(SkinTempDataPoint(T + 200, 33.5f, 24f, 0), SkinTempDataPoint(T + 10_200, 20f, 24f, -1)),
+        )
+        agg.addHrBatch((0..130).map { hr(T + it * 1000L + 500) }, T + 131_000)
+        val skin = agg.poll(T + 131_000).map { it.packet.skinTemperature }
+        assertEquals(List(121) { 33.5f } + List(9) { null }, skin) // bins 0..120 hold it, 121..129 do not
+    }
+
+    @Test
+    fun skinTemp_lateValueStillHoldsLaterBins_newerReplacesIt() {
+        val agg = aggregator(Tracker.HR)
+        agg.addHrBatch((0..4).map { hr(T + it * 1000L + 500) }, T + 5_000)
+        assertEquals(List(4) { null }, agg.poll(T + 5_000).map { it.packet.skinTemperature })
+        // Sampled in bin 1, which already went out, and in bin 5.
+        agg.addSkinTempBatch(
+            listOf(SkinTempDataPoint(T + 1_500, 33f, null, 0), SkinTempDataPoint(T + 5_200, 34f, null, 0)),
+        )
+        agg.addHrBatch((5..7).map { hr(T + it * 1000L + 500) }, T + 8_000)
+        assertEquals(listOf(33f, 34f, 34f), agg.poll(T + 8_000).map { it.packet.skinTemperature })
+    }
+
+    @Test
+    fun spo2_heldUntilTheNextCheckCouldHaveCompleted() {
+        val config = SessionConfig(sensors = SensorsConfig(spo2IntervalMin = 5, spo2TimeoutS = 30))
+        val agg = PacketAggregator(config, SensorSource.SAMSUNG_SDK, setOf(Tracker.HR))
+        agg.addSpo2(T + 40_300, 96)
+        agg.addHrBatch((0..372).map { hr(T + it * 1000L + 500) }, T + 373_000)
+        val spo2 = agg.poll(T + 373_000).map { it.packet.spo2 }
+        // Sampled in bin 40 and held 5 min + 30 s: bins 40..370.
+        assertEquals(List(40) { null } + List(331) { 96 } + listOf(null), spo2)
     }
 
     @Test

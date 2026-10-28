@@ -1,5 +1,6 @@
 package com.opentdi.shared.sensing
 
+import com.opentdi.shared.config.StructuralConstants
 import com.opentdi.shared.model.BiosignalPacket
 import com.opentdi.shared.model.SensorSource
 import com.opentdi.shared.model.SessionConfig
@@ -20,6 +21,14 @@ data class EdaDataPoint(
     val timestampMs: Long,
     val skinConductance: Float?, // µS
     val status: Int?, // 0 = normal
+)
+
+/** One `SkinTemperatureSet` data point. */
+data class SkinTempDataPoint(
+    val timestampMs: Long,
+    val objectTemp: Float?, // °C, the skin under the watch
+    val ambientTemp: Float?, // °C, around the watch
+    val status: Int?, // 0 = normal, -1 = error
 )
 
 /** The sensor streams a bin can wait for. */
@@ -55,6 +64,9 @@ class PacketAggregator(
     private val hrHoldMaxMs = config.detection.hrHoldMaxS * 1000L
     private val rmssdWindowMs = config.detection.rmssdWindowS * 1000L
     private val deadlineMs = DEADLINE_SDK_FLUSHES * config.link.sdkFlushS * 1000L
+    private val spo2HoldMs = (config.sensors.spo2IntervalMin * 60L + config.sensors.spo2TimeoutS) * 1000L
+    private val skinTemps = HeldValues<Float>()
+    private val spo2s = HeldValues<Int>()
 
     private val bins = HashMap<Long, Bin>() // not yet emitted, by start
     private var nextBin: Long? = null
@@ -105,6 +117,20 @@ class PacketAggregator(
         noteArrival(Tracker.ACCEL, seconds.maxOf { it.startMs } + 1000, arrivalWallMs)
         for (second in seconds) binAt(second.startMs)?.accel = second
     }
+
+    /**
+     * Adds one batch of the skin-temperature tracker. It never holds a bin back (it is not an active tracker), and a
+     * point that arrives after its bin went out still sets the held value of the bins after it.
+     */
+    fun addSkinTempBatch(points: List<SkinTempDataPoint>) {
+        for (p in points) {
+            val celsius = p.objectTemp
+            if (p.status == SKIN_TEMP_STATUS_OK && celsius != null) skinTemps.add(p.timestampMs, celsius)
+        }
+    }
+
+    /** Adds a completed SpO2 spot check, held until the next check could have completed (interval + timeout). */
+    fun addSpo2(timestampMs: Long, spo2: Int) = spo2s.add(timestampMs, spo2)
 
     /** Emits, in order, every bin that is complete or past its deadline at [nowWallMs]. */
     fun poll(nowWallMs: Long): List<EmittedPacket> {
@@ -204,6 +230,8 @@ class PacketAggregator(
             limpEvent = accel?.limpEvent == true,
             stillnessScore = accel?.stillnessScore,
             source = source,
+            skinTemperature = skinTemps.at(start, SKIN_TEMP_HOLD_MS),
+            spo2 = spo2s.at(start, spo2HoldMs),
         )
         return EmittedPacket(packet, accel?.tiltDeg, accel?.sampleCount ?: 0, nowWallMs)
     }
@@ -220,11 +248,30 @@ class PacketAggregator(
         const val RMSSD_MIN_PAIRS = 20
         const val EDA_MIN_US = 0.05f
         const val DEADLINE_SDK_FLUSHES = 2
+        const val SKIN_TEMP_HOLD_MS = StructuralConstants.SKIN_TEMP_HOLD_S * 1000L
 
         private const val HR_STATUS_OK = 1
         private const val IBI_STATUS_OK = 0
         private const val EDA_STATUS_OK = 0
+        private const val SKIN_TEMP_STATUS_OK = 0
         private const val CLOCK_OFFSET_ARRIVALS = 64
+    }
+}
+
+/**
+ * Values of one slow stream in sample-time order (Samsung keeps each tracker's order). [at] gives the newest value
+ * sampled before a bin's end, if it was sampled at most maxAgeMs before the bin; ask for bins in increasing order.
+ */
+private class HeldValues<T : Any> {
+    private val values = ArrayDeque<Pair<Long, T>>()
+
+    fun add(timeMs: Long, value: T) = values.addLast(timeMs to value)
+
+    fun at(binStart: Long, maxAgeMs: Long): T? {
+        val end = binStart + 1000
+        while (values.size > 1 && values[1].first < end) values.removeFirst()
+        val (timeMs, value) = values.firstOrNull()?.takeIf { it.first < end } ?: return null
+        return value.takeIf { binStart - binStartMs(timeMs) <= maxAgeMs }
     }
 }
 

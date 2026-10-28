@@ -43,6 +43,7 @@ class SerializationTest {
             ttsSpeechRate = 0.6f,
             cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to "You are dreaming. You are in control."),
         ),
+        sensors = SensorsConfig(ppgChannels = setOf(PpgChannel.GREEN, PpgChannel.RED), spo2IntervalMin = 30),
         simulation = SimulationMode.FAST_HYPNAGOGIA,
     )
 
@@ -53,6 +54,7 @@ class SerializationTest {
     fun everyContract_roundTrips() {
         roundTrip(packet)
         roundTrip(packet.copy(hr = null, ibiList = emptyList(), stillnessScore = null, accelRms = null))
+        roundTrip(packet.copy(skinTemperature = 33.25f, spo2 = 96))
         roundTrip(score)
         roundTrip(baseline)
         roundTrip(
@@ -107,6 +109,7 @@ class SerializationTest {
         enumOnTheWire<RouteLossPolicy>()
         enumOnTheWire<EndAlarm>()
         enumOnTheWire<PriorHrSource>()
+        enumOnTheWire<PpgChannel>()
     }
 
     @Test
@@ -140,6 +143,10 @@ class SerializationTest {
         assertEquals(Ack(true), OpenTdiJson.decodeFromString<Ack>("""{"ok":true,"futureField":3}"""))
         val packetJson = OpenTdiJson.encodeToString(packet).replaceFirst("{", """{"tiltDeg":3.5,""")
         assertEquals(packet, OpenTdiJson.decodeFromString<BiosignalPacket>(packetJson))
+        // The skin temperature and SpO2 fields are additive: absent from older JSON, omitted on the wire when null.
+        assertFalse("skinTemperature" in packetJson || "spo2" in packetJson)
+        val olderConfig = OpenTdiJson.encodeToString(config).replace(Regex(""","sensors":\{[^}]*}"""), "")
+        assertEquals(config.copy(sensors = SensorsConfig()), OpenTdiJson.decodeFromString<SessionConfig>(olderConfig))
     }
 
     @Test

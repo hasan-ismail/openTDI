@@ -102,6 +102,53 @@ public class ValueKey.AccelerometerSet {
 }
 ```
 
+### Logging-only trackers (skin temperature, raw PPG, SpO2 spot checks)
+
+Read from Samsung's public reference on 2026-10-27; the `:samsung-health-stub` holds exactly these members, and
+compiling `:wear` against the AAR confirmed every name and type. Base URL:
+`https://developer.samsung.com/health/sensor/api-reference/com/samsung/android/service/health/tracking/`.
+
+```java
+// data/ValueKey.SkinTemperatureSet.html (since 1.2.0): for SKIN_TEMPERATURE_CONTINUOUS and _ON_DEMAND
+public static class ValueKey.SkinTemperatureSet {
+  public static final ValueKey<Float> OBJECT_TEMPERATURE;   // °C, "Temperature of an object contacted with the Galaxy Watch"
+  public static final ValueKey<Float> AMBIENT_TEMPERATURE;  // °C, ambient temperature around the watch
+  public static ValueKey<Integer> STATUS;                   // 0 normal, -1 error (the page shows no `final` here)
+}
+// data/ValueKey.SpO2Set.html (since 1.1.0): for SPO2_ON_DEMAND
+public static class ValueKey.SpO2Set {
+  public static final ValueKey<Integer> STATUS;      // 0 calculating, 2 completed, -4 device moved, -5 low signal, -6 time out
+  public static final ValueKey<Integer> SPO2;        // %
+  public static final ValueKey<Integer> HEART_RATE;  // bpm
+}
+// data/ValueKey.PpgSet.html (since 1.3.0): for PPG_CONTINUOUS and PPG_ON_DEMAND
+public static class ValueKey.PpgSet {
+  public static final ValueKey<Integer> PPG_GREEN, PPG_IR, PPG_RED;           // green LED ADC value; IR / red raw values
+  public static final ValueKey<Integer> GREEN_STATUS, IR_STATUS, RED_STATUS;  // PPG_CONTINUOUS: 0 normal, -1 a
+                                                                              // higher-priority sensor (e.g. BIA) runs
+}
+// data/PpgType.html (since 1.3.0); constants in declaration order. Request only the channels needed: fewer channels
+// cost less battery ("Setting only the required PpgType can reduce the battery consumption").
+public enum PpgType { GREEN, RED, IR }
+// HealthTrackingService.html (since 1.3.0): the overload PPG_CONTINUOUS and PPG_ON_DEMAND must use
+public HealthTracker getHealthTracker(HealthTrackerType healthTrackerType, java.util.Set<PpgType> ppgTypeSet);
+```
+
+- `HealthTrackerType` (data/HealthTrackerType.html): `PPG_CONTINUOUS` is 25 Hz and, at targetSdk 36, needs
+  `READ_ADDITIONAL_HEALTH_DATA`; `SKIN_TEMPERATURE_CONTINUOUS` gives one point per measurement with the display on and
+  needs `HealthPermissions.READ_SKIN_TEMPERATURE`; `SPO2_ON_DEMAND` gives one data point per measurement and needs
+  `HealthPermissions.READ_OXYGEN_SATURATION` (`BODY_SENSORS` for all three at targetSdk ≤ 35; the same table is in
+  `https://developer.samsung.com/health/sensor/guide/permission-request.html`).
+- `HealthTracker.flush()` (HealthTracker.html#flush--) works for `PPG_CONTINUOUS` and `SKIN_TEMPERATURE_CONTINUOUS`
+  (and HR, accelerometer, EDA); for any other type it returns false.
+- On-demand rules (`https://developer.samsung.com/health/sensor/guide/data-specifications.html`, "Using On-demand
+  Tracker Type"): use it "in a foreground application, not in the background"; one on-demand tracker at a time;
+  "Track on-demand type sensors in 30 seconds"; "During on-demand tracker type data measurement, tracking a continuous
+  tracker type can give invalid values." The SPO2_ON_DEMAND remark repeats the 30 s limit; a SpO2 measurement
+  "usually takes 30 seconds".
+- The SM-L500 lists `SKIN_TEMPERATURE_CONTINUOUS`, `PPG_CONTINUOUS` and `SPO2_ON_DEMAND` in
+  `getSupportHealthTrackerTypes()` (owner's on-device log, 2026-10-27).
+
 ## Consequences for OpenTDI
 
 1. **`SDK_POLICY_ERROR` is a `TrackerError`**, delivered to `TrackerEventListener.onError()` *after* a tracker
@@ -113,3 +160,7 @@ public class ValueKey.AccelerometerSet {
    - `onError(PERMISSION_ERROR)` → missing runtime permission.
 2. Connection can succeed while data is still refused, so "connected" is not "working" until data arrives.
 3. `HealthTrackerCapability.getVersion()` can be shown on the status screen.
+4. Skin temperature, raw PPG and SpO2 are logging-only: a missing permission, an unsupported type or a tracker error
+   turns off only that tracker. SpO2 spot checks run from a foreground service, often with the screen off, and the
+   owner's default timeout is 60 s: both go beyond Samsung's on-demand guidance above, so check on the watch that
+   measurements complete and how heart rate behaves meanwhile (`w_spo2.csv` counts the valid HR points per check).

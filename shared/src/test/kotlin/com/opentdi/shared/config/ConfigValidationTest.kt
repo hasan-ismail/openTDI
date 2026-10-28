@@ -9,8 +9,10 @@ import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.model.DetectionConfig
 import com.opentdi.shared.model.LinkConfig
 import com.opentdi.shared.model.PromptCue
+import com.opentdi.shared.model.PpgChannel
 import com.opentdi.shared.model.RecordingConfig
 import com.opentdi.shared.model.SensitivityPreset
+import com.opentdi.shared.model.SensorsConfig
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SimulationMode
 import com.opentdi.shared.model.TimedCueConfig
@@ -96,7 +98,20 @@ class ConfigValidationTest {
             SessionConfig(recording = RecordingConfig(seedMs = 501)) to "recording.seedMs",
             SessionConfig(link = LinkConfig(telemetryFlushS = 0)) to "link.telemetryFlushS",
             SessionConfig(link = LinkConfig(sdkFlushS = 31)) to "link.sdkFlushS",
+            SessionConfig(sensors = SensorsConfig(ppgChannels = emptySet())) to "sensors.ppgChannels",
+            SessionConfig(sensors = SensorsConfig(spo2IntervalMin = 4)) to "sensors.spo2IntervalMin",
+            SessionConfig(sensors = SensorsConfig(spo2IntervalMin = 121)) to "sensors.spo2IntervalMin",
+            SessionConfig(sensors = SensorsConfig(spo2TimeoutS = 29)) to "sensors.spo2TimeoutS",
+            SessionConfig(sensors = SensorsConfig(spo2TimeoutS = 121)) to "sensors.spo2TimeoutS",
         ).forEach { (config, field) -> assertRejected(config, field) }
+    }
+
+    @Test
+    fun sensors_boundariesAndChannels() {
+        assertValid(SessionConfig(sensors = SensorsConfig(spo2IntervalMin = 5, spo2TimeoutS = 30)))
+        assertValid(SessionConfig(sensors = SensorsConfig(spo2IntervalMin = 120, spo2TimeoutS = 120)))
+        assertValid(SessionConfig(sensors = SensorsConfig(ppgChannels = PpgChannel.entries.toSet())))
+        assertValid(SessionConfig(sensors = SensorsConfig(ppgRawEnabled = false, ppgChannels = emptySet())))
     }
 
     @Test
@@ -243,15 +258,22 @@ class ConfigValidationTest {
         assertEquals("en-US", map["recording.sttLanguage"])
         assertEquals("2", map["link.telemetryFlushS"])
         assertEquals("1", map["link.watchWakeLock"])
+        assertEquals("1", map["sensors.skinTempEnabled"])
+        assertEquals("GREEN", map["sensors.ppgChannels"])
+        assertEquals("15", map["sensors.spo2IntervalMin"])
+        assertEquals("60", map["sensors.spo2TimeoutS"])
         assertEquals("", map["simulation"])
-        // One row per leaf: 7 top-level, 21 detection, 12 accel, 6 timed, 15 audio (2 caps), 12 recording, 3 link.
-        assertEquals(76, rows.size)
+        // One row per leaf: 7 top-level, 21 detection, 12 accel, 6 timed, 15 audio (2 caps), 12 recording, 3 link,
+        // 6 sensors.
+        assertEquals(82, rows.size)
 
         val words = "You are dreaming. You are in control."
         val custom = SessionConfig(audio = AudioConfig(cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to words)))
             .toConfigRows().toMap()
         assertEquals(words, custom["audio.cueTexts.INITIAL_INCUBATION"])
         assertEquals(null, custom["audio.cueTexts"])
+        val channels = SessionConfig(sensors = SensorsConfig(ppgChannels = setOf(PpgChannel.GREEN, PpgChannel.IR)))
+        assertEquals("GREEN;IR", channels.toConfigRows().toMap()["sensors.ppgChannels"])
     }
 
     @Test
@@ -275,5 +297,6 @@ class ConfigValidationTest {
         assertEquals("0;2000;4000;8000", consts["const.TRIGGER_ATTEMPT_OFFSETS_MS"])
         assertEquals("-3.0", consts["const.CUE_PEAK_DBFS"])
         assertEquals("-50.0", consts["const.PHRASE_SILENCE_DBFS"])
+        assertEquals("120", consts["const.SKIN_TEMP_HOLD_S"])
     }
 }

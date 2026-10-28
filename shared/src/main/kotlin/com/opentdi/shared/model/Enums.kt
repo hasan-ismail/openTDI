@@ -84,3 +84,7 @@ enum class EndAlarm { CHIME, NONE }
 
 @Serializable
 enum class PriorHrSource { NONE, USER_ENTERED, PREVIOUS_SESSION }
+
+/** A PPG_CONTINUOUS LED channel; the names are those of Samsung's `PpgType` constants. */
+@Serializable
+enum class PpgChannel { GREEN, IR, RED }

@@ -28,15 +28,31 @@ import com.opentdi.shared.sensing.AccelSample
 import com.opentdi.shared.sensing.EdaDataPoint
 import com.opentdi.shared.sensing.HrDataPoint
 import com.opentdi.shared.sensing.PacketAggregator
+import com.opentdi.shared.sensing.SkinTempDataPoint
 import com.opentdi.shared.sensing.Tracker
 import com.opentdi.wear.BuildConfig
 import com.opentdi.wear.link.TelemetrySender
 import java.io.File
 import java.io.IOException
+import java.util.EnumMap
 import kotlin.random.Random
 
 /** One raw accelerometer sample as w_accel_raw.csv logs it: Samsung counts, or m/s² × 1000 for ANDROID_SENSORS. */
 data class AccelCounts(val timestampMs: Long, val x: Int, val y: Int, val z: Int)
+
+/** One PPG_CONTINUOUS sample (PpgSet) as w_ppg_raw.csv logs it; channels that were not requested are null. */
+data class PpgSample(
+    val timestampMs: Long,
+    val green: Int?,
+    val greenStatus: Int?,
+    val ir: Int?,
+    val irStatus: Int?,
+    val red: Int?,
+    val redStatus: Int?,
+)
+
+/** One SPO2_ON_DEMAND data point (SpO2Set). */
+data class Spo2DataPoint(val timestampMs: Long, val spo2: Int?, val hr: Int?, val status: Int?)
 
 /** The sensor path a session runs: the Samsung SDK or the SensorManager fallback. Called on the sensing thread. */
 interface SensorPath {
@@ -52,7 +68,7 @@ interface SensorPath {
 class LoggingSession(
     private val context: Context,
     private val handler: Handler,
-    private val config: SessionConfig,
+    val config: SessionConfig,
     private val androidSensorsOnly: Boolean,
     private val telemetry: TelemetrySender,
 ) {
@@ -67,6 +83,9 @@ class LoggingSession(
     private var sensorRawCsv: CsvWriter? = null
     private var accelRawCsv: CsvWriter? = null
     private var csvFailed = false
+    private var skinTempCsv: CsvWriter? = null
+    private var spo2Csv: CsvWriter? = null
+    private var ppgRawCsv: CsvWriter? = null
 
     private var path: SensorPath? = null
     private var source: SensorSource? = null
@@ -83,6 +102,10 @@ class LoggingSession(
     private var lastAccelBatchSize = -1
     private val frames = ArrayList<TelemetryFrame>() // emitted since the last telemetry batch
     private var batches = 0L
+    private val extraStates = EnumMap<ExtraTracker, String>(ExtraTracker::class.java) // "on", or why it is off
+    private var spo2Check: Spo2Check? = null
+    private var ppgSamples = 0L
+    private var ppgSamplesAtRate = 0L
 
     fun start() {
         SensingStateHolder.update {
@@ -102,6 +125,9 @@ class LoggingSession(
             accelEventsCsv = open(CsvFiles.W_ACCEL_EVENTS)
             sensorRawCsv = open(CsvFiles.W_SENSOR_RAW)
             if (config.accel.logRawAccel) accelRawCsv = open(CsvFiles.W_ACCEL_RAW)
+            if (config.sensors.skinTempEnabled) skinTempCsv = open(CsvFiles.W_SKIN_TEMP)
+            if (config.sensors.spo2SpotChecks) spo2Csv = open(CsvFiles.W_SPO2)
+            if (config.sensors.ppgRawEnabled) ppgRawCsv = open(CsvFiles.W_PPG_RAW)
             writeConfig()
         }
         logEvent("SESSION_START", "sessionId" to sessionId, "aar" to BuildConfig.SAMSUNG_SDK_AAR.ifEmpty { null })
@@ -136,17 +162,48 @@ class LoggingSession(
 
     /**
      * Called every second by the service: packet deadline, tracker flush every sdkFlushS, telemetry every
-     * telemetryFlushS, files every 5 s.
+     * telemetryFlushS, SpO2 spot checks, the PPG rate every 10 s, files every 5 s.
      */
     fun tick(seconds: Long) {
         poll()
         if (seconds % config.link.sdkFlushS == 0L) path?.flush()
         if (seconds % config.link.telemetryFlushS == 0L) sendTelemetry()
+        spo2Check?.let { if (seconds - it.startS >= config.sensors.spo2TimeoutS) endSpo2Check("SPO2_TIMEOUT") }
+        if (spo2CheckDue(seconds, config.sensors.spo2IntervalMin)) startSpo2Check(seconds)
+        if (seconds % PPG_RATE_WINDOW_S == 0L && ppgSamples > 0) {
+            val rate = (ppgSamples - ppgSamplesAtRate).toFloat() / PPG_RATE_WINDOW_S
+            ppgSamplesAtRate = ppgSamples
+            SensingStateHolder.update { it.copy(ppgRate = rate) }
+        }
         if (seconds % FILE_FLUSH_S == 0L) flushFiles()
+    }
+
+    /** Logging-only trackers run while their CSV is open: enabled in the config, and PPG not stopped by STORAGE_LOW. */
+    fun extraWanted(extra: ExtraTracker): Boolean = when (extra) {
+        ExtraTracker.SKIN_TEMP -> skinTempCsv != null
+        ExtraTracker.PPG -> ppgRawCsv != null
+        ExtraTracker.SPO2 -> spo2Csv != null
+    }
+
+    /** Shows, logs and records whether a logging-only tracker runs: [why] it is off, or null when it runs. */
+    fun setExtraOff(extra: ExtraTracker, why: String?) {
+        val state = why ?: "on"
+        if (extraStates.put(extra, state) == state) return
+        configRow("extra.$extra", state)
+        logEvent("EXTRA", "tracker" to extra, "state" to state)
+        val off = extraStates.filterValues { it != "on" }
+        SensingStateHolder.update { it.copy(extrasOff = off) }
+        if (extra == ExtraTracker.SPO2 && why != null) endSpo2Check("SPO2_ERROR")
+    }
+
+    /** The Samsung path stopped for the rest of the session: every logging-only tracker still on is now off ([why]). */
+    fun extrasStopped(why: String) {
+        for (extra in extraStates.filterValues { it == "on" }.keys) setExtraOff(extra, why)
     }
 
     /** Bins still waiting for data at stop (at most 2 × sdkFlushS) are not written. */
     fun stop() {
+        endSpo2Check("SPO2_ABORTED")
         path?.stop()
         path = null
         poll()
@@ -162,6 +219,7 @@ class LoggingSession(
     /** Switches to the SensorManager fallback; [cause] is shown while it runs (null when the user chose it). */
     fun startAndroidSensors(cause: SensorStatus?, unsupported: Tracker? = null) {
         path?.stop()
+        extrasStopped("using basic sensors")
         if (cause != null) {
             SensingStateHolder.update { it.copy(fallbackCause = cause, unsupported = unsupported ?: it.unsupported) }
         }
@@ -185,6 +243,7 @@ class LoggingSession(
 
     fun onHr(points: List<HrDataPoint>, arrivalWallMs: Long) {
         val late = aggregator?.addHrBatch(points, arrivalWallMs) ?: return
+        spo2Check?.let { check -> check.hrOkPoints += points.count { it.hrStatus == 1 } } // HEART_RATE_STATUS ok
         io {
             sensorRawCsv?.let { csv ->
                 points.forEachIndexed { i, p ->
@@ -242,6 +301,60 @@ class LoggingSession(
         onDelivered(Tracker.ACCEL)
     }
 
+    fun onSkinTemp(points: List<SkinTempDataPoint>, arrivalWallMs: Long) {
+        val agg = aggregator ?: return
+        agg.addSkinTempBatch(points)
+        io {
+            skinTempCsv?.let { csv ->
+                points.forEach {
+                    csv.row(arrivalWallMs, it.timestampMs, it.objectTemp, it.ambientTemp, it.status, points.size)
+                }
+            }
+        }
+    }
+
+    fun onPpg(samples: List<PpgSample>) {
+        if (aggregator == null) return // stopped: the CSVs are closed
+        val csv = ppgRawCsv ?: return
+        io { samples.forEach { csv.row(it.timestampMs, it.green, it.greenStatus, it.ir, it.irStatus, it.red, it.redStatus) } }
+        ppgSamples += samples.size
+    }
+
+    fun onSpo2(points: List<Spo2DataPoint>, arrivalWallMs: Long) {
+        if (aggregator == null) return
+        val check = spo2Check ?: return // delivered after the check ended
+        io { points.forEach { spo2Csv?.row(arrivalWallMs, it.timestampMs, it.spo2, it.hr, it.status, "DATA", null, null) } }
+        val finished = points.lastOrNull { spo2Finished(it.status) }
+        check.last = finished ?: points.last()
+        if (finished != null) {
+            endSpo2Check(if (finished.status == SPO2_STATUS_COMPLETED) "SPO2_RESULT" else "SPO2_TIMEOUT")
+        }
+    }
+
+    /** One spot check at a time; none while SpO2 is off (unsupported, no permission, disabled or failed). */
+    private fun startSpo2Check(seconds: Long) {
+        if (spo2Check != null || (path as? SamsungSensorSource)?.startSpo2() != true) return
+        spo2Check = Spo2Check(seconds, System.currentTimeMillis())
+        logEvent("SPO2_START")
+    }
+
+    /** Stops the measurement and writes its summary row; SPO2_RESULT also updates the packets and the watch face. */
+    fun endSpo2Check(event: String) {
+        val check = spo2Check ?: return
+        spo2Check = null
+        (path as? SamsungSensorSource)?.stopSpo2()
+        val now = System.currentTimeMillis()
+        val last = check.last
+        val spo2 = last?.spo2?.takeIf { event == "SPO2_RESULT" }
+        if (last != null && spo2 != null) {
+            aggregator?.addSpo2(last.timestampMs, spo2)
+            SensingStateHolder.update { it.copy(lastSpo2 = spo2, lastSpo2AtMs = now) }
+        }
+        val windowMs = now - check.startWallMs
+        io { spo2Csv?.row(now, last?.timestampMs, spo2, last?.hr, last?.status, event, check.hrOkPoints, windowMs) }
+        logEvent(event, "status" to last?.status, "hrOkPoints" to check.hrOkPoints, "windowMs" to windowMs)
+    }
+
     fun setStatus(
         status: SensorStatus,
         unsupported: Tracker? = null,
@@ -284,7 +397,7 @@ class LoggingSession(
                 packetsCsv?.row(
                     p.timestamp, packets++, p.source, p.hr, p.hrStatus, p.ibiList, p.rmssd, p.skinConductance,
                     p.edaStatus, p.accelMean, p.accelRms, p.accelPeak, p.stillnessScore, p.jerkEvent, p.limpEvent,
-                    e.tiltDeg, e.accelSampleCount, e.emittedWallMs,
+                    e.tiltDeg, e.accelSampleCount, e.emittedWallMs, p.skinTemperature, p.spo2,
                 )
             }
             ibis += p.ibiList.size
@@ -326,6 +439,13 @@ class LoggingSession(
 
     private fun flushFiles() {
         val free = dir.usableSpace
+        if (ppgRawCsv != null && free < MIN_FREE_BYTES_PPG) { // the biggest file stops first, with its tracker
+            io { ppgRawCsv?.close() }
+            ppgRawCsv = null
+            (path as? SamsungSensorSource)?.stopExtra(ExtraTracker.PPG)
+            setExtraOff(ExtraTracker.PPG, "storage low")
+            logEvent("STORAGE_LOW", "free_mb" to free / (1024 * 1024), "stopped" to CsvFiles.W_PPG_RAW.name)
+        }
         if (!storageLow && free < MIN_FREE_BYTES) {
             storageLow = true
             io { listOfNotNull(sensorRawCsv, accelRawCsv).forEach { it.close() } }
@@ -349,7 +469,9 @@ class LoggingSession(
         }
     }
 
-    private fun writers() = listOfNotNull(configCsv, packetsCsv, accelEventsCsv, sensorRawCsv, accelRawCsv)
+    private fun writers() = listOfNotNull(
+        configCsv, packetsCsv, accelEventsCsv, sensorRawCsv, accelRawCsv, skinTempCsv, spo2Csv, ppgRawCsv,
+    )
 
     private fun open(file: CsvFile) = CsvWriter(File(dir, file.name).bufferedWriter(), file.columns)
 
@@ -390,7 +512,15 @@ class LoggingSession(
         const val KEEP_SESSIONS = 30 // §12.1
         const val MIN_FREE_BYTES = 50L * 1024 * 1024 // §12.1: below this, w_sensor_raw.csv stops
         const val LOGGED_ACCEL_CALLBACKS = 10 // ACCEL_BATCH lines before only size changes are logged
+        const val MIN_FREE_BYTES_PPG = 2 * MIN_FREE_BYTES // GUESSED: w_ppg_raw.csv stops before every other file
+        const val PPG_RATE_WINDOW_S = 10L // two default flush periods, so screen-off batches average out
     }
+}
+
+/** A running SpO2 spot check: its start, the HR points with status 1 that arrived meanwhile, its latest data point. */
+private class Spo2Check(val startS: Long, val startWallMs: Long) {
+    var hrOkPoints = 0
+    var last: Spo2DataPoint? = null
 }
 
 const val LOG_TAG = "OTDI.Sensors"

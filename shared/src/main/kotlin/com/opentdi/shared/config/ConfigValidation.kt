@@ -118,6 +118,14 @@ fun SessionConfig.validate(): List<String> {
 
     int("link.telemetryFlushS", link.telemetryFlushS, 1..30)
     int("link.sdkFlushS", link.sdkFlushS, 1..30)
+
+    with(sensors) {
+        rule(!ppgRawEnabled || ppgChannels.isNotEmpty()) {
+            "sensors.ppgChannels must name a channel while sensors.ppgRawEnabled"
+        }
+        int("sensors.spo2IntervalMin", spo2IntervalMin, 5..120)
+        int("sensors.spo2TimeoutS", spo2TimeoutS, 30..120)
+    }
     return errors
 }
 

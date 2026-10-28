@@ -797,6 +797,8 @@ limpEvent at s  if  θ_s >= 3.0  and every second since u_ref was set had stilln
 | `edaStatus` | raw status of the last EDA point, else null | [S] §2.3 |
 | accel fields, `stillnessScore`, `jerkEvent`, `limpEvent` | from `AccelProcessor` (§8.1) | |
 | `source` | `SAMSUNG_SDK`, `ANDROID_SENSORS` or `SIMULATION` | D6 |
+| `skinTemperature` (Float, °C) **[EXT]** | newest `SkinTemperatureSet.OBJECT_TEMPERATURE` with `STATUS == 0` sampled in or before the bin, held ≤ 120 s; a point that arrives after its bin went out still feeds later bins. Skin temperature is not an active tracker, so no bin waits for it | status FACT (`ValueKey.SkinTemperatureSet` javadoc); the hold GUESSED |
+| `spo2` (Int, %) **[EXT]** | the last completed SpO2 spot check (`STATUS == 2`), held `spo2IntervalMin × 60 + spo2TimeoutS` s, i.e. until the next check could have completed | status FACT (`ValueKey.SpO2Set` javadoc); the hold GUESSED |
 
 **IBI handling.**
 - An IBI is valid if `IBI_STATUS_LIST[j] == 0 && IBI_LIST[j] != 0` (FACT, Samsung sample `IBIDataParsing.kt:25-27`,
@@ -1014,6 +1016,7 @@ These are GUESSED but are not config values (label rule, top of document). The t
 | Prior-HR guard | prior ≥ 0.85·μ_live and < μ_live | §8.5 |
 | HR bounds | 30–220 bpm (the 5 s hold and the 60 s RMSSD window are config: `hrHoldMaxS`, `rmssdWindowS`, §9.5) | §8.2 |
 | IBI rules | 300–2000 ms; ≤ 20 % from the median of the last 7 accepted; RMSSD needs ≥ 20 pairs | §8.2 |
+| Skin-temperature hold | a packet's `skinTemperature` is the newest valid value sampled ≤ 120 s before its bin | §8.2 |
 | EDA floors | value ≥ 0.05 µS; spike floor 0.02 µS; spike factor 1.5σ_E | §8.2, §8.6 |
 | Confidence weights | 0.30 S, 0.40 A, 0.15 P, 0.15 B; bonus 0.5 each | §8.9 |
 | Command retry | 3× at 2 s if no reply in 5 s | §10.2 |
@@ -1062,6 +1065,7 @@ explicitNulls = false }`. Every timestamp is epoch ms. Units are in the field na
 @Serializable enum class RouteLossPolicy { PAUSE_CUES, SPEAKER_FALLBACK }
 @Serializable enum class EndAlarm { CHIME, NONE }
 @Serializable enum class PriorHrSource { NONE, USER_ENTERED, PREVIOUS_SESSION }
+@Serializable enum class PpgChannel { GREEN, IR, RED }                       // [EXT] Samsung PpgType names
 ```
 
 ### 9.2 `BiosignalPacket` (1 Hz, watch → phone inside `TelemetryFrame`; D6)
@@ -1082,6 +1086,9 @@ explicitNulls = false }`. Every timestamp is epoch ms. Units are in the field na
     val limpEvent: Boolean,         // a limp-wrist drift was confirmed in this second (§8.1)
     val stillnessScore: Float?,     // 0..1; null with < 20 accel samples
     val source: SensorSource,
+    // [EXT] additive, logged only (never used for detection):
+    val skinTemperature: Float? = null, // °C, SkinTemperatureSet.OBJECT_TEMPERATURE with STATUS 0; held ≤ 120 s (GUESSED)
+    val spo2: Int? = null,          // %, last completed SpO2 spot check; held spo2IntervalMin + spo2TimeoutS after it
 )
 ```
 
@@ -1187,6 +1194,7 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
     val audio: AudioConfig = AudioConfig(),
     val recording: RecordingConfig = RecordingConfig(),
     val link: LinkConfig = LinkConfig(),
+    val sensors: SensorsConfig = SensorsConfig(),   // [EXT] logging-only Samsung trackers
     val simulation: SimulationMode? = null,         // set only by the simulation receiver
 )
 
@@ -1261,6 +1269,15 @@ No raw accelerometer data goes over the wire (D6, owner 8). A frame is about 250
     val telemetryFlushS: Int = 2,                   // 1..30 (D3); 2 s for a live phone display (owner, 2026-10-27)
     val sdkFlushS: Int = 5,                         // 1..30
     val watchWakeLock: Boolean = true,              // measure and possibly turn off (§14.4)
+)
+
+@Serializable data class SensorsConfig(             // [EXT] watch, Samsung SDK path; logged, never used for detection
+    val skinTempEnabled: Boolean = true,            // SKIN_TEMPERATURE_CONTINUOUS → w_skin_temp.csv
+    val ppgRawEnabled: Boolean = true,              // PPG_CONTINUOUS → w_ppg_raw.csv (raw input of a later breathing estimate)
+    val ppgChannels: Set<PpgChannel> = setOf(PpgChannel.GREEN), // GREEN, IR, RED; not empty while ppgRawEnabled
+    val spo2SpotChecks: Boolean = true,             // SPO2_ON_DEMAND: first check 120 s in, then every interval
+    val spo2IntervalMin: Int = 15,                  // 5..120
+    val spo2TimeoutS: Int = 60,                     // 30..120 (Samsung advises ≤ 30 s per on-demand measurement)
 )
 ```
 
@@ -1617,7 +1634,8 @@ simulation receiver (§13) covers only the algorithm and the audio loop (owner 3
 - Files are flushed every 5 s and on every state change, and closed at session end.
 - Rotation and retention (GUESSED): one directory per session, no size split (an hour of `w_packets.csv` is about
   3600 × 200 B ≈ 0.7 MB, INFERENCE); the last 30 sessions are kept and older ones are deleted at app start; if free
-  space falls below 50 MB, `w_sensor_raw.csv` stops and `STORAGE_LOW` is logged.
+  space falls below 50 MB, `w_sensor_raw.csv` stops and `STORAGE_LOW` is logged. `w_ppg_raw.csv`, the biggest file,
+  stops first, with its tracker, below 100 MB (GUESSED), also logging `STORAGE_LOW`.
 
 ### 12.2 Watch CSVs
 
@@ -1626,12 +1644,15 @@ simulation receiver (§13) covers only the algorithm and the audio loop (owner 3
 | `w_config.csv` | key | `key,value`: app version, `applicationId`, device model, SDK `getVersion()`, Health Sensor Service `versionName`, `sensorStatus`, `gravityMode`, every `SessionConfig` field (dotted keys, e.g. `detection.baselineWindowS`), the resolved thresholds, every structural constant of §8.15 (`const.*`), the bundled AAR name (`BuildConfig.SAMSUNG_SDK_AAR`), and every `BaselineStats` field once ready |
 | `w_accel_raw.csv` (optional, `accel.logRawAccel`, default on) | raw 25 Hz accelerometer sample | `sdk_ts_ms,x,y,z` (raw counts, or m/s² × 1000 as integers for `ANDROID_SENSORS`), about 90 000 rows ≈ 2–3 MB per hour (INFERENCE). Input of the AccelConfig replay (§12.6) |
 | `w_sensor_raw.csv` | SDK HR or EDA data point (the raw 1 Hz data) | `arrival_wall_ms,sdk_ts_ms,tracker(HR/EDA),hr_bpm,hr_status,ibi_ms(;),ibi_status(;),eda_us,eda_status,batch_size,late(0/1)` |
-| `w_packets.csv` (**replay input**) | emitted 1 Hz packet | `ts_ms,seq,source,hr_bpm,hr_status,ibi_ms(;),rmssd_ms,eda_us,eda_status,accel_mean_g,accel_rms_g,accel_peak_g,stillness,jerk,limp,tilt_deg,n_accel_samples,emitted_wall_ms` |
+| `w_packets.csv` (**replay input**) | emitted 1 Hz packet | `ts_ms,seq,source,hr_bpm,hr_status,ibi_ms(;),rmssd_ms,eda_us,eda_status,accel_mean_g,accel_rms_g,accel_peak_g,stillness,jerk,limp,tilt_deg,n_accel_samples,emitted_wall_ms,skin_temp_c,spo2_pct` (new columns are only ever appended; readers go by header) |
 | `w_accel_events.csv` (25 Hz-derived flags) | event | `sample_ts_ms,event,value1,value2,detail` with events `JERK_BURST_OPEN`, `JERK_CONFIRMED` (burst ms, peak g), `JERK_REJECTED_LONG`, `JERK_REJECTED_POST_MOVE`, `LIMP_REF_SET`, `LIMP_REF_CLEARED`, `LIMP_CONFIRMED` (tilt °), `GRAVITY_MODE`, `LIMP_UNAVAILABLE` |
 | `w_engine.csv` | packet processed by the engine | `ts_ms,state,confidence,detection_active,still_mean,moving_s,gate,hr_ma,hr_drop,hr_sig,rmssd_rise,rmssd_sig,eda_slope,eda_bonus,jerk_bonus,limp_bonus,hold_s,hold_req_s,refractory` |
 | `w_inputs.csv` (**replay input**) | external call into the engine | `after_packet_ts_ms,wall_ms,input,args` with inputs `START`, `CYCLE_STAGE(cycle,stage,outcome)`, `TRIGGER_REJECTED(cycle,code)`, `PAUSE`, `RESUME`, `ABORT(reason)`, `CONFIG(revision + changed keys)`; `after_packet_ts_ms` = timestamp of the last packet processed before the call (−1 if none) |
 | `w_transitions.csv` (**replay golden**) | state change or engine event | `ts_ms,wall_ms,event,from,to,reason,cycle,completed_cycles,detail` (events: `STATE`, `BASELINE_READY`, `BASELINE_EXTENDED`, `ONSET` with confidence and evidence, `COUNTDOWN_ABORTED`, `CYCLE_MISSED`, `CYCLE_COMPLETED`, `DETECTION_UNAVAILABLE`, `SESSION_COMPLETED`) |
 | `w_link.csv` | Data Layer send / receive | `wall_ms,dir,path,type,session_seq_or_cycle,result,rtt_ms` |
+| `w_skin_temp.csv` (`sensors.skinTempEnabled`) | `SkinTemperatureSet` data point | `arrival_wall_ms,sdk_ts_ms,object_temp_c,ambient_temp_c,status,batch_size` (status 0 normal, −1 error) |
+| `w_spo2.csv` (`sensors.spo2SpotChecks`) | `SpO2Set` data point (`event` `DATA`), plus one row when a spot check ends | `arrival_wall_ms,sdk_ts_ms,spo2_pct,hr_bpm,status,event(DATA/SPO2_RESULT/SPO2_TIMEOUT/SPO2_ERROR/SPO2_ABORTED),hr_ok_points,window_ms`; the end row carries the last data point, the HR points with `HEART_RATE_STATUS` 1 that arrived during the check (do spot checks interrupt heart rate?) and the check's length. `SPO2_ERROR`: SpO2 stopped mid-check (tracker error, reconnect, Samsung path stopped); `SPO2_ABORTED`: the session stopped mid-check |
+| `w_ppg_raw.csv` (`sensors.ppgRawEnabled`) | raw 25 Hz `PpgSet` sample | `sdk_ts_ms,ppg_green,green_status,ppg_ir,ir_status,ppg_red,red_status` (channels not in `sensors.ppgChannels` stay empty); 90 000 rows ≈ 2.5 MB per hour green only, ≈ 4 MB with all three (INFERENCE: 5–7-digit ADC values). Raw input for a later breathing-rate estimate |
 
 ### 12.3 Phone CSVs
 
@@ -1937,6 +1958,8 @@ Watch (`:wear`, `applicationId com.opentdi`, namespace `com.opentdi.wear`):
 <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
 <uses-permission android:name="com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA" />
 <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+<uses-permission android:name="android.permission.health.READ_SKIN_TEMPERATURE" />  <!-- SKIN_TEMPERATURE_* -->
+<uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" /> <!-- SPO2_ON_DEMAND -->
 <uses-permission android:name="android.permission.BODY_SENSORS" android:maxSdkVersion="35" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
@@ -1985,7 +2008,7 @@ health permission and no Samsung permission (the SDK does not support phones, [S
 
 | Device | Runtime request in the app | `adb -s <serial> shell pm grant --user 0 com.opentdi …` |
 |---|---|---|
-| Watch | `READ_HEART_RATE`, `READ_ADDITIONAL_HEALTH_DATA`, `ACTIVITY_RECOGNITION`, `POST_NOTIFICATIONS` | `android.permission.health.READ_HEART_RATE`; `com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA` (protection level `dangerous`, `pm grant`-able: FACT, [DA]); `android.permission.ACTIVITY_RECOGNITION`; `android.permission.POST_NOTIFICATIONS` |
+| Watch | `READ_HEART_RATE`, `READ_ADDITIONAL_HEALTH_DATA`, `ACTIVITY_RECOGNITION`, `READ_SKIN_TEMPERATURE` and `READ_OXYGEN_SATURATION` (API ≥ 36; each missing one turns off only its tracker), `POST_NOTIFICATIONS` | `android.permission.health.READ_HEART_RATE`; `com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA` (protection level `dangerous`, `pm grant`-able: FACT, [DA]); `android.permission.ACTIVITY_RECOGNITION`; `android.permission.health.READ_SKIN_TEMPERATURE` (`dangerous`, [DA]); `android.permission.health.READ_OXYGEN_SATURATION`; `android.permission.POST_NOTIFICATIONS` |
 | Phone | `POST_NOTIFICATIONS`; `RECORD_AUDIO` (Phase 2) | `android.permission.POST_NOTIFICATIONS`; `android.permission.RECORD_AUDIO` |
 
 Dropped from CLAUDE.md's list: `BODY_SENSORS` and `BODY_SENSORS_BACKGROUND` (they fail on API 36), `BLUETOOTH_CONNECT`

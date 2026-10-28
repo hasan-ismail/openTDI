@@ -38,6 +38,7 @@ object StructuralConstants {
     const val EDA_MIN_US = 0.05f
     const val EDA_SPIKE_FLOOR_US = 0.02f
     const val EDA_SPIKE_SIGMA = 1.5f
+    const val SKIN_TEMP_HOLD_S = 120 // §8.2, GUESSED: skin temperature updates far slower than 1 Hz, packets hold it
     const val CONFIDENCE_W_STILL = 0.30f // §8.9
     const val CONFIDENCE_W_AUTONOMIC = 0.40f
     const val CONFIDENCE_W_HOLD = 0.15f
@@ -84,6 +85,7 @@ object StructuralConstants {
         "const.EDA_MIN_US" to "$EDA_MIN_US",
         "const.EDA_SPIKE_FLOOR_US" to "$EDA_SPIKE_FLOOR_US",
         "const.EDA_SPIKE_SIGMA" to "$EDA_SPIKE_SIGMA",
+        "const.SKIN_TEMP_HOLD_S" to "$SKIN_TEMP_HOLD_S",
         "const.CONFIDENCE_W_STILL" to "$CONFIDENCE_W_STILL",
         "const.CONFIDENCE_W_AUTONOMIC" to "$CONFIDENCE_W_AUTONOMIC",
         "const.CONFIDENCE_W_HOLD" to "$CONFIDENCE_W_HOLD",

@@ -170,7 +170,7 @@ class SessionDirsTest {
                 val hr = if (i % 7 == 0) null else 61.5f // lost beats leave empty fields, still whole rows
                 csv.row(
                     ts, i, SensorSource.SAMSUNG_SDK, hr, 1, listOf(812, 830), 31.2f, 0.42f, 0, 1.0f, 0.003f, 0.01f,
-                    0.97f, false, false, 0.5f, 25, ts + 1200,
+                    0.97f, false, false, 0.5f, 25, ts + 1200, 33.1f, null,
                 )
             }
         }

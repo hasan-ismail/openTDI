@@ -20,7 +20,34 @@ const val HSS_MIN_VERSION = "1.6.5"
 const val READ_HEART_RATE = "android.permission.health.READ_HEART_RATE"
 const val READ_ADDITIONAL_HEALTH_DATA =
     "com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA"
+const val READ_SKIN_TEMPERATURE = "android.permission.health.READ_SKIN_TEMPERATURE"
+const val READ_OXYGEN_SATURATION = "android.permission.health.READ_OXYGEN_SATURATION"
 const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
+
+/** Samsung trackers that are only logged: each one can be off while the HR/EDA/motion session runs on. */
+enum class ExtraTracker(val label: String) { SKIN_TEMP("Skin temperature"), PPG("PPG"), SPO2("Blood oxygen") }
+
+/** Samsung's permission for [extra] (permission-request guide): health permissions from API 36, BODY_SENSORS before. */
+fun extraPermission(extra: ExtraTracker, sdkInt: Int): String = when {
+    sdkInt < Build.VERSION_CODES.BAKLAVA -> Manifest.permission.BODY_SENSORS
+    extra == ExtraTracker.SKIN_TEMP -> READ_SKIN_TEMPERATURE
+    extra == ExtraTracker.SPO2 -> READ_OXYGEN_SATURATION
+    else -> READ_ADDITIONAL_HEALTH_DATA
+}
+
+/** SpO2Set.STATUS of a finished measurement (Samsung's SpO2Set reference). */
+const val SPO2_STATUS_COMPLETED = 2
+const val SPO2_STATUS_TIMED_OUT = -6
+
+/** The first SpO2 spot check runs this far into a session ("about 2 min after the start"). */
+const val SPO2_FIRST_CHECK_S = 120L
+
+/** A spot check is due at session tick [seconds]: at SPO2_FIRST_CHECK_S, then every [intervalMin]. */
+fun spo2CheckDue(seconds: Long, intervalMin: Int): Boolean =
+    seconds >= SPO2_FIRST_CHECK_S && (seconds - SPO2_FIRST_CHECK_S) % (intervalMin * 60L) == 0L
+
+/** Whether [status] ends a measurement. -4 (moved) and -5 (weak signal) do not: the session's timeout does. */
+fun spo2Finished(status: Int?): Boolean = status == SPO2_STATUS_COMPLETED || status == SPO2_STATUS_TIMED_OUT
 
 /** Compares version names per numeric component, so "1.7.00.05" > "1.6.5" and "1.6.05" == "1.6.5". */
 fun compareVersions(a: String, b: String): Int {
@@ -110,6 +137,10 @@ fun runtimePermissions(sdkInt: Int): List<String> = buildList {
     add(heartRatePermission(sdkInt))
     add(READ_ADDITIONAL_HEALTH_DATA)
     add(Manifest.permission.ACTIVITY_RECOGNITION)
+    if (sdkInt >= Build.VERSION_CODES.BAKLAVA) {
+        add(READ_SKIN_TEMPERATURE)
+        add(READ_OXYGEN_SATURATION)
+    }
     if (sdkInt >= Build.VERSION_CODES.TIRAMISU) add(POST_NOTIFICATIONS)
 }
 

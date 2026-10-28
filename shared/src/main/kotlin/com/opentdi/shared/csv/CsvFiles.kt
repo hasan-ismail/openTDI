@@ -15,7 +15,7 @@ object CsvFiles {
     val W_PACKETS = file(
         "w_packets.csv",
         "ts_ms,seq,source,hr_bpm,hr_status,ibi_ms(;),rmssd_ms,eda_us,eda_status,accel_mean_g,accel_rms_g," +
-            "accel_peak_g,stillness,jerk,limp,tilt_deg,n_accel_samples,emitted_wall_ms",
+            "accel_peak_g,stillness,jerk,limp,tilt_deg,n_accel_samples,emitted_wall_ms,skin_temp_c,spo2_pct",
     )
     val W_ACCEL_EVENTS = file("w_accel_events.csv", "sample_ts_ms,event,value1,value2,detail")
     val W_ENGINE = file(
@@ -26,6 +26,16 @@ object CsvFiles {
     val W_INPUTS = file("w_inputs.csv", "after_packet_ts_ms,wall_ms,input,args")
     val W_TRANSITIONS = file("w_transitions.csv", "ts_ms,wall_ms,event,from,to,reason,cycle,completed_cycles,detail")
     val W_LINK = file("w_link.csv", "wall_ms,dir,path,type,session_seq_or_cycle,result,rtt_ms")
+    val W_SKIN_TEMP = file(
+        "w_skin_temp.csv",
+        "arrival_wall_ms,sdk_ts_ms,object_temp_c,ambient_temp_c,status,batch_size",
+    )
+    val W_SPO2 = file(
+        "w_spo2.csv",
+        "arrival_wall_ms,sdk_ts_ms,spo2_pct,hr_bpm,status," +
+            "event(DATA/SPO2_RESULT/SPO2_TIMEOUT/SPO2_ERROR/SPO2_ABORTED),hr_ok_points,window_ms",
+    )
+    val W_PPG_RAW = file("w_ppg_raw.csv", "sdk_ts_ms,ppg_green,green_status,ppg_ir,ir_status,ppg_red,red_status")
 
     val P_CONFIG = CsvFile("p_config.csv", W_CONFIG.columns)
 

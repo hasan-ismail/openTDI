@@ -29,6 +29,10 @@ data class SensingState(
     val ibisAccepted: Long = 0,
     val gravityMode: GravityMode = GravityMode.UNKNOWN,
     val gravityProgress: Int = 0, // calm seconds collected toward the gravity decision
+    val extrasOff: Map<ExtraTracker, String> = emptyMap(), // why a logging-only tracker is not running
+    val lastSpo2: Int? = null, // %, the last completed spot check
+    val lastSpo2AtMs: Long? = null, // wall time its check ended, epoch ms
+    val ppgRate: Float? = null, // PPG samples delivered per second over the last 10 s
 )
 
 /** Process-wide holder of [SensingState]: the service writes it, the activity collects it. */

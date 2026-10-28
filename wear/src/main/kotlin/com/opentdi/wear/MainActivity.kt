@@ -195,6 +195,7 @@ private fun SessionScreen(
             item { ListHeader { Text("OpenTDI sensors") } }
             if (state.running && state.status == null) item { Line("Starting sensors…") }
             for (status in statuses) item { StatusLine(status, state, onStatusTap) }
+            for ((extra, why) in state.extrasOff) item { Line("${extra.label} off: $why.") }
             if (state.status == SensorStatus.SDK_POLICY_ERROR) {
                 item {
                     FilledTonalButton(onClick = onBasicSensors, modifier = Modifier.fillMaxWidth()) {
@@ -257,8 +258,12 @@ private fun liveValues(state: SensingState, nowMs: Long): List<String> {
         "IBIs ${state.ibisAccepted}",
         "RMSSD ${format("%.1f", packet?.rmssd)} ms",
         "EDA ${format("%.3f", packet?.skinConductance)} µS, status ${packet?.edaStatus ?: "—"}",
+        "Skin ${format("%.1f", packet?.skinTemperature)} °C",
+        // %tR: the local 24-hour time of the epoch-ms timestamp
+        "SpO2 ${state.lastSpo2?.let { String.format(Locale.ROOT, "%d %% at %tR", it, state.lastSpo2AtMs) } ?: "—"}",
         "Stillness ${format("%.2f", packet?.stillnessScore)}",
         "Accel ${state.lastPacket?.accelSampleCount ?: 0} samples/s",
+        "PPG ${format("%.1f", state.ppgRate)} samples/s",
         if (state.gravityMode == GravityMode.UNKNOWN) {
             "Gravity: deciding (${state.gravityProgress}/${AccelProcessor.GRAVITY_MODE_STILL_SECONDS} calm s)"
         } else {

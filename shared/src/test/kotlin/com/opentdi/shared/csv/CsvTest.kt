@@ -91,9 +91,10 @@ class CsvTest {
         val all = listOf(
             CsvFiles.W_CONFIG, CsvFiles.W_ACCEL_RAW, CsvFiles.W_SENSOR_RAW, CsvFiles.W_PACKETS, CsvFiles.W_ACCEL_EVENTS,
             CsvFiles.W_ENGINE, CsvFiles.W_INPUTS, CsvFiles.W_TRANSITIONS, CsvFiles.W_LINK, CsvFiles.P_CONFIG,
-            CsvFiles.P_FRAMES, CsvFiles.P_TRANSITIONS, CsvFiles.P_AUDIO, CsvFiles.P_LINK,
+            CsvFiles.P_FRAMES, CsvFiles.P_TRANSITIONS, CsvFiles.P_AUDIO, CsvFiles.P_LINK, CsvFiles.W_SKIN_TEMP,
+            CsvFiles.W_SPO2, CsvFiles.W_PPG_RAW,
         )
-        assertEquals(14, all.map { it.name }.toSet().size)
+        assertEquals(17, all.map { it.name }.toSet().size)
         all.forEach { f ->
             assertEquals(f.name, f.columns.size, f.columns.toSet().size)
             assertTrue(f.name, f.columns.all { it.matches(Regex("[a-z0-9_]+")) })
@@ -103,10 +104,13 @@ class CsvTest {
                 "eda_status", "batch_size", "late"),
             CsvFiles.W_SENSOR_RAW.columns,
         )
+        // New packet columns go at the end of w_packets.csv, so older column positions never move.
+        assertEquals(listOf("emitted_wall_ms", "skin_temp_c", "spo2_pct"), CsvFiles.W_PACKETS.columns.takeLast(3))
+        assertEquals("event", CsvFiles.W_SPO2.columns[5])
         assertEquals(
             "rx_wall_ms,batch_seq,frame_seq,ts_ms,source,hr_bpm,hr_status,ibi_ms,rmssd_ms,eda_us,eda_status," +
-                "accel_mean_g,accel_rms_g,accel_peak_g,stillness,jerk,limp,state,state_reason,completed_cycles," +
-                "confidence,gate,hr_sig,rmssd_sig,eda_bonus,jerk_bonus,limp_bonus,hold_s,hold_req_s",
+                "accel_mean_g,accel_rms_g,accel_peak_g,stillness,jerk,limp,skin_temp_c,spo2_pct,state,state_reason," +
+                "completed_cycles,confidence,gate,hr_sig,rmssd_sig,eda_bonus,jerk_bonus,limp_bonus,hold_s,hold_req_s",
             CsvFiles.P_FRAMES.columns.joinToString(","),
         )
         assertEquals("driver", CsvFiles.P_TRANSITIONS.columns.last())

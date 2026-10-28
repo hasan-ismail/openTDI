@@ -19,6 +19,7 @@ data class SessionConfig(
     val audio: AudioConfig = AudioConfig(),
     val recording: RecordingConfig = RecordingConfig(),
     val link: LinkConfig = LinkConfig(),
+    val sensors: SensorsConfig = SensorsConfig(),
     val simulation: SimulationMode? = null, // set only by the simulation receiver
 )
 
@@ -116,4 +117,15 @@ data class LinkConfig(
     val telemetryFlushS: Int = 2, // 1..30
     val sdkFlushS: Int = 5, // 1..30
     val watchWakeLock: Boolean = true,
+)
+
+/** Samsung trackers that are only logged, never used for detection (watch, Samsung SDK path only). */
+@Serializable
+data class SensorsConfig(
+    val skinTempEnabled: Boolean = true, // SKIN_TEMPERATURE_CONTINUOUS → w_skin_temp.csv
+    val ppgRawEnabled: Boolean = true, // PPG_CONTINUOUS → w_ppg_raw.csv (raw signal for a later breathing estimate)
+    val ppgChannels: Set<PpgChannel> = setOf(PpgChannel.GREEN), // not empty while ppgRawEnabled
+    val spo2SpotChecks: Boolean = true, // SPO2_ON_DEMAND spot checks → w_spo2.csv
+    val spo2IntervalMin: Int = 15, // 5..120
+    val spo2TimeoutS: Int = 60, // 30..120
 )

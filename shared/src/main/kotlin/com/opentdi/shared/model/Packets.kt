@@ -21,6 +21,8 @@ data class BiosignalPacket(
     val limpEvent: Boolean, // a limp-wrist drift was confirmed in this second (§8.1)
     val stillnessScore: Float?, // 0..1; null with < 20 accel samples
     val source: SensorSource,
+    val skinTemperature: Float? = null, // °C, OBJECT_TEMPERATURE with STATUS 0; held ≤ 120 s (GUESSED)
+    val spo2: Int? = null, // %, the last completed SpO2 spot check, held until the next check could have completed
 )
 
 /** Gate status plus the detection confidence, emitted every frame (§8.9). */
