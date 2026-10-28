@@ -281,3 +281,84 @@ Lucidity is self-reported and unverified. Survivorship: success logs and top pos
 - **Techniques:** [f43h14](https://www.reddit.com/r/LucidDreaming/comments/f43h14/), [4cpb6o](https://www.reddit.com/r/LucidDreaming/comments/4cpb6o/), [18h2bi](https://www.reddit.com/r/LucidDreaming/comments/18h2bi/), [o8wc4k](https://www.reddit.com/r/LucidDreaming/comments/o8wc4k/), [58uecj](https://www.reddit.com/r/LucidDreaming/comments/58uecj/), [dm55ck](https://www.reddit.com/r/LucidDreaming/comments/dm55ck/)
 - **Alarms and devices:** [fnvmk4](https://www.reddit.com/r/LucidDreaming/comments/fnvmk4/), [dm03so](https://www.reddit.com/r/LucidDreaming/comments/dm03so/), [1sq21xf](https://www.reddit.com/r/LucidDreaming/comments/1sq21xf/), [1jop4lc](https://www.reddit.com/r/LucidDreaming/comments/1jop4lc/), [1jus48p](https://www.reddit.com/r/LucidDreaming/comments/1jus48p/), [xdrjoa](https://www.reddit.com/r/LucidDreaming/comments/xdrjoa/), [15h489j](https://www.reddit.com/r/LucidDreaming/comments/15h489j/), [1fur5bl](https://www.reddit.com/r/LucidDreaming/comments/1fur5bl/), [1lwhcdz](https://www.reddit.com/r/LucidDreaming/comments/1lwhcdz/), [ecknz4](https://www.reddit.com/r/LucidDreaming/comments/ecknz4/), [1x2j1m5](https://www.reddit.com/r/LucidDreaming/comments/1x2j1m5/)
 - **Pitfalls:** [1gjl0tg](https://www.reddit.com/r/LucidDreaming/comments/1gjl0tg/), [1copt2o](https://www.reddit.com/r/LucidDreaming/comments/1copt2o/), [1jj2y1v](https://www.reddit.com/r/LucidDreaming/comments/1jj2y1v/), [f5jups](https://www.reddit.com/r/LucidDreaming/comments/f5jups/), [1dtxj8c](https://www.reddit.com/r/LucidDreaming/comments/1dtxj8c/), [1dvpqyc](https://www.reddit.com/r/LucidDreaming/comments/1dvpqyc/), [1iltwas](https://www.reddit.com/r/LucidDreaming/comments/1iltwas/)
+
+## 7. Bedtime routine evidence (2026-10-28)
+
+Four literature searches and a synthesis that opened each surprising source; dropped findings are listed at the end. It is about falling asleep and REM, not lucidity itself. The app's checklist (mobile RoutineStore.kt) follows 7.1.
+
+### 7.1 Bedtime routine checklist (23:30 lights-out)
+
+| When | Item | Why (one number) | Evidence | Lucid-specific? |
+|---|---|---|---|---|
+| By 14:30 (energy drinks by 10:00) | Have your last coffee by 14:30. | Caffeine cost about 45 min of sleep across 24 studies. A 107 mg coffee needs at least 8.8 h before bed, a 217.5 mg pre-workout at least 13.2 h. | Meta-analysis | No, general sleep |
+| All evening | Skip alcohol tonight. | Across 27 studies, about 2 drinks (≤0.5 g/kg) was enough to delay and shorten REM. | Meta-analysis | Yes (REM) |
+| At least 4 h before (by 19:30) | Finish any hard workout by 19:30. | A hard workout ending 2 h before bed delayed sleep by 36 min and raised night HR by 3.9 bpm (14,689 people). | Observational | Partly. In one review, hard evening exercise slightly reduced REM |
+| 3–4 h before (by 20:30) | Eat a normal, not greasy dinner by 20:30. | Eating within 3 h of bed went with more night waking (OR 1.61, n=793). More fat at night went with later, shorter REM (n=52). | Observational, preliminary | Partly (REM) |
+| From 3 h before (20:30) | Switch to dim, warm lamps. No bright ceiling light. | Experts say at most 10 melanopic lux at the eye from 3 h before bed. Warm lamps at about 30 lux usually meet that. | Expert consensus | No |
+| 1–2 h before (21:30–22:30) | Take a warm bath or shower, 40–42.5 °C, for at least 10 min. | Review of 5,322 records: you fall asleep about 10 min faster, and about 90 min before bed works best. A 10-min, 40 °C shower right before bed also helped: 7 min faster, but only 11 people. | Meta-analysis; small RCT | No |
+| By 23:00 | Take the watch off the charger at 100% and wear it snug. | Samsung says wait 30 min after charging before wearing, because a warm watch skews skin readings. A full charge is for the whole night's sensor streaming (practical advice, not tested). | Device guidance | App-specific |
+| 30 min before (23:00) | Put the phone down. Screens off. | Small RCT (n=38): time to fall asleep went from 31 to 18 min over 4 weeks. Reading 4 h on an iPad cut REM by 12 min (n=12). | Small RCTs | Partly (one REM study) |
+| Before lights-out | Set the bedroom cool (about 17–19 °C) and fully dark. | At 17 °C vs 22 °C, REM was 23.9% vs 22.1% of sleep (n=17). One night under room light cut the REM share (n=20). | Small RCTs | Yes (REM) |
+| Last 15–30 min | Wind down with slow breathing or muscle relaxation. | The AASM insomnia guideline supports relaxation (conditional) but advises against sleep-hygiene tips alone. | Guideline (people with insomnia) | No |
+| 5 min before (optional) | Write tomorrow's to-do list on paper. | Asleep in 16 vs 25 min (n=57, d=0.63). | RCT | No |
+| In bed | Set tonight's dream intention, or do cue training on cue nights. | Writing about one chosen thought for 5 min doubled dreams about it: 40% vs 20% (n=90). That result is about dream content. For lucidity, use MILD/TLR (lucid_induction.md). | Weak for lucidity | Yes |
+| In bed | Open the journal, ready to record, screen black. | People who recall more dreams have more lucid dreams (rs=0.38, n=178). | Observational | Yes |
+
+**Who should skip what:**
+- **Hot baths:** skip with heart disease, low blood pressure or fainting, in pregnancy, after alcohol, or when very sleepy, because of the drowning risk. A shower is the safer choice.
+- **Persistent insomnia:** see a clinician for CBT-I. A checklist is not a treatment.
+- **Alcohol item:** anyone dependent on alcohol must not stop abruptly without medical help. Hide this item for people who don't drink.
+
+### 7.2 Morning and WBTB items
+
+- **WBTB light (05:30):** use a dim lamp or a black screen, at most 10 melanopic lux, the expert limit for night tasks. Using it at WBTB is an untested inference.
+- **WBTB drinks:** water only, no coffee or tea. This is an inference from the caffeine data; no WBTB study exists.
+- **WBTB bathroom:** use the toilet before lying back down. This is my judgment.
+- **Morning:** go outdoors for daylight within a few hours of waking. Experts say at least 250 melanopic lux in the daytime.
+- **Weekends:** keep the wake time within about 1 h of weekdays. AASM advises the same wake time every day; the 1 h figure is my judgment.
+- **Morning log tags:** alcohol, late meal, late hard workout, coffee time. A hard late workout shifts night HR by +3.9 bpm and HRV by −8.3, so the app should leave those nights out of detector tuning.
+
+### 7.3 Do not say
+
+- That a shower, cool room, diet or dim light causes lucid dreams. The evidence covers falling asleep and REM, not lucidity.
+- That alcohol, cannabis, nicotine, B6, tryptophan or any supplement helps dreaming.
+- That Night Shift or blue-light glasses make screen time fine.
+- That the watch measures body or room temperature, or detects REM.
+- Any guarantee of lucid dreams. Realistic rates are in lucid_induction.md §5.4.
+- Anything that diagnoses or treats a condition. This is wellness only.
+
+### 7.4 Sources
+
+- https://www.technologynetworks.com/neuroscience/news/a-warm-bath-before-bed-makes-for-better-sleep-321965
+- https://doi.org/10.1016/j.smrv.2019.04.008
+- https://researchonline.ljmu.ac.uk/id/eprint/7494/
+- https://eprints.leedsbeckett.ac.uk/id/eprint/9625/1/TheEffectOfCaffeineOnSubsequentSleepASystematicReviewAndMetaanalysisPV-WEAKLEY.pdf
+- https://www.ajmc.com/view/caffeine-and-sleep-review-suggests-consumption-guidelines
+- https://research.monash.edu/en/publications/the-effect-of-alcohol-on-subsequent-sleep-in-healthy-adults-a-sys/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC12000559/
+- https://sleepreviewmag.com/sleep-health/parameters/circadian-rhythms/intense-workouts-before-bedtime/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC7215804/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC3227713/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC8929548/
+- https://www.samsung.com/uk/support/apps-services/how-to-use-the-menstrual-skin-temperature-sensor-with-samsung-health/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC7010281
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC4313820
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC4853167/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC8944904
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC7853203/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC5758411/
+- https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2022.1042857/full
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC6490164
+
+**Dropped or corrected after checking:**
+- Haghayegh "a bath 15 min before bed is too soon": not in the release.
+- Bunnell 1988 (heating right before sleep cuts REM), and with it the "no hot WBTB shower" item: abstract not found.
+- Frimpong's exact −2.34% REM: not found. Kept only as "slight".
+- Gardiner 2025's exact 18.0 and 11.3 min: the PDF could not be read. Kept the verified dose threshold instead.
+- Samsung battery: the page says at least 50%, not 30%.
+- Ko & Lee bed socks: the table shows feet 0.8 °C warmer, not 1.3 °C. Item left out.
+- Whitworth-Turner's +2% sleep efficiency: inconsistent between the paper and the thesis.
+- Schredl 2002 diary study: URL returns 404.
+- Not opened, so left out: ICS 2-h fluid taper, Mograss naps, Pietilä alcohol and HRV, B6 and EFSA numbers, Drake 2013, Duraccio, the Cochrane blue-light review, Burns 2021.
+
+Not checked: the AASM habits page and Watson 2015 were not reopened. The caffeine REM null was not verified, so caffeine is shown as general-sleep evidence only.

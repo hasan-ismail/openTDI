@@ -26,6 +26,10 @@ fun RoutineCard() {
     var done by remember { mutableStateOf(loadRoutine(context)) }
     Section("Your bedtime routine (${done.size} of ${ROUTINE.size})") {
         Help("Small habits that help you fall asleep and dream. Tick them off; they reset each evening.")
+        Help(
+            "Skip a hot bath if you feel faint, are pregnant, have heart problems or drank alcohol: a warm " +
+                "shower is safer. Trouble sleeping for weeks is worth a doctor's visit, not just a checklist.",
+        )
         for (step in ROUTINE) {
             val checked = step.id in done
             Row(
