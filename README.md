@@ -89,9 +89,11 @@ become **lucid** has not been tested yet. Your own nights are the first test, so
   through its servers, end-to-end encrypted ([Android's Data Layer overview](https://developer.android.com/training/wearables/data/overview)).
 - Apart from that, the phone app uses the network only to reach your watch on your own Wi-Fi when it installs the
   watch app. The watch app only uses the network for Samsung's own sensor service.
-- Each night is saved as a set of simple spreadsheet (CSV) files. **Stats** on the phone shows your nights. To delete
-  nights, turn on **More settings** at the bottom of the phone's Settings and use **Saved nights**; the watch has its
-  own **Saved nights** under **Details**.
+- Each night is saved as a set of simple spreadsheet (CSV) files. **Stats** on the phone shows your nights. **Saved
+  nights** (turn on **More settings** at the bottom of the phone's Settings) deletes what the voice did on those
+  nights, and the watch has its own **Saved nights** under **Details**. The sleep data and dream recordings already
+  copied from the watch stay on the phone, in Stats. To remove them, clear OpenTDI's storage in the phone's Android
+  settings (Apps > OpenTDI > Storage > Clear data). This also resets your settings and voice.
 
 ## For developers
 

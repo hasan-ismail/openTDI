@@ -16,6 +16,8 @@ data class SensingState(
     val running: Boolean = false,
     val waiting: Boolean = false, // the service runs with the sensors off until the phone's Start session
     val alarmRinging: String? = null, // "WAKE" or "WBTB" while an alarm rings (WakeAlarms)
+    val wakeAgainAtMs: Long? = null, // a snoozed or rung-out wake-up rings again then, epoch ms
+    val wbtbSkipTonight: Boolean = false, // tonight's early wake-up is on, but too soon after the night began to ring
     val wbtbBackToSleepAtMs: Long? = null, // after a WBTB alarm: when the back-to-sleep buzz comes, epoch ms
     val lastWakeText: String? = null, // how long the last morning wake-up took
     val snoozesLeft: Int = 0, // while the wake-up alarm rings

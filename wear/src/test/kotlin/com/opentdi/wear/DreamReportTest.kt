@@ -4,7 +4,10 @@ import com.opentdi.shared.csv.CsvFiles
 import com.opentdi.shared.csv.CsvWriter
 import com.opentdi.shared.csv.csvLine
 import com.opentdi.shared.csv.readCsv
+import com.opentdi.shared.model.AlarmConfig
 import java.io.File
+import java.time.LocalDate
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -112,6 +115,27 @@ class DreamReportTest {
         assertEquals(oldColumns, oldRows[0])
         assertEquals(listOf("WBTB", "WAKE"), oldRows.drop(1).map { it[oldColumns.indexOf("after")] })
         assertEquals(3, nightmaresSince(nights, now - 60_000)) // one new row, both rows of the older file
+    }
+
+    @Test
+    fun alarmsLeft_listsASnoozedWakeUpAtItsNextRing_andNoEarlyWakeUpThatWillBeSkipped() {
+        val zone = ZoneId.systemDefault()
+        fun at(hour: Int, minute: Int) = LocalDate.of(2026, 10, 29).atTime(hour, minute).atZone(zone).toInstant()
+            .toEpochMilli()
+        val config = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270)
+        assertEquals(
+            "the early wake-up at 4:30 AM and the wake-up alarm at 7 AM",
+            alarmsLeft(config, wakeAgainAtMs = null, wbtbSkipTonight = false, nowMs = at(1, 0)),
+        )
+        assertEquals(
+            "the wake-up alarm at 7 AM", // in bed at 1 AM: too soon before 4:30
+            alarmsLeft(config, wakeAgainAtMs = null, wbtbSkipTonight = true, nowMs = at(1, 0)),
+        )
+        // Snoozed at 7: tomorrow's alarms are more than 12 h away, the next ring is not.
+        assertEquals(
+            "the wake-up alarm at 7:09 AM",
+            alarmsLeft(config, wakeAgainAtMs = at(7, 9), wbtbSkipTonight = false, nowMs = at(7, 0)),
+        )
     }
 
     @Test

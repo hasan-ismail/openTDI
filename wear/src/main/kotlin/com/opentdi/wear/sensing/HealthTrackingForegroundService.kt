@@ -20,6 +20,7 @@ import com.opentdi.shared.model.AccelConfig
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.wear.MainActivity
 import com.opentdi.wear.R
+import com.opentdi.wear.ReportDraft
 import com.opentdi.wear.alarm.WakeAlarms
 import com.opentdi.wear.link.TelemetrySender
 import java.io.File
@@ -48,6 +49,7 @@ class HealthTrackingForegroundService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_STOP) {
+            writeLeftReport()
             stopSession()
             SensingStateHolder.update { it.copy(waiting = false) }
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -86,6 +88,7 @@ class HealthTrackingForegroundService : LifecycleService() {
             // A sensor restart during the recording (a permission granted, basic sensors, back from the Store) keeps
             // the night's alarms; the phone's Start over a recording left from last night begins a new night.
             val sameNight = ticker != null && intent?.action != ACTION_START_FROM_PHONE
+            if (!sameNight) writeLeftReport()
             stopSession(endNight = !sameNight)
             val logRawAccel = intent?.getBooleanExtra(EXTRA_LOG_RAW_ACCEL, AccelConfig().logRawAccel) == true
             startSession(
@@ -102,6 +105,15 @@ class HealthTrackingForegroundService : LifecycleService() {
         stopSession()
         thread.quitSafely() // runs the posted session stop first
         super.onDestroy()
+    }
+
+    /**
+     * The night ends (the phone's End the night too) or a new one begins: a dream report left without Save lives only
+     * in memory, and the process may be killed once nothing runs. One still on screen is written by its own Save.
+     * Main thread only, as ReportDraft.
+     */
+    private fun writeLeftReport() {
+        if (!ReportDraft.onScreen && ReportDraft.flush()) SensingStateHolder.update { it.copy(reportAfter = null) }
     }
 
     private fun startSession(config: SessionConfig, androidSensorsOnly: Boolean, keepNight: Boolean = false) {

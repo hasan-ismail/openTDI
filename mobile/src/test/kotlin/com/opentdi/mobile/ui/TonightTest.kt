@@ -47,6 +47,9 @@ class TonightTest {
         val ended = SessionStatus(state = TdiState.SESSION_COMPLETE, completedCycles = 4, maxCycles = 4)
         assertEquals(CUES_DONE to null, statusLines(ended, NOW, ready = true))
         assertEquals(QUICK_TEST_DONE to null, statusLines(ended.copy(quickTest = true), NOW, ready = true))
+        // The morning after the app process died: the watch still tracks, the phone's status is back to IDLE.
+        assertEquals("Tracking your sleep" to null, statusLines(SessionStatus(), NOW, ready = false, tracking = true))
+        assertEquals(CUES_DONE to null, statusLines(ended, NOW, ready = true, tracking = true))
         assertEquals("0:00", clock(-5_000)) // an overdue step never shows a negative time
         assertEquals( // past its earliest time a loop waits for stillness
             "Waiting until you're still",

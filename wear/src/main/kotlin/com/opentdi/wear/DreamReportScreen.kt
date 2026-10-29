@@ -143,6 +143,9 @@ internal class ReportDraft private constructor(
     companion object {
         private var current: ReportDraft? = null // main thread only
 
+        /** While DreamReportScreen is shown (main thread only): its own Save writes the report, not a night ending. */
+        var onScreen = false
+
         /** The unsaved report after [after] in [dir] to go on with, or a new one; any other is [flush]ed first. */
         fun open(after: String, dir: File, signs: Boolean): ReportDraft {
             current?.let { if (it.after == after && it.dir == dir && !it.saved) return it }
@@ -174,7 +177,8 @@ fun DreamReportScreen(
     onDone: () -> Unit,
 ) {
     val context = LocalContext.current
-    val draft = remember {
+    // Keyed on after: the wake-up ringing over an open early wake-up report writes that one and starts the morning's.
+    val draft = remember(after) {
         ReportDraft.open(after, dir, WakeAlarms.parse(WakeAlarms.loadConfigJson(context)).dreamSigns.isNotEmpty())
     }
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
@@ -195,7 +199,13 @@ fun DreamReportScreen(
         draft.recordedMs = SystemClock.elapsedRealtime() - startedMs // the length shown on the Save page
     }
     // Left without Save (back, the app closing): the recording is kept, and the draft waits for the next opening.
-    DisposableEffect(Unit) { onDispose { stopRecording() } }
+    DisposableEffect(Unit) {
+        ReportDraft.onScreen = true
+        onDispose {
+            ReportDraft.onScreen = false
+            stopRecording()
+        }
+    }
     val awake = rememberInteractive()
     // A watch screen that times out can take the microphone from a recording app: keep it on while recording.
     val view = LocalView.current
@@ -247,7 +257,7 @@ fun DreamReportScreen(
                                         micFailed = true // stays when the microphone is refused (no callback) or busy
                                         requestMic {
                                             val name = "w_dream_${LocalTime.now().format(FILE_TIME)}.m4a"
-                                            recorder = startRecorder(context, File(dir.apply { mkdirs() }, name))
+                                            recorder = startRecorder(context, File(draft.dir.apply { mkdirs() }, name))
                                             if (recorder != null) {
                                                 micFailed = false
                                                 draft.recording = name

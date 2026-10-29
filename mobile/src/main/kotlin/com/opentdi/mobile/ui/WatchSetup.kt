@@ -73,6 +73,10 @@ fun WatchSetupCard() {
             when {
                 found.pairing != null -> "Found the watch's code screen."
                 connect != null -> "Found your watch."
+                // Only the paired address is looked for, and a router can give the watch a new one.
+                pairedHost != null -> "Looking for your watch… If it is not found within a minute, and the watch is " +
+                    "on the same Wi-Fi with Wireless debugging on, its Wi-Fi address may have changed: tap Pair " +
+                    "again below."
                 else -> "Looking for the watch… If nothing shows within a minute, check the watch is on the same " +
                     "Wi-Fi as this phone with Wireless debugging on, and tap the watch screen to keep it awake."
             },

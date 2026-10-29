@@ -141,12 +141,16 @@ fun TonightScreen(
     // The watch tracks from Start the night until the morning, and says so after a phone restart too: starting
     // again would replay the falling-asleep voice, maybe near morning, so Start asks first.
     val nightUnderway = watch == WatchState.RECORDING
-    val nightDone = nightUnderway && status.state == TdiState.SESSION_COMPLETE && !status.quickTest
+    // From the watch, not this process's memory: by morning the app may have been closed since the voice ended.
+    val nightDone = nightUnderway && !status.running && !status.quickTest
     // Not held back by the watch's first answer (up to 5 s), so the headline does not flip on opening; Start still waits.
     val ready = errors.isEmpty() && problems(quick = false).isEmpty()
     // The pre-flight popup (owner, 2026-10-29: the checklist was "so ugly ... make it a one time popup"): Start opens
     // it only when something needs attention, listing just that. null = closed, else whether it is for a Quick test.
     var startAsk by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    // The message when the popup opened, left out of it: it can be hours old (a watch test in Settings), and the
+    // bedtime layout shows it under Start anyway.
+    var oldMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmStopWatch by rememberSaveable { mutableStateOf(false) }
     var tipsOpen by rememberSaveable { mutableStateOf(!tipsSeen(context)) }
 
@@ -157,8 +161,14 @@ fun TonightScreen(
             Check.SPEAKER -> "Bluetooth" to onOpenBluetooth
             Check.DND -> "Open settings" to onOpenDnd
             Check.BATTERY -> if (ui.batteryManual) null else "Allow" to onAllowBattery
-            Check.CUES -> "Get the voice ready" to viewModel::prepareCues
-            Check.TEST_CUE -> "Test the voice" to viewModel::testCue
+            Check.CUES -> "Get the voice ready" to {
+                oldMessage = null // so the popup shows this try's failure even when it repeats the old one
+                viewModel.prepareCues()
+            }
+            Check.TEST_CUE -> "Test the voice" to {
+                oldMessage = null
+                viewModel.testCue()
+            }
             Check.WATCH, Check.WATCH_BATTERY -> null
         }
         val fixEnabled = when (check) {
@@ -172,17 +182,24 @@ fun TonightScreen(
     fun begin(quick: Boolean) = if (quick) onQuickTest() else onStart()
     fun tryStart(quick: Boolean) {
         val clear = errors.isEmpty() && !waitsForWatch(quick) && problems(quick).isEmpty()
-        if (clear && (quick || !nightUnderway)) begin(quick) else startAsk = quick
+        if (clear && (quick || !nightUnderway)) {
+            begin(quick)
+        } else {
+            oldMessage = ui.cueMessage
+            startAsk = quick
+        }
     }
 
     Page("Tonight") {
         MoonHeader(remember { System.currentTimeMillis() })
-        StatusCard(status, now, ready, watchRecording = nightUnderway)
+        StatusCard(status, now, ready, nightDone)
+        if (ui.alarmsNotSent) Text(ALARMS_NOT_SENT, color = MaterialTheme.colorScheme.error)
         if (running) {
             OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth().height(64.dp)) {
                 Text("Stop the voice", style = MaterialTheme.typography.titleLarge)
             }
-            if (alarmsOn) Help("Your alarms on the watch stay on.")
+            // Only while the watch tracks: a Quick test arms no alarm, and a watch that missed Start rings none.
+            if (alarmsOn && nightUnderway) Help("Your alarms on the watch stay on.")
             // Only what can go wrong while it runs, such as the watch out of reach or the volume turned off.
             val during = checks.filter {
                 !it.ok && it.check !in NOT_WHILE_RUNNING && !(checkingWatch && it.check == Check.WATCH) &&
@@ -201,7 +218,19 @@ fun TonightScreen(
             }
         } else {
             StartButton(enabled = idle, glow = idle && ready && !nightUnderway) { tryStart(quick = false) }
-            if (ui.preparing) Help(ui.prepareStatus)
+            // Also what Get the voice ready said on leaving Settings, such as the sleep guide not reaching the watch:
+            // Start does not stop on it, so this is the only place it shows.
+            if (ui.preparing) {
+                Help(ui.prepareStatus)
+            } else {
+                ui.cueMessage?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                    TextButton(
+                        onClick = viewModel::prepareCues,
+                        enabled = idle && config.theme.isNotBlank() && config.theme.length <= 60,
+                    ) { Text("Get the voice ready") }
+                }
+            }
             // The watch tracks the whole night, past the end of the voice: in the morning it is stopped here.
             if (nightUnderway) {
                 OutlinedButton(onClick = { confirmStopWatch = true }, modifier = Modifier.fillMaxWidth()) {
@@ -230,7 +259,7 @@ fun TonightScreen(
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (again) {
                         Text(
-                            if (nightDone) {
+                            if (nightDone && status.state == TdiState.SESSION_COMPLETE) {
                                 "Tonight's voice is done, and the watch is still tracking your sleep. Start the " +
                                     "voice again?"
                             } else {
@@ -255,7 +284,7 @@ fun TonightScreen(
                         ui.preparing -> Help(ui.prepareStatus)
                         ui.testing -> Help("Testing the voice…")
                     }
-                    ui.cueMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    ui.cueMessage?.takeIf { it != oldMessage }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     when {
                         left.isEmpty() && !blocked -> Text("All set.", color = OK_COLOR)
                         !blocked -> Help("You can start anyway; fixing these makes the night more reliable.")
@@ -349,8 +378,8 @@ private fun StartButton(enabled: Boolean, glow: Boolean, onStart: () -> Unit) {
 }
 
 @Composable
-private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean, watchRecording: Boolean) {
-    val (headline, cycle) = statusLines(status, now, ready)
+private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean, nightDone: Boolean) {
+    val (headline, cycle) = statusLines(status, now, ready, tracking = nightDone)
     val context = LocalContext.current
     val debuggable = remember { context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 }
     Section(null) {
@@ -360,7 +389,7 @@ private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean, watchRe
             contentKey = { it.filterNot(Char::isDigit) }, // a calm fade when the state changes, not on every tick
             transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(300)) },
         ) { Text(it, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary) }
-        if (!status.running && !ready && status.state != TdiState.SESSION_COMPLETE) {
+        if (!status.running && !ready && !nightDone && status.state != TdiState.SESSION_COMPLETE) {
             Help("Tap Start the night to see what's left.")
         }
         cycle?.let {
@@ -368,7 +397,7 @@ private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean, watchRe
             LoopDots(currentCycle(status), status.maxCycles)
         }
         // The voice ends long before the night; the watch's tracking and alarms go on (owner, 2026-10-29).
-        if (status.state == TdiState.SESSION_COMPLETE && watchRecording) {
+        if (nightDone) {
             Text("The watch keeps tracking your sleep and runs your alarms. Tap End the night when you get up.")
         }
         status.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

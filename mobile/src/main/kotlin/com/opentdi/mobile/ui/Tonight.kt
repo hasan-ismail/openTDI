@@ -13,12 +13,16 @@ import java.util.Locale
 const val CUES_DONE = "Voice done for tonight"
 const val QUICK_TEST_DONE = "Quick test done"
 
-/** The Tonight card's big line and the cycle line under it, for [status] at [nowMs] (elapsedRealtime). */
-fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean): Pair<String, String?> {
+/**
+ * The Tonight card's big line and the cycle line under it, for [status] at [nowMs] (elapsedRealtime). [tracking]: the
+ * watch tracks a night whose voice is over, maybe in an app process started since (status back to IDLE).
+ */
+fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean, tracking: Boolean = false): Pair<String, String?> {
     val left = status.nextEventAtRealtimeMs?.let { clock(it - nowMs) }
     val headline = if (!status.running) {
         when {
             status.state == TdiState.SESSION_COMPLETE -> if (status.quickTest) QUICK_TEST_DONE else CUES_DONE
+            tracking -> "Tracking your sleep"
             ready -> "Ready"
             else -> "Almost ready"
         }

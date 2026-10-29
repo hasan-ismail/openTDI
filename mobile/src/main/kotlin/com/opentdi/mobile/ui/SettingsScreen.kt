@@ -467,7 +467,9 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
     val onTest: (AlarmTone) -> Unit = viewModel::testAlarm
     val alarms = config.alarms
     fun change(transform: (AlarmConfig) -> AlarmConfig) = edit { it.copy(alarms = transform(it.alarms)) }
+    val notSent = viewModel.ui.collectAsStateWithLifecycle().value.alarmsNotSent
     Section("Alarms (on the watch)") {
+        if (notSent) Text(ALARMS_NOT_SENT, color = MaterialTheme.colorScheme.error)
         Help("They ring on the watch while it tracks your sleep. Start the night sends them to the watch.")
         SwitchRow("Wake-up alarm", alarms.wakeEnabled, enabled) { on -> change { it.copy(wakeEnabled = on) } }
         if (alarms.wakeEnabled) {
@@ -775,6 +777,10 @@ private fun AboutCard() {
 }
 
 private const val MIN_GAIN = 0.15f // a voice at 0 % would make the night silent
+
+/** While [com.opentdi.mobile.UiState.alarmsNotSent]: the phone resends the change every 30 s until the watch answers. */
+internal const val ALARMS_NOT_SENT =
+    "The watch doesn't have your alarm change yet. Keep it near the phone: the phone keeps sending it."
 
 // §17.4, which includes the FS24 screening advice.
 private const val WELLNESS_STATEMENT =

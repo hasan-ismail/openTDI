@@ -38,6 +38,7 @@ import com.opentdi.shared.audio.FadeEnvelope
 import com.opentdi.shared.audio.GuideClip
 import com.opentdi.shared.audio.WavAudio
 import com.opentdi.shared.audio.targetGain
+import com.opentdi.mobile.session.NapSessionService
 import com.opentdi.mobile.session.SESSIONS_DIR
 import com.opentdi.mobile.session.SessionMonitor
 import com.opentdi.mobile.stats.NightsRepository
@@ -79,13 +80,12 @@ data class UiState(
     val recordingCue: PromptCue? = null, // the cue whose own voice is being recorded
     val batteryUnrestricted: Boolean = true, // as checked at the last resume
     val batteryManual: Boolean = false, // no battery settings screen opened: show the path instead
+    val alarmsNotSent: Boolean = false, // the watch hasn't answered the last alarm change yet; resent every 30 s
 )
 
 const val PREPARING = "Getting the voice ready…"
 private const val GUIDE_NOT_SENT =
     "The watch didn't get the sleep guide. Keep it near the phone and tap Get the voice ready again."
-private const val ALARMS_NOT_SENT =
-    "The watch didn't get the new alarm settings. Keep it near the phone and change them again."
 private const val WATCH_NO_ANSWER = "The watch didn't answer. End the night on the watch itself."
 private const val WATCH_NOT_STOPPED = "The watch didn't stop. End the night on the watch itself."
 
@@ -148,6 +148,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         while (true) {
             val status = watchRequest(app, TdiCommand.StatusRequest(DeviceRole.PHONE))
             if (status?.state == WatchState.IDLE) clearWatchStopError() // ended on the watch itself
+            if (status?.state == WatchState.RECORDING) SessionMonitor.update { // back in reach, or started on the watch
+                if (it.error?.startsWith(NapSessionService.WATCH_STOPPED) == true) it.copy(error = null) else it
+            }
             emit(status)
             delay(5000)
         }
@@ -259,14 +262,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         watchSync?.cancel()
         watchSync = viewModelScope.launch {
             delay(800)
-            val sent = watchRequest(app, TdiCommand.ConfigSync(null, next)) != null
-            mutableUi.update {
-                when {
-                    !sent -> it.copy(cueMessage = ALARMS_NOT_SENT)
-                    it.cueMessage == ALARMS_NOT_SENT -> it.copy(cueMessage = null)
-                    else -> it
-                }
+            // Until the watch answers: a missed change rings at the old time. A newer edit cancels this loop.
+            while (watchRequest(app, TdiCommand.ConfigSync(null, next)) == null) {
+                mutableUi.update { it.copy(alarmsNotSent = true) }
+                delay(30_000)
             }
+            mutableUi.update { it.copy(alarmsNotSent = false) }
         }
     }
 
@@ -334,7 +335,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Log.w(TAG_AUDIO, logLine("CUES_NOT_STORED", "error" to e.message))
                 "The voice couldn't be saved. Free some space on the phone and try again."
             }
-            mutableUi.update { it.copy(preparing = false, cues = loadCueSet(app), cueMessage = error) }
+            // Cleared at the start, so a message here came from a test or recording during the prepare: kept.
+            mutableUi.update { it.copy(preparing = false, cues = loadCueSet(app), cueMessage = error ?: it.cueMessage) }
         }
     }
 

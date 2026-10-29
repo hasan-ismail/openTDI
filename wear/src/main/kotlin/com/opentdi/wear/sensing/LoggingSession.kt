@@ -132,6 +132,8 @@ class LoggingSession(
                 fresh.copy(
                     startedElapsedMs = it.startedElapsedMs,
                     alarmRinging = it.alarmRinging,
+                    wakeAgainAtMs = it.wakeAgainAtMs,
+                    wbtbSkipTonight = it.wbtbSkipTonight,
                     wbtbBackToSleepAtMs = it.wbtbBackToSleepAtMs,
                     lastWakeText = it.lastWakeText,
                     snoozesLeft = it.snoozesLeft,

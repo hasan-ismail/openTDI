@@ -65,6 +65,7 @@ import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
 import com.opentdi.shared.audio.alarmsAhead
 import com.opentdi.shared.model.AccelConfig
+import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.GravityMode
 import com.opentdi.shared.model.PROTOCOL_VERSION
 import com.opentdi.shared.model.SensorSource
@@ -181,7 +182,12 @@ class MainActivity : ComponentActivity() {
                                     onReport = { openReport(fromEnd = true) },
                                     alarmsAhead = remember {
                                         val alarms = WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity))
-                                        alarmsAhead(alarms, System.currentTimeMillis(), ZoneId.systemDefault())
+                                        alarmsLeft(
+                                            alarms,
+                                            state.wakeAgainAtMs,
+                                            state.wbtbSkipTonight,
+                                            System.currentTimeMillis(),
+                                        )
                                     },
                                     onEnd = {
                                         // Only here: Close OpenTDI while waiting must not stop a phone's Quick test.
@@ -242,7 +248,26 @@ class MainActivity : ComponentActivity() {
 
     /** The one-time setup's Allow: asks for the permissions, then waits for the phone; it never starts a night. */
     private fun allowSensors() {
-        afterPermissions = { if (sensorAllowed()) HealthTrackingForegroundService.waitForPhone(this) }
+        afterPermissions = {
+            if (sensorAllowed()) {
+                HealthTrackingForegroundService.waitForPhone(this)
+            } else if (!shouldShowRequestPermissionRationale(heartRatePermission(Build.VERSION.SDK_INT)) &&
+                !shouldShowRequestPermissionRationale(Manifest.permission.ACTIVITY_RECOGNITION)
+            ) {
+                // Refused for good: Android shows no dialog any more, so the app's settings page is where to allow it;
+                // back from there, onResume waits for the phone.
+                try {
+                    startActivity(
+                        Intent(
+                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.fromParts("package", packageName, null),
+                        ),
+                    )
+                } catch (e: android.content.ActivityNotFoundException) {
+                    Unit
+                }
+            }
+        }
         permissionRequest.launch(missingPermissions().toTypedArray())
     }
 
@@ -354,11 +379,8 @@ private fun MainScreen(
         }
     }
     val context = LocalContext.current
-    // The alarms still to ring, so a night begun with old or no alarms shows it; once a minute.
-    val alarms = remember(nowMs / 60_000) {
-        val config = WakeAlarms.parse(WakeAlarms.loadConfigJson(context))
-        alarmsAhead(config, System.currentTimeMillis(), ZoneId.systemDefault())
-    }
+    // The alarms still to ring, so a night begun with old or no alarms shows it; read once a minute.
+    val config = remember(nowMs / 60_000) { WakeAlarms.parse(WakeAlarms.loadConfigJson(context)) }
     val listState = rememberTransformingLazyColumnState()
     val moon = remember { moonPhase(System.currentTimeMillis()) }
     val waitingOnly = state.waiting && !state.running
@@ -430,12 +452,20 @@ private fun MainScreen(
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Turn on Always On Display") },
-                        secondaryLabel = { Text("Opens Settings. Switch it on, then swipe right to come back.") },
+                        // Two lines at most on the round screen: the main label already says what to switch on.
+                        secondaryLabel = { Text("Then swipe right to come back") },
                     )
                 }
             } else if (state.running) {
                 item { BigLine(if (state.status == null) "Starting…" else "Tracking your sleep") }
-                item { Line(alarms?.let { "${it.replaceFirstChar(Char::uppercase)}." } ?: "No alarm set on the watch") }
+                // Nothing when an alarm is on but more than 12 h away: it is set, just not tonight's to list.
+                val alarms = alarmsLeft(config, state.wakeAgainAtMs, state.wbtbSkipTonight, System.currentTimeMillis())
+                    ?.let { "${it.replaceFirstChar(Char::uppercase)}." }
+                    ?: "No alarm set on the watch".takeIf { !config.wakeEnabled && !config.wbtbEnabled }
+                alarms?.let { item { Line(it) } }
+                if (state.wbtbSkipTonight) {
+                    item { Line("No early wake-up tonight: it's less than 4½ hours after you went to bed.") }
+                }
             } else if (needsSetup) {
                 item { BigLine("One-time setup") }
                 item { Line("Let OpenTDI read your heart rate and movement.") }
@@ -720,6 +750,14 @@ private fun liveValues(state: SensingState): List<String> {
 }
 
 private fun format(pattern: String, value: Float?) = value?.let { String.format(Locale.ROOT, pattern, it) } ?: "—"
+
+/**
+ * The alarms still to ring, worded as [alarmsAhead]: a snoozed or rung-out wake-up at its next ring
+ * ([wakeAgainAtMs]), and no early wake-up that WakeAlarms will skip ([wbtbSkipTonight]).
+ */
+internal fun alarmsLeft(config: AlarmConfig, wakeAgainAtMs: Long?, wbtbSkipTonight: Boolean, nowMs: Long): String? =
+    wakeAgainAtMs?.let { "the wake-up alarm at ${WakeAlarms.hhmm(it)}" }
+        ?: alarmsAhead(config.copy(wbtbEnabled = config.wbtbEnabled && !wbtbSkipTonight), nowMs, ZoneId.systemDefault())
 
 /** "2 h 5 min": in words, so the dim screen's once-a-minute update never reads like the clock. */
 private fun elapsed(ms: Long): String {

@@ -3,6 +3,7 @@ package com.opentdi.mobile.session
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
+import android.os.PowerManager
 import android.util.Log
 import com.opentdi.mobile.TAG_SESSION
 import com.opentdi.mobile.logLine
@@ -76,8 +77,15 @@ fun closeKilledSession(context: Context) {
         return
     }
     Log.w(TAG_SESSION, logLine("SESSION_KILLED", "id" to id, "exit" to "USER_REQUESTED", "exitMs" to exit.timestamp))
-    val message = "Last time the voice was stopped from outside OpenTDI, for example by battery saving. " +
-        "Tap Allow when Start asks about battery."
+    // Start asks about battery only while it is restricted; otherwise the user closed or stopped the app.
+    val power = context.getSystemService(PowerManager::class.java)
+    val message = if (power.isIgnoringBatteryOptimizations(context.packageName)) {
+        "Last time OpenTDI was closed while the voice was on (swiped away, or stopped in Active apps). " +
+            "Leave it running until the voice ends."
+    } else {
+        "Last time the voice was stopped from outside OpenTDI, for example by battery saving. " +
+            "Tap Allow when Start asks about battery."
+    }
     SessionMonitor.update { if (it.running) it else it.copy(error = message) }
 }
 

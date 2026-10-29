@@ -1,6 +1,8 @@
 package com.opentdi.wear.alarm
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WakeAlarmsTest {
@@ -18,5 +20,12 @@ class WakeAlarmsTest {
         // Nothing saved yet, or a stop before the saved start (a clock change): this recording's own start.
         assertEquals(5 * hour, WakeAlarms.nightStart(5 * hour, null, null))
         assertEquals(5 * hour, WakeAlarms.nightStart(5 * hour, 4 * hour, 3 * hour))
+    }
+
+    @Test
+    fun wbtbTooSoon_skipsAnEarlyWakeUpLessThan4_5HoursIntoTheNight() {
+        val wbtb = 28 * hour + 30 * 60_000 // 4:30 AM
+        assertTrue(WakeAlarms.wbtbTooSoon(wbtb, 25 * hour)) // to bed at 1 AM: 3.5 h, skipped
+        assertFalse(WakeAlarms.wbtbTooSoon(wbtb, 24 * hour)) // to bed at midnight: 4.5 h, rings
     }
 }

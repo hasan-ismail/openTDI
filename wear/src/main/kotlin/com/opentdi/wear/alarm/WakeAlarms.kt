@@ -45,9 +45,14 @@ class WakeAlarms(
     private var ringing: Ringing? = null
     private var backToSleepAt: Long? = null
     private var snoozes = 0
+    private var tappedSnoozes = 0 // Snooze taps only: Stats count those, not the re-rings of a ring-out
     private var lateCues = makeLateCues()
     private var guideOfferedAt: Long? = null // the back-to-sleep buzz, while "I'm in bed" waits for a tap
     private var guide: GuideRoutine? = null // the guided back-to-sleep, while it plays
+
+    init {
+        publishWbtbSkip()
+    }
 
     private fun makeLateCues(): LateCues? = if (config.wbtbEnabled && config.lateCues != LateCueMode.OFF) {
         LateCues(context, { config }) { event, still, hr, detail ->
@@ -66,9 +71,19 @@ class WakeAlarms(
         config = next
         if (next.wakeEnabled != old.wakeEnabled || next.wakeAtMin != old.wakeAtMin) {
             wakeAt = if (next.wakeEnabled) nextAlarmAt(next.wakeAtMin, nowMs, zone) else null
+            SensingStateHolder.update { it.copy(wakeAgainAtMs = null) } // a new wake time drops a pending snooze
+            // A dropped snooze's count would use up the new time's re-rings, so a slept-through ring would not repeat.
+            if (ringing?.kind != "WAKE") {
+                snoozes = 0
+                tappedSnoozes = 0
+                firstRingAt = null
+            }
         }
+        // Turned off on the phone while it rings: otherwise the ring-out snoozes would bring it back.
+        if (!next.wakeEnabled && ringing?.kind == "WAKE") stop(nowMs, null, null)
         if (next.wbtbEnabled != old.wbtbEnabled || next.wbtbAtMin != old.wbtbAtMin) {
             wbtbAt = if (next.wbtbEnabled) nextAlarmAt(next.wbtbAtMin, nowMs, zone) else null
+            publishWbtbSkip()
         }
         if (!next.wbtbEnabled || next.lateCues == LateCueMode.OFF) {
             lateCues?.close()
@@ -138,8 +153,8 @@ class WakeAlarms(
         }
         if (wbtbAt?.let { nowMs >= it } == true) {
             wbtbAt = nextAlarmAt(config.wbtbAtMin, nowMs, zone) // tomorrow, if the recording runs on
-            // Too early a WBTB cuts the first, deep half of the night and did worse (4.5 h vs 6 h, Erlacher 2022).
-            if (nowMs - recordingStartMs < MIN_SLEEP_BEFORE_WBTB_MS) {
+            publishWbtbSkip()
+            if (wbtbTooSoon(nowMs, recordingStartMs)) {
                 log(nowMs, "WBTB", "SKIPPED", stillness, hr, "recording_ms=${nowMs - recordingStartMs}")
             } else {
                 ring(nowMs, "WBTB", config.wbtbTone, gentle = true, stillness, hr)
@@ -158,13 +173,14 @@ class WakeAlarms(
         val r = ringing ?: return
         if (r.kind != "WAKE" || snoozes >= config.maxSnoozes) return
         snoozes++
+        if (event == "SNOOZE") tappedSnoozes++
         ringing = null
         player.stop()
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         log(nowMs, r.kind, event, stillness, hr, "after_ms=${nowMs - r.startMs};snooze=$snoozes")
         wakeAt = nowMs + config.snoozeMin * 60_000L
         firstRingAt = firstRingAt ?: r.startMs
-        SensingStateHolder.update { it.copy(alarmRinging = null, snoozesLeft = 0) }
+        SensingStateHolder.update { it.copy(alarmRinging = null, snoozesLeft = 0, wakeAgainAtMs = wakeAt) }
     }
 
     /** "I'm awake" ([how] STOPPED), or the ring time ran out (TIMED_OUT). */
@@ -178,7 +194,11 @@ class WakeAlarms(
         val total = nowMs - (firstRingAt ?: r.startMs) // snoozes count as part of waking up
         val summary = when {
             r.kind != "WAKE" -> null
-            how == "STOPPED" -> "Woke up in ${clock(total)}" + (if (snoozes > 0) " ($snoozes snoozes)." else ".")
+            how == "STOPPED" -> "Woke up in ${clock(total)}" + when (tappedSnoozes) {
+                0 -> "."
+                1 -> " (1 snooze)."
+                else -> " ($tappedSnoozes snoozes)."
+            }
             else -> "The wake-up alarm stopped by itself after ${clock(total)}."
         }
         // With the guide the cue is trained in bed instead, not now while the sleeper is groggy.
@@ -189,11 +209,13 @@ class WakeAlarms(
         }
         if (r.kind == "WAKE") { // the morning is over: the next wake-up starts its own count
             snoozes = 0
+            tappedSnoozes = 0
             firstRingAt = null
         }
         SensingStateHolder.update {
             it.copy(
                 alarmRinging = null,
+                wakeAgainAtMs = null,
                 wbtbBackToSleepAtMs = backToSleepAt,
                 lateCuesTraining = trains,
                 lastWakeText = summary ?: it.lastWakeText,
@@ -238,6 +260,8 @@ class WakeAlarms(
         SensingStateHolder.update {
             it.copy(
                 alarmRinging = null,
+                wakeAgainAtMs = null,
+                wbtbSkipTonight = false,
                 wbtbBackToSleepAtMs = null,
                 lateCuesTraining = false,
                 guideOffered = false,
@@ -248,6 +272,12 @@ class WakeAlarms(
 
     /** The guide is on and every clip of it is on the watch; otherwise WBTB runs as it did before the guide. */
     private fun guideReady() = config.wbtbGuide && guideClipsPresent(context)
+
+    /** Tells the screen when tonight's early wake-up is on but [tick] will skip it, so it is not listed as ringing. */
+    private fun publishWbtbSkip() {
+        val skip = wbtbAt?.let { wbtbTooSoon(it, recordingStartMs) } == true
+        SensingStateHolder.update { it.copy(wbtbSkipTonight = skip) }
+    }
 
     private fun ring(nowMs: Long, kind: String, tone: AlarmTone, gentle: Boolean, stillness: Float?, hr: Float?) {
         ringing = Ringing(kind, tone, nowMs) // first: a guide stopped below sees the wake-up and arms no cues
@@ -265,6 +295,7 @@ class WakeAlarms(
         SensingStateHolder.update {
             it.copy(
                 alarmRinging = kind,
+                wakeAgainAtMs = null,
                 snoozesLeft = left,
                 guideOffered = guideOfferedAt != null,
                 wbtbBackToSleepAtMs = backToSleepAt,
@@ -331,6 +362,9 @@ class WakeAlarms(
 
         /** GUESSED: a recording this old when the phone starts the night is last night's, left running. */
         const val NEW_NIGHT_MS = 12 * 3_600_000L
+
+        /** Too early a WBTB cuts the first, deep half of the night and did worse (4.5 h vs 6 h, Erlacher 2022). */
+        internal fun wbtbTooSoon(atMs: Long, nightStartMs: Long) = atMs - nightStartMs < MIN_SLEEP_BEFORE_WBTB_MS
 
         /** m:ss, or "—" when it never happened. */
         fun clock(ms: Long?): String = ms?.let { String.format(Locale.ROOT, "%d:%02d", it / 60_000, it / 1000 % 60) } ?: "—"

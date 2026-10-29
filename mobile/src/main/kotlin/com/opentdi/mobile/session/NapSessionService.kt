@@ -219,9 +219,13 @@ class NapSessionService : LifecycleService() {
         private var gateJob: Job? = null
         private var cueJob: Job? = null
         private var ending = false
+        private val alarmsOn = config.alarms.wakeEnabled || config.alarms.wbtbEnabled
         private val watchMissing = "The watch isn't tracking your sleep" +
-            (if (config.alarms.wakeEnabled || config.alarms.wbtbEnabled) ", so your alarms won't ring" else "") +
+            (if (alarmsOn) ", so your alarms won't ring" else "") +
             ". Open OpenTDI on the watch and keep it near the phone."
+        // Nothing sends Start after the voice; the watch's "Start without the phone" uses the alarms Start saved there.
+        private val watchStopped = WATCH_STOPPED + (if (alarmsOn) ", so your alarms may not ring" else "") +
+            ". On the watch: Details > Start without the phone."
 
         fun begin() {
             wakeLock.acquire((config.sessionMaxMin + 10) * 60_000L) // §14.4
@@ -238,14 +242,21 @@ class NapSessionService : LifecycleService() {
                 var voice = cues.audio[PromptCue.MORNING_WAKE]?.takeIf { spoken }
                 var last: String? = null
                 var misses = 0
+                var tracking = false
                 // A lost answer, a watch opened after Start or a restarted watch leaves it waiting: no tracking, no
-                // alarms. So Start repeats all session; a tracking watch only saves the same alarms again.
+                // alarms. So Start repeats until the watch tracks. Once it does, the phone only asks: a resent Start
+                // re-runs the watch's 12 h "last night's recording" check, which can split the night at 12 h.
                 while (isActive && !ending) {
-                    val state = watchRequest(this@NapSessionService, start)?.state
+                    val command = if (tracking) TdiCommand.StatusRequest(DeviceRole.PHONE) else start
+                    val state = watchRequest(this@NapSessionService, command)?.state
                     val shown = state?.name ?: "NO_ANSWER"
                     if (shown != last) sessionEvent(logLine("WATCH_START", "state" to shown)) // changes only
                     last = shown
-                    misses = if (state == WatchState.RECORDING) 0 else misses + 1
+                    // No answer (out of reach, or no watch) says nothing about tracking, so it changes neither.
+                    if (state != null) {
+                        tracking = state == WatchState.RECORDING
+                        misses = if (tracking) 0 else misses + 1
+                    }
                     SessionMonitor.update {
                         when {
                             misses >= WATCH_MISSES -> it.copy(error = watchMissing)
@@ -364,7 +375,13 @@ class NapSessionService : LifecycleService() {
                 last?.join()
                 release()
                 NightsRepository.syncInBackground(applicationContext) // outlives the service; best effort
-                SessionMonitor.update { it.copy(running = false, nextEventAtRealtimeMs = null) }
+                SessionMonitor.update {
+                    it.copy(
+                        running = false,
+                        nextEventAtRealtimeMs = null,
+                        error = if (it.error == watchMissing) watchStopped else it.error,
+                    )
+                }
                 session = null
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -435,6 +452,8 @@ class NapSessionService : LifecycleService() {
         const val EXTRA_QUICK_TEST = "quickTest"
         /** The p_config.csv key that marks a Quick test, which Stats leaves out. */
         const val QUICK_TEST_ROW = "session.quickTest"
+        /** How the error starts once the voice ended without a tracking watch; the UI clears it when the watch tracks. */
+        const val WATCH_STOPPED = "The watch stopped tracking your sleep"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "session"
         private const val TICK_MS = 250L
