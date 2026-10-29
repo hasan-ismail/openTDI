@@ -17,6 +17,8 @@ data class SessionStatus(
     val nextEventAtRealtimeMs: Long? = null,
     val lastEvent: String? = null,
     val error: String? = null,
+    /** One run on Quick test timing (Tonight's Quick test button). */
+    val quickTest: Boolean = false,
 )
 
 /** The process-wide session state: [NapSessionService] writes it, the UI reads it. */

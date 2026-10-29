@@ -22,6 +22,8 @@ private const val EDA_NORMAL = 0 // EdaSet STATUS: normal
 private const val MAX_RECORDING_MS = 3 * 24 * 3_600_000L
 private val RING_ENDS = setOf("RING", "SNOOZE", "STOPPED", "TIMED_OUT")
 private val PROMPT_STATES = listOf(TdiState.WAKING_USER, TdiState.RECORDING_DREAM, TdiState.RE_INCUBATING).map { it.name }
+// GUESSED: longer than a real prompt (cue, report window, re-incubation cue), each stage cut off after 180 s.
+private const val DANGLING_PROMPT_MS = 10 * 60_000L
 private val RECORDING = Regex("""w_dream_\d{6}\.m4a""") // DreamReportScreen: w_dream_HHmmss.m4a
 
 /**
@@ -231,13 +233,15 @@ private fun answeredRings(alarms: List<AlarmRow>): List<Span> = alarms.indices.m
 
 /**
  * §B5: the Dormio prompts among the phone's p_transitions.csv rows in [startMs, endMs), each from WAKING_USER until a
- * state other than the prompt, the report and the re-incubation, or until [endMs].
+ * state other than the prompt, the report and the re-incubation. One never followed by such a state (the phone process
+ * died) lasts at most [DANGLING_PROMPT_MS], not to [endMs]: the watch went on recording the sleep after it.
  */
 private fun dormioWakings(rows: List<Map<String, String?>>, startMs: Long, endMs: Long): List<Span> {
     val states = rows.mapNotNull { r -> r["wall_ms"]?.toLongOrNull()?.takeIf { it in startMs until endMs }?.to(r["to"]) }
         .sortedBy { it.first }
     return states.indices.filter { states[it].second == TdiState.WAKING_USER.name }.map { i ->
-        Span(states[i].first, states.drop(i + 1).firstOrNull { it.second !in PROMPT_STATES }?.first ?: endMs)
+        val end = states.drop(i + 1).firstOrNull { it.second !in PROMPT_STATES }?.first
+        Span(states[i].first, end ?: minOf(endMs, states[i].first + DANGLING_PROMPT_MS))
     }
 }
 

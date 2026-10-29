@@ -46,6 +46,7 @@ class TonightTest {
         assertEquals(CUES_DONE to null, statusLines(running(TdiState.SESSION_COMPLETE, cycle = 4), NOW, true))
         val ended = SessionStatus(state = TdiState.SESSION_COMPLETE, completedCycles = 4, maxCycles = 4)
         assertEquals(CUES_DONE to null, statusLines(ended, NOW, ready = true))
+        assertEquals(QUICK_TEST_DONE to null, statusLines(ended.copy(quickTest = true), NOW, ready = true))
         assertEquals("0:00", clock(-5_000)) // an overdue step never shows a negative time
         assertEquals( // past its earliest time a loop waits for stillness
             "Waiting until you're still",

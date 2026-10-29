@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
+        quickTest = savedInstanceState?.getBoolean(KEY_QUICK_TEST) == true
         if (savedInstanceState == null) {
             lifecycleScope.launch(Dispatchers.IO) {
                 deleteOldSessions(filesDir) // §12.1
@@ -122,7 +123,12 @@ class MainActivity : ComponentActivity() {
         viewModel.showBattery(batteryUnrestricted())
     }
 
-    private var quickTest = false
+    private var quickTest = false // kept across a recreation while the notification permission is asked
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_QUICK_TEST, quickTest)
+    }
 
     private fun start(quick: Boolean) {
         quickTest = quick
@@ -186,3 +192,5 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+private const val KEY_QUICK_TEST = "quickTest"

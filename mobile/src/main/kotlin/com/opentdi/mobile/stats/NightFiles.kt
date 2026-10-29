@@ -1,5 +1,6 @@
 package com.opentdi.mobile.stats
 
+import com.opentdi.mobile.session.NapSessionService
 import com.opentdi.shared.csv.CsvFiles
 import com.opentdi.shared.csv.phoneSessionSummary
 import com.opentdi.shared.csv.sessionDirs
@@ -65,9 +66,10 @@ private val AUDIO_EVENT = CsvFiles.P_AUDIO.columns.indexOf("event")
 /**
  * A phone session from its CSV texts, headers included: the first to the last p_transitions.csv row, loops completed as
  * the Sessions screen counts them, cues that began to play (p_audio.csv CUE_START) and the routine.* rows of
- * p_config.csv. Null when p_transitions.csv has no complete row.
+ * p_config.csv. Null when p_transitions.csv has no complete row, and for a Quick test, which is no night.
  */
 internal fun phoneSession(id: String, transitions: String, audio: String, config: String): PhoneSession? {
+    if (config.lineSequence().any { it == "${NapSessionService.QUICK_TEST_ROW},1" }) return null
     val rows = transitions.lineSequence()
     val summary = phoneSessionSummary(rows)
     val durationMs = summary.durationMs ?: return null

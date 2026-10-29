@@ -689,7 +689,7 @@ private fun SoundCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
         ) {
             Column(Modifier.weight(1f)) {
                 Text("End chime")
-                Help("A soft chime and a sentence when the session ends.")
+                Help("A soft chime and \"That was the last cue for tonight. Sleep well.\" after the last cue.")
             }
             Switch(checked = chime, onCheckedChange = null, enabled = enabled)
         }

@@ -118,7 +118,7 @@ class NapSessionService : LifecycleService() {
             return refuse(e.message.orEmpty())
         }
         val session = try {
-            Session(config, cues)
+            Session(config, cues, quickTest)
         } catch (e: IOException) { // the session folder or its CSVs could not be created
             return refuse("Could not create the session files: ${e.message}")
         }
@@ -162,7 +162,11 @@ class NapSessionService : LifecycleService() {
     }
 
     /** One session, from start to SESSION_COMPLETE. Every scheduler call runs on the main thread. */
-    private inner class Session(private val config: SessionConfig, private val cues: PreparedCues) {
+    private inner class Session(
+        private val config: SessionConfig,
+        private val cues: PreparedCues,
+        private val quickTest: Boolean,
+    ) {
         private val id = newSessionId(System.currentTimeMillis(), Random.Default)
         private val gate = if (config.timed.waitForStillness) StillnessGate(config) else null
         private val scheduler = TimedCueScheduler(id, config, gate)
@@ -188,8 +192,12 @@ class NapSessionService : LifecycleService() {
 
         fun begin() {
             wakeLock.acquire((config.sessionMaxMin + 10) * 60_000L) // §14.4
-            SessionMonitor.update { SessionStatus(running = true, sessionId = id, maxCycles = config.maxCycles) }
-            lifecycleScope.launch { // the waiting watch starts recording too (owner, 2026-10-28)
+            SessionMonitor.update {
+                SessionStatus(running = true, sessionId = id, maxCycles = config.maxCycles, quickTest = quickTest)
+            }
+            // The waiting watch starts recording too (owner, 2026-10-28), but not for a Quick test: that would start
+            // the night's recording and alarms hours early, often in the evening.
+            if (!quickTest) lifecycleScope.launch {
                 val watch = watchRequest(
                     this@NapSessionService,
                     TdiCommand.StartSession(id, config, DeviceRole.PHONE, System.currentTimeMillis()),
@@ -343,6 +351,7 @@ class NapSessionService : LifecycleService() {
                 add("device.sdkInt" to Build.VERSION.SDK_INT.toString())
                 add("session.id" to id)
                 add("session.firstLatencyMin" to scheduler.firstLatencyMin.toString())
+                add(QUICK_TEST_ROW to if (quickTest) "1" else "0")
                 add("tts.engine" to cues.set.engine)
                 add("tts.voice" to cues.set.voice)
                 for (rendered in cues.set.cues) {
@@ -374,6 +383,8 @@ class NapSessionService : LifecycleService() {
     companion object {
         const val ACTION_STOP = "com.opentdi.mobile.action.STOP"
         const val EXTRA_QUICK_TEST = "quickTest"
+        /** The p_config.csv key that marks a Quick test, which Stats leaves out. */
+        const val QUICK_TEST_ROW = "session.quickTest"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "session"
         private const val TICK_MS = 250L

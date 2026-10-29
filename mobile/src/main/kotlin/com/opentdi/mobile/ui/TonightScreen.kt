@@ -134,7 +134,8 @@ fun TonightScreen(
     fun problems(quick: Boolean) = checks.filter {
         !it.ok && !(quick && it.check == Check.TIMING) && !(checkingWatch && it.check == Check.WATCH)
     }
-    val ready = errors.isEmpty() && !checkingWatch && problems(quick = false).isEmpty()
+    // Not held back by the watch's first answer (up to 5 s), so the headline does not flip on opening; Start still waits.
+    val ready = errors.isEmpty() && problems(quick = false).isEmpty()
     // The pre-flight popup (owner, 2026-10-29: the checklist was "so ugly ... make it a one time popup"): Start opens
     // it only when something needs attention, listing just that. null = closed, else whether it is for a Quick test.
     var startAsk by rememberSaveable { mutableStateOf<Boolean?>(null) }

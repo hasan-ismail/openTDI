@@ -360,6 +360,17 @@ class NightSummariesTest {
         val sleep = s.sleep!!
         assertEquals(348 - 15, sleep.sleepMin)
         assertEquals(2, sleep.awakenings)
+        // The phone died in the report: 10 min awake, not the rest of the night.
+        val died = P_TRANSITIONS.name to csv(
+            P_TRANSITIONS.columns,
+            listOf(
+                listOf(at(120), 0, "HYPNAGOGIA_DETECTED", "WAKING_USER", "PHONE_STAGE", 1, "TIMED"),
+                listOf(at(121), 0, "WAKING_USER", "RECORDING_DREAM", "PHONE_STAGE", 1, "TIMED"),
+            ),
+        )
+        val dangling = summarize(night() + died)!!
+        assertEquals(List(10) { false }, dangling.epochs.asleep.subList(120, 130))
+        assertEquals(348 - 10, dangling.sleep!!.sleepMin)
     }
 
     @Test

@@ -77,6 +77,8 @@ class NightsTest {
         assertEquals(0, bare.cues)
         assertNull(bare.routineDone)
         assertNull(bare.routineTotal)
+        assertNull(phoneSession("x", transitions, audio, "key,value\nsession.quickTest,1\n")) // no night
+        assertEquals(0, phoneSession("x", transitions, "", "key,value\nsession.quickTest,0\n")!!.cues)
     }
 
     @Test

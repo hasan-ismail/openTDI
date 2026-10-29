@@ -24,7 +24,7 @@ class CueTextTest {
             "You are dreaming. You are in control. You can fall back asleep now.",
             cueText(PromptCue.RE_INCUBATION, "a fork"),
         )
-        assertEquals("The session is over. You can wake up now.", cueText(PromptCue.SESSION_END, "a tree"))
+        assertEquals("That was the last cue for tonight. Sleep well.", cueText(PromptCue.SESSION_END, "a tree"))
         assertEquals(cueText(PromptCue.RE_INCUBATION, "a tree"), cueText(PromptCue.RE_INCUBATION, "a fork"))
     }
 

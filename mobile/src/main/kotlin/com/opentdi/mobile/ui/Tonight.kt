@@ -11,13 +11,14 @@ import java.util.Locale
 
 /** Only the falling-asleep cue loops are over, not the night: "Session complete" read as the watch's end too. */
 const val CUES_DONE = "Cues done for tonight"
+const val QUICK_TEST_DONE = "Quick test done"
 
 /** The Tonight card's big line and the cycle line under it, for [status] at [nowMs] (elapsedRealtime). */
 fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean): Pair<String, String?> {
     val left = status.nextEventAtRealtimeMs?.let { clock(it - nowMs) }
     val headline = if (!status.running) {
         when {
-            status.state == TdiState.SESSION_COMPLETE -> CUES_DONE
+            status.state == TdiState.SESSION_COMPLETE -> if (status.quickTest) QUICK_TEST_DONE else CUES_DONE
             ready -> "Ready"
             else -> "Almost ready"
         }
@@ -34,7 +35,7 @@ fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean): Pair<String
             TdiState.WAKING_USER, TdiState.RE_INCUBATING -> "Cue playing"
             TdiState.RECORDING_DREAM -> left?.let { "Listening for your answer — $it left" } ?: "Listening for your answer"
             TdiState.PAUSED -> "Paused"
-            TdiState.SESSION_COMPLETE -> CUES_DONE
+            TdiState.SESSION_COMPLETE -> if (status.quickTest) QUICK_TEST_DONE else CUES_DONE
         }
     }
     val n = currentCycle(status)

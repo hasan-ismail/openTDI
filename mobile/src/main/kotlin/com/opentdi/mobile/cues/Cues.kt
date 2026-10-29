@@ -49,7 +49,8 @@ fun cueText(cue: PromptCue, @Suppress("UNUSED_PARAMETER") theme: String): String
     PromptCue.INITIAL_INCUBATION -> "You are dreaming. You are in control."
     PromptCue.WAKE_PROMPT -> "You're falling asleep. You are dreaming now. What do you notice?"
     PromptCue.RE_INCUBATION -> "You are dreaming. You are in control. You can fall back asleep now."
-    PromptCue.SESSION_END -> "The session is over. You can wake up now."
+    // Not "you can wake up now": the night goes on after the cues (owner, 2026-10-29).
+    PromptCue.SESSION_END -> "That was the last cue for tonight. Sleep well."
     // Calm and about recall first: being woken by name helped recall more than an alarm tone (§5.2).
     PromptCue.MORNING_WAKE -> "Good morning. Keep your eyes closed, and replay your dream before you move."
     PromptCue.SLEEP_STATE_QUESTION -> throw IllegalArgumentException("SLEEP_STATE_QUESTION is Phase 2")

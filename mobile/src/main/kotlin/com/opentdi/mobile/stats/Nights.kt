@@ -33,6 +33,7 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -129,7 +130,13 @@ object NightsRepository {
                 "The watch app is not reachable: install it and keep the watch connected."
             } else {
                 val channels = Wearable.getChannelClient(context)
-                val channel = channels.openChannel(node.id, DataLayerPaths.SESSION_FILES).await()
+                val opening = channels.openChannel(node.id, DataLayerPaths.SESSION_FILES)
+                val channel = try {
+                    opening.await()
+                } catch (e: CancellationException) { // as CuePlayer: a channel that opens later is closed
+                    opening.addOnSuccessListener { late -> late?.let { channels.close(it) } }
+                    throw e
+                }
                 try {
                     coroutineScope {
                         // A night is several MB over Bluetooth, so no total limit: only a link that stopped sending,
