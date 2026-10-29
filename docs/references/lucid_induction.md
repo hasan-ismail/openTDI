@@ -392,3 +392,140 @@ Removed in the source audit: the technologynetworks, AJMC and sleepreviewmag new
 - Not opened, so left out: ICS 2-h fluid taper, Mograss naps, Pietilä alcohol and HRV, B6 and EFSA numbers, Drake 2013, Duraccio, the Cochrane blue-light review, Burns 2021.
 
 Not checked: the AASM habits page and Watson 2015 were not reopened. The caffeine REM null was not verified, so caffeine is shown as general-sleep evidence only.
+
+## 8. Third research round (2026-10-29)
+
+How this was done: searches of PubMed, Europe PMC (which also lists preprints), bioRxiv, PsyArXiv, and journal and university copies. Every number below was read in the paper's full text unless it is marked "abstract only". Where this section disagrees with §1–7, this section is newer. 8.6 gives the status of each open question in sleep_and_dreams.md §7.
+
+### 8.1 Can the wrist detect REM live? (Q1)
+
+- **One live REM detector for a watch exists. It has never been tested live.**
+  - Mallela & Mallett (2024) built "Dream Sage", an Apple Watch and iPhone app for targeted lucidity reactivation (TLR). Every 30 s it estimates the sleep stage from past data only:
+    - heart rate, sampled at 0.2 Hz, averaged per 30 s and smoothed with an exponential moving average;
+    - activity counts from the accelerometer, also smoothed;
+    - hours since the night started.
+  - A random-forest model calls an epoch REM when its probability is 0.24 or more. The authors chose that low threshold to catch more REM at the cost of false alarms.
+  - They tested it on the Walch dataset (31 adults, one lab polysomnography (PSG) night each), leaving out one person at a time. **It found 57% of REM epochs (recall), only 34% of its REM calls were right (precision), and overall accuracy was 70%.** Most false REM calls were N2 or N3.
+  - The app plays a cue on every REM epoch, but after 4 REM epochs in a row it stops until that REM period ends, so as not to wake the sleeper.
+  - The authors say they did not test it live [1] **[weak; replay of past-only features, n=31 healthy adults, lab PSG; numbers read from the preprint because the journal PDF was blocked]**.
+- **The nearest live test targeted deep sleep, not REM** (SleepStim, Whitmore 2022).
+  - A Fitbit sent heart rate, accelerometer and gyroscope data at 1 Hz to the phone. A neural network judged the last 240 s. On held-out people it separated N3 from other stages with an AUC of 0.77.
+  - At home, a Dreem 2 headband's automatic staging was the reference (n=45 with usable headband data):
+    - N3 was 21.1% of sleep but received 34.7% of cues;
+    - 65.5% of cues fell in N2 or N3, about 14% in REM and about 16% in wake.
+  - 16 of 120 people (13%) heard any cue, and none said the sounds woke them [2] **[moderate; home study, reference is a headband algorithm, not PSG]**.
+  - Lesson: cues triggered from the wrist often land in the wrong stage, and about 1 in 6 land in wake.
+- **Samsung's own staging, offline.**
+  - Galaxy Watch 3 against lab PSG (n=32, 16 of them with sleep apnoea): REM sensitivity 0.598 pooled.
+  - Per person: sensitivity 0.58, precision (PPV) 0.47, kappa 0.39. The authors say REM duration was "not reliably estimated".
+  - Samsung Electronics supplied the watches [3] **[moderate]**.
+  - Third-party apps cannot read these stages live anyway.
+- **Which signals carry REM best.**
+  - **Heart rate level beats every other wrist signal.** In DREAMT (Empatica E4 wristband, 100 people with suspected sleep disorders, lab PSG), the REM F1 score for each signal on its own was: heart rate 0.43; pulse-rate variability 0.26; accelerometer 0.08; skin temperature 0.05; EDA 0.02 (3-class task, handcrafted features). The authors write that "EDA and temperature showed smaller and less consistent contributions" [4] **[moderate; offline model that also looks ahead in time]**.
+  - **Heart rate rises quickly at the switch from NREM to REM**, then declines slowly within REM, and it also drifts down across the whole night [5] **[moderate; healthy young men; abstract only]**. So a live detector should compare against the most recent NREM stretch, not against the bedtime baseline.
+  - **Time of night** is an input in every model that works ([1]; Walch and Altini in sleep_and_dreams §2).
+- **Bottom line for Q1.** No study has checked a live wrist REM detector's cues against PSG one by one. If a past-only wrist model performs like [1], only about a third of its REM calls will be real REM (inference). Guagnano 2025 (n=6) and Garcia-Molina 2022 (chest ECG) are already in sleep_and_dreams §2.
+
+### 8.2 Cue timing, spacing, loudness and type (Q2)
+
+- **Cueing on detected REM has never been compared directly with cueing by time of night.** In the lab, REM cueing helped in one lab (Carr) and showed no benefit in the multi-centre preprint. The home study (Konkoly 2024) cued by time and never staged sleep. No study has tested both against each other. **[gap]**
+- **The multi-centre preprint, now checked against its full text** [6] **[preprint; lab, n=60, PSG, cued and sham naps in balanced order, participants blinded]**:
+  - **Lucidity:** signal-verified lucid dreams in 23/60 cued naps (38.3%) vs 17/60 sham naps (28.3%), p=.219. This settles the §1 check.
+  - **Cost:** REM 12.7 vs 16.2 min (p=.040); sleep efficiency 53.4% vs 57.6% (p=.025).
+  - **Cues:** light, sound (500-700-900 Hz) and forehead vibration took turns, about every 20 s, starting about 20 s after REM was detected. Sound started at 40 dBA (lower if that was the person's threshold) and rose in 5-dBA steps, over about 35 dB of background white noise. On signs of arousal, cues paused, then resumed at the level used before the arousal.
+  - **Perception:** people perceived cues in 71.1% of cued REM periods; 39.1% of the lucid dreams in cued naps began with a cue; from the first to the last eye signal, lucid dreams lasted longer with cues: 6.08 vs 3.24 min (p=.027).
+  - **Wake-ups:** cues woke people in 23.7% of cued periods (5 by light, 9 by sound, 9 by vibration). Even the headband's lowest light and vibration settings were too strong for some people. The authors think starting 20 s into REM may be too early.
+- **How far into REM to start: untested.** **[gap]** Carr cued from the first eye movement, about every 15 s, and suggests early cues helped [7]. The multi-centre authors suspect early cues hurt [6]. A wrist-vibration study waited 5 min into REM [8].
+- **Spacing and number of cues.** Lab protocols use 15–30 s between cues: Carr about 15 s [7], multi-centre about 20 s [6], Konkoly 2026 15–30 s [9], wrist vibration 30 s [8]. In Carr, people who became lucid had heard 1–14 cues (mean 5.71). Cued REM periods averaged 0.62–0.71 brief awakenings [7] **[moderate; n=40]**.
+- **Loudness.**
+  - One protocol started at the lowest level the person could detect while awake, raised it only while sleep stayed sound, and lowered it at any sign of arousal [9] **[weak; n=20 frequent lucid dreamers]**.
+  - In the home deep-sleep study [2] **[moderate]**: the cue level started at the user's chosen white-noise level; it stepped down automatically when the classifier's deep-sleep probability fell while sounds played; people who set loud levels lost the memory benefit (it reversed), probably through micro-arousals rather than full wakings; the authors recommend cues "barely audible in a quiet room".
+- **Sound or vibration.**
+  - **Wrist vibration in REM:** 2-s pulses on the back of the wrist every 30 s, from 5 min into REM (n=44, each person tested with and without). Signal-verified lucidity was 16.0% with vibration vs 32.1% with the same training and no vibration. Condition had no significant effect overall (p=.289) [8] **[preprint; lab PSG]**.
+  - **Forehead vibration** was perceived as often as sound and got the fastest eye-signal response (1.50 s, vs 1.99 s for sound and 2.9 s for light). It also woke people as often as sound did [6] **[preprint]**.
+  - Together with Paul 2014 (§5.1) and Peters 2026 in PLoS One (sleep_and_dreams §5), there is still no evidence that vibration alone brings on lucidity.
+- **How often cues wake people.** The studies measure this differently, so the figures are not comparable: 23.7% of cued REM periods, by self-report [6]; 0.62–0.71 PSG arousals per cued REM period [7]; at home, 0.19 movement pauses per cue vs 0.10 with no cue [20]; 0 of 120 people reported being woken by quiet cues aimed at deep sleep [2].
+- **Training the cue during the WBTB waking.** Two Northwestern lab studies trained the cue during a waking around 4 a.m. or after about 5 h of sleep, then cued REM after the return to sleep: 2 of 5 had a verified lucid dream, with no control group [10] **[weak]**; [9]. This supports step 3 of §5.2.
+- **On names:** no TLR paper by Kathleen Esfahany was found; M. Jafarzadeh Esfahani is the multi-centre preprint's co-first author [6]. No separate Carr 2020 TLR study was found; the Carr TLR nap study used here is [7].
+
+### 8.3 When to wake for WBTB, and for how long (Q3)
+
+- **No study from 2022–2026 compares, within the same people, timing by hours since sleep onset with timing by clock.** sleep_and_dreams §7 Q2 stays open.
+- **Older within-person lab studies, new to these files (abstracts only):**
+  - Interrupting sleep in the 4th sleep cycle instead of the 2nd made the next sleep onset start straight in REM (a SOREMP) 87.5% of the time vs 58.1% (n=16) [11] **[weak]**.
+  - 13 people, 364 long lab nights, 1,189 wakings [12] **[moderate]**: after any waking, REM came back soon; REM after wakings longer than 10 min lasted longer than after shorter wakings; long wakings mostly came out of REM.
+  - A single waking of 10–90 min resets the REM rhythm. The time to REM after going back to sleep falls into two groups, split at 25–30 min (n=44 men) [13] **[moderate]**.
+  - What this means for OpenTDI (inference): the later the break comes in the sleep period, the faster REM returns. That favours counting hours since sleep onset, but it is no argument against clock time, because on a normal night time asleep and body-clock time move together.
+- **Waking out of REM vs at a fixed time.** In Erlacher 2022 [14], morning awakenings after WBTB timed to REM gave 4 lucid dreams in 15 people; awakenings at a fixed time (e.g. 08:00) gave 0 in 20. These were separate experiments **[weak]**. Appel 2020: people were woken from REM after about 6 h and did tasks before going back to bed; 10 of 20 reported a lucid dream, 8 verified by eye signal [15] **[weak; lab, no control group, abstract only]**.
+- **Dream recall.** Within the same people at home (n=124 high recallers; EEG headband or Fitbit): nights with more short or medium REM awakenings than usual brought more morning dream recall; nights with more long (2 min or more) REM awakenings brought more recalled content [16] **[preprint]**.
+- **How long to stay awake: nothing new.** The 10-min finding in [12] fits the app's 10-min minimum (§6.3 item 4).
+
+### 8.4 Repeated sleep-onset wakings (Dormio/TDI) (Q4)
+
+- **No study has measured later REM, sleep quality that night, or sleep paralysis (SP) after Dormio/TDI.** Every TDI study was an afternoon nap (45–120 min, between 12:00 and 16:00) in screened healthy adults.
+  - **Pilot:** after 2–6 sleep-onset wakings (mean 2.28 across all 11), 8 of 11 people still reached REM within a 120-min nap. Sleep stages were not recorded in enough detail to analyse [19] **[weak]**.
+  - **Remote Dormio Light** (n=80; 4 hypnagogic reports in about 1 h): "no adverse events were reported". The authors advise screening out psychosis, narcolepsy, recurrent sleep paralysis and frequent hypnagogic hallucinations [18] **[weak; sleep not measured]**.
+- **Indirect evidence on SP from repeated wakings:**
+  - A schedule of many short sleeps, with a waking after every 5 min of REM, in 13 students prone to SP: 8 SP episodes in 184 wakings. Those with SP had more stage 1 sleep and more fatigue throughout ("low tolerance for disrupted sleep-wake rhythms") [17] **[weak; abstract only]**. Compare Takeuchi 1992: 9.4% (sleep_and_dreams §6).
+  - Morning lab TLR naps: SP in 8 of 120 naps (6.7%), the same with and without cues; false awakenings in 46.7% of naps [6] **[preprint]**.
+- **Inference, untested:** SP needs REM at sleep onset. Early in the night, sleep onset is rarely REM; late in the night it usually is [11]. So Dormio loops at bedtime should rarely cause SP. Loops after WBTB or near morning may catch the start of REM rather than N1, which raises the risk of SP and hypnagogic hallucinations. Each waking also resets the REM rhythm [13], so bedtime loops probably push the night's first REM later.
+
+### 8.5 What this means for OpenTDI (ranked; **cheap** = a few lines or one setting)
+
+1. **Cheap: make REM-likely use past data only before it times anything.** `RemLikely.kt` judges each minute on the 5 min and 90 min *around* it (`WINDOW_HALF_MIN`, `NEAR_HALF_MIN`) and on medians over the whole night; live, that would need data from the future. For live use, compute the same signs over trailing windows, using medians of the night so far, and log this score every minute next to v2. Expect live precision to be much lower: about 34% in the only past-only wrist model [1].
+2. **Cheap: base REM on heart rate, not on EDA or temperature.** Give the most weight to a heart-rate rise above the last NREM stretch [4][5]. Keep time of night and stillness. Use EDA only to veto cues during a storm; give wrist temperature little or no weight.
+3. **Cheap: REM-likely can hold cues back, but must not start them on its own.** Keep the §5.2 gate (time window, stillness, pauses after movement) and add: no cues while live REM-likely is low; one burst per candidate bout (up to 10 cues, 20–30 s apart), then silence for the rest of that bout ([1] stops after 2 min of REM); the first cue about 60 s into the bout (judgment between [7], [6] and [8]).
+4. **Cheap: after any sign of waking, lower the cue level for the rest of the night.** Trigger: movement or a heart-rate jump within 30 s of a cue. Response: keep the existing 5-min pause, and also drop one level until morning [2][6]. Start each night at the lowest level the user could detect awake in bed [9]; never raise it automatically above the bedtime "notice but won't wake me" level.
+5. **Cheap: vibration off by default for lucidity cues.** Change §5.2's "optionally one weak vibration pulse" to opt-in only, always paired with the tone [6][8]. (The late cues play no vibration today; only the back-to-sleep buzz vibrates.)
+6. **Cheap: a time-of-night guard for Dormio.** Offer sleep-onset loops at bedtime and in naps. After WBTB or in the last third of the night, show "Sleep onset may go straight into REM; sleep paralysis is more likely" and keep the mode off by default. Turn it off after a logged SP. Cap a session at about 6 sleep-onset wakings, the most any TDI study used [19].
+7. **Cheap: an optional quiet noise bed on cue nights.** About 35 dB of pink or white noise from the phone, with the cue level set relative to it. Two cueing studies used one [2][6], but neither tested whether it helps (judgment). This is separate from the −75 dBFS keep-alive carrier.
+8. **Cheap: keep WBTB at 6 h after sleep onset, and log both anchors.** For each WBTB, store the clock time, hours since onset and the habitual wake time, plus the time from back-in-bed to stillness and the first REM-likely bout after the return, so the user's own nights can compare the two anchors, which no study has done. Keep the 10-min minimum awake time [12].
+9. **Validation (not cheap):** before live REM-likely times any cue, replay the owner's past nights. Compare its minutes with Samsung Health's stages (offline) and with the "cue heard in dream" and "cue woke me" reports. Report precision, not only recall [1][2].
+10. **Experimental, later: a "recall alarm"** that rings during a late REM-likely bout [16][14]. The smart-alarm caveat in §5.2 still applies: claim no benefit for alertness.
+
+**Do not claim** that the watch detects REM live, that REM-timed cues beat timed cues, that vibration cues help lucidity, or that Dormio is safe with respect to sleep paralysis.
+
+### 8.6 Status of the open questions (sleep_and_dreams.md §7)
+
+1. **Live REM detection from the wrist:** built once, on Apple Watch (offline: recall 57%, precision 34% [1]), and never tested live. Cueing in phasic vs tonic REM, and detecting lucidity from heart rate or EDA, are still untested.
+2. **What to anchor WBTB on:** still open. Within-person lab data show REM returns faster after later breaks [11][12].
+3. **SM-L500 beat-to-beat quality:** not addressed. On another wrist device, EDA added little to REM detection [4].
+4. **Do REM cues add anything beyond training?** The multi-centre null result is now checked: p=.219, and REM fell from 16.2 to 12.7 min (p=.040) [6]. It is still a preprint.
+5. **Safe maximum number of induction nights:** nothing new.
+6. **Dormio and SP:** no direct study. Indirect evidence says the risk depends on time of night (8.4).
+7. **Where the wrist trigger lands:** no new data for N1. A wrist-triggered deep-sleep system put about 16% of its cues in wake [2].
+
+### 8.7 Seen but not used
+
+- **Djanian et al. 2026**, *Physiol Meas* 47(4): PPG staging on DREAMT, described as "towards real-time". Abstract only, no REM numbers, paywalled.
+- **Quino et al. 2024**, arXiv 2410.00693: shorter PPG windows lowered REM sensitivity. Abstract only, preprint, no past-only test.
+- **NCT07891806**: Apple Watch vibration timed to REM, as a depression treatment; n=208, completed 2025. A company-sponsored registry entry with no results posted.
+- **Mundt et al. 2025**, *J Sleep Res*: CBT plus TLR for nightmares in narcolepsy (TLR n=3). Not about cue timing.
+- **LuciEntry** (ACM DIS 2025; EEG and EOG headset) and **Genc 2025** (Geneva master's thesis on the Oniri app): not opened.
+- **Salvesen et al. 2024**, *Sleep Med Rev* review: abstract only. Across 51 publications, stimulus incorporation into dreams ranged from 0 to about 80%.
+- **Morris et al. 2026**, *Brain Sci* (n=5), and **Konkoly et al. 2025**, *Neuropsychologia*: REM cueing to shape dream content, with no new timing data.
+
+### 8.8 Sources
+
+1. Mallela R, Mallett R 2024. Targeted lucidity reactivation implemented in an open-source watchOS app. *International Journal of Dream Research* 17(2):143–147. https://doi.org/10.11588/ijodr.2024.2.100797. Numbers read from the PsyArXiv preprint: https://doi.org/10.31234/osf.io/e9u8v
+2. Whitmore NW, Harris JC, Kovach T, Paller KA 2022. Improving memory via automated targeted memory reactivation during sleep. *Journal of Sleep Research* 31(6):e13731. https://doi.org/10.1111/jsr.13731
+3. Kim D, Joo EY, Choi SJ 2023. Validation of the Samsung smartwatch for sleep–wake determination and sleep stage estimation. *Journal of Sleep Medicine* 20(1):28–34. https://doi.org/10.13078/jsm.230004 (Samsung Electronics supplied the watches.)
+4. Tallal U, Agrawal R, Kshirsagar S 2026. Wearable sleep-stage classification: a systematic analysis of signal modalities, representations, and multimodal fusion. *Sensors* 26(18):5746. https://pmc.ncbi.nlm.nih.gov/articles/PMC13611820/
+5. Cajochen C, Pischke J, Aeschbach D, Borbély AA 1994. Heart rate dynamics during human sleep. *Physiology & Behavior* 55(4):769–774. https://doi.org/10.1016/0031-9384(94)90058-2 (abstract only)
+6. Picard-Deland C, Jafarzadeh Esfahani M, … Carr M, Dresler M 2026 (v2, 21 Aug 2026). Inducing lucid dreaming with multisensory stimulation: a preregistered multi-center study. bioRxiv, preprint, not peer reviewed. https://doi.org/10.1101/2024.06.21.600133
+7. Carr M, Konkoly K, Mallett R, Edwards C, Appel K, Blagrove M 2023. Combining presleep cognitive training and REM-sleep stimulation in a laboratory morning nap for lucid dream induction. *Psychology of Consciousness* 10(4):413–430. https://doi.org/10.1037/cns0000227
+8. Peters E, Heitmann J, Morath N, … Dresler M, Erlacher D 2026. Waking up in the dream lab: a lab-based lucid dream induction paradigm using virtual reality and sensory stimulation. bioRxiv, preprint, not peer reviewed. https://doi.org/10.64898/2026.03.11.711049
+9. Konkoly KR, Morris DJ, Hurka K, Martinez AM, Sanders KEG, Paller KA 2026. Creative problem-solving after experimentally provoking dreams of unsolved puzzles during REM sleep. *Neuroscience of Consciousness* niaf067. https://pmc.ncbi.nlm.nih.gov/articles/PMC12875123/
+10. Wolk N, Morris D, Nahas Y, Konkoly KR, Carr M, Paller KA, Mallett R 2024. Lucid dreams from reactivating mindfulness during REM sleep: a pilot study. *International Journal of Dream Research* 17(2):224–227. https://doi.org/10.11588/ijodr.2024.2.98233
+11. Sasaki Y, Fukuda K, Takeuchi T, Inugami M, Miyasita A 2000. Sleep onset REM period appearance rate is affected by REM propensity in circadian rhythm in normal nocturnal sleep. *Clinical Neurophysiology* 111(3):428–433. https://doi.org/10.1016/s1388-2457(99)00254-0 (abstract only)
+12. Barbato G, Barker C, Bender C, Wehr TA 2002. Spontaneous sleep interruptions during extended nights. *Clinical Neurophysiology* 113(6):892–900. https://doi.org/10.1016/s1388-2457(02)00081-0 (abstract only)
+13. Miyasita A, Fukuda K, Inugami M 1989. Effects of sleep interruption on REM-NREM cycle in nocturnal human sleep. *Electroencephalography and Clinical Neurophysiology* 73(2):107–116. https://doi.org/10.1016/0013-4694(89)90189-2 (abstract only)
+14. Erlacher D, Schmid D, Bischof F, Hammer J, Stumbrys T 2022. Combining wake-up-back-to-bed with cognitive induction techniques: does earlier sleep interruption reduce lucid dream induction rate? *Clocks & Sleep* 4(2). https://pmc.ncbi.nlm.nih.gov/articles/PMC9149976/
+15. Appel K, Füllhase S, Kern S, et al. 2020. Inducing signal-verified lucid dreams in 40% of untrained novice lucid dreamers within two nights in a sleep laboratory setting. *Consciousness and Cognition* 83:102960. https://doi.org/10.1016/j.concog.2020.102960 (abstract only)
+16. Ataei S, Esfahani MJ, Axmacher N, Dresler M, Schoch SF 2026. How awakenings shape dream recall: a multilevel study. bioRxiv, preprint, not peer reviewed. https://doi.org/10.64898/2026.05.20.722678
+17. Takeuchi T, Fukuda K, Sasaki Y, Inugami M, Murphy TI 2002. Factors related to the occurrence of isolated sleep paralysis elicited during a multi-phasic sleep-wake schedule. *Sleep* 25(1):89–96. https://doi.org/10.1093/sleep/25.1.89 (abstract only)
+18. Bellaiche L, Haar Horowitz A, McClay M, Bottary R, Denis D, Chen C, Maes P, Seli P 2024. Targeted dream incubation at a distance: the development of a remote and sensor-free tool for incubating hypnagogic dreams and mind-wandering. *Frontiers in Sleep*, 1258345. https://pmc.ncbi.nlm.nih.gov/articles/PMC12713799/
+19. Haar Horowitz A, Konkoly KR, Carr M, Stickgold R, Maes P 2026. Targeted dream incubation at sleep onset can influence later dream content in REM sleep: a pilot study. *Frontiers in Sleep* 5:1812535. https://doi.org/10.3389/frsle.2026.1812535
+20. Konkoly KR et al. 2024. Provoking lucid dreams at home with sensory cues paired with pre-sleep cognitive training. *Consciousness and Cognition* 125:103759. https://pmc.ncbi.nlm.nih.gov/articles/PMC11542932/
+
+Not checked: the IJoDR journal PDF of [1] (blocked), so its numbers come from the PsyArXiv preprint; [5], [11]–[13], [15] and [17] were read as abstracts only; Erlacher 2022 [14] was read through a summarising fetch of its PMC page. Spot-checked again before adding: [4]'s per-signal REM F1 values (Table 9) and [19]'s 8 of 11.
