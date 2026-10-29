@@ -274,6 +274,14 @@ class NightSummariesTest {
         )!!
         assertEquals(AlarmOutcome(at(380)), rungOut.wake)
         assertNear(at(390), rungOut.sleep!!.finalWakeMs, 10_000)
+        // Slept through a ring with snoozes left: it rang again a snooze later (RANG_OUT is no snooze anyone pressed).
+        val rangAgain = alarms(
+            listOf(at(380), "WAKE", "RING", null, null, null),
+            listOf(at(390), "WAKE", "RANG_OUT", 1f, 60f, "after_ms=600000;snooze=1"),
+            listOf(at(399), "WAKE", "RING", null, null, null),
+            listOf(at(400), "WAKE", "STOPPED", null, null, "after_ms=60000"),
+        )
+        assertEquals(AlarmOutcome(at(380), at(400), latencyS = 20 * 60), summarize(night() + rangAgain)!!.wake)
     }
 
     @Test

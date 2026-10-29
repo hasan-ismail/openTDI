@@ -36,6 +36,10 @@ class WatchInstaller(private val context: Context) {
     val found: StateFlow<AdbFound> = mutableFound.asStateFlow()
     private val listeners = mutableListOf<NsdManager.DiscoveryListener>()
     private val infoCallbacks = mutableListOf<NsdManager.ServiceInfoCallback>()
+    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** The address of the watch this phone last paired with, or null before the first pairing. */
+    val pairedHost: String? get() = prefs.getString(KEY_HOST, null)
 
     init {
         configureIdentity(context)
@@ -105,7 +109,11 @@ class WatchInstaller(private val context: Context) {
      */
     suspend fun pair(endpoint: AdbEndpoint, code: String): String? = try {
         withTimeoutOrNull(PAIR_TIMEOUT_MS) {
-            withContext(Dispatchers.IO) { Kadb.pair(endpoint.host, endpoint.port, code) }
+            withContext(Dispatchers.IO) {
+                Kadb.pair(endpoint.host, endpoint.port, code)
+                // No suspension point in between: a pair that ends after the card closed or the timeout is kept too.
+                prefs.edit().putString(KEY_HOST, endpoint.host).apply()
+            }
             null
         } ?: "The watch did not answer. Tap its screen to keep it awake and try again."
     } catch (e: Exception) {
@@ -145,6 +153,8 @@ class WatchInstaller(private val context: Context) {
         private const val PAIRING = "_adb-tls-pairing._tcp"
         private const val CONNECT = "_adb-tls-connect._tcp"
         private const val WATCH_APK = "watch.apk"
+        private const val PREFS = "watch_setup"
+        private const val KEY_HOST = "host"
         private const val PAIR_TIMEOUT_MS = 30_000L
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val SOCKET_TIMEOUT_MS = 120_000

@@ -22,7 +22,6 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Asks for "Unrestricted" battery, so the system does not stop sensing overnight. -->
     <!-- add only if spec §15 #4 shows PERMISSION_ERROR with the screen off:
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" /> -->
 

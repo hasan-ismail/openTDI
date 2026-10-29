@@ -6,6 +6,7 @@ import androidx.core.content.edit
 import com.opentdi.shared.audio.lucidCue
 import com.opentdi.shared.config.StructuralConstants.MAJOR_MOVEMENT_MIN_S
 import com.opentdi.shared.config.StructuralConstants.MAJOR_MOVEMENT_WINDOW_S
+import com.opentdi.shared.config.StructuralConstants.RE_ONSET_MS
 import com.opentdi.shared.model.AlarmConfig
 import kotlin.random.Random
 
@@ -34,6 +35,7 @@ class LateCues(
     private var stillSinceMs: Long? = null
     private var armedAtMs: Long? = null // the buzz, while waiting for the sleeper to fall back asleep
     private var startAtMs: Long? = null
+    private var endAtMs: Long? = null // the cues end by themselves, with or without a wake-up alarm
     private var nextCueAtMs = 0L
     private var boutCues = 0
     private var trainingLeft = 0
@@ -77,12 +79,14 @@ class LateCues(
         }
         armedAtMs = nowMs
         startAtMs = null
+        endAtMs = nowMs + LATE_CUE_WINDOW_MS
         val night = if (cueNight) "CUE" else "NO_CUE"
         log("ARMED", null, null, "night=$night$pair;start_after_onset_min=${c.lateCueAfterOnsetMin}")
     }
 
-    /** The wake-up alarm: no lucidity cue during the ring, the dream replay or the report. */
+    /** The wake-up alarm, or [LATE_CUE_WINDOW_MS] after the arm: no lucidity cue while the sleeper is up. */
     fun disarm() {
+        endAtMs = null
         if (startAtMs == null && armedAtMs == null && trainingLeft == 0) return
         armedAtMs = null
         startAtMs = null
@@ -93,6 +97,7 @@ class LateCues(
     fun close() = sound.stop()
 
     fun tick(nowMs: Long, stillness: Float?, hr: Float?) {
+        if (endAtMs?.let { nowMs >= it } == true) disarm()
         if (trainingLeft > 0 && nowMs >= nextTrainingAtMs) {
             play(TRAINING_VOLUME)
             trainingLeft--
@@ -145,14 +150,15 @@ class LateCues(
         const val TRAINING_CUES = 4
         const val TRAINING_FIRST_MS = 20_000L
         const val TRAINING_GAP_MS = 30_000L
+
+        // GUESSED: falling back asleep, the 40 min wait and the late REM periods before a usual wake-up. Ends the cues
+        // on a night without a wake-up alarm, or when the sleeper is up for good.
+        const val LATE_CUE_WINDOW_MS = 4 * 3_600_000L
     }
 }
 
 /** GUESSED: the cue while awake, in training or the guide; louder than the night's lateCueVolume. */
 internal const val TRAINING_VOLUME = 0.4f
-
-/** GUESSED: a still stretch this long after the buzz is taken as falling back asleep; its start is the re-onset. */
-internal const val RE_ONSET_MS = 10 * 60_000L
 
 /**
  * The estimated re-onset once the still stretch that began at [stillSinceMs] (null while moving) has lasted

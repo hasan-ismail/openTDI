@@ -135,8 +135,8 @@ class CueTextTest {
         val config = SessionConfig(theme = "a tree")
         val prepared = CueSet("a tree", "engine", "en-us-x-voice", emptyList(), cueFingerprint(config, "en-us-x-voice"))
         assertNull(cueSetProblem(prepared, config))
-        assertTrue(cueSetProblem(null, config)!!.startsWith("No cues"))
-        assertTrue(cueSetProblem(prepared, config.copy(theme = "a fork"))!!.startsWith("The cues are for \"a tree\""))
+        assertTrue(cueSetProblem(null, config)!!.startsWith("The voice isn't ready"))
+        assertTrue(cueSetProblem(prepared, config.copy(theme = "a fork"))!!.startsWith("The voice was made for \"a tree\""))
         val changes = listOf(
             config.copy(audio = AudioConfig(ttsSpeechRate = 0.8f)),
             config.copy(audio = AudioConfig(phrasePauseMs = 900)),
@@ -144,7 +144,7 @@ class CueTextTest {
             config.copy(audio = AudioConfig(cueTexts = mapOf(PromptCue.SESSION_END to "Wake up gently."))),
         )
         for (changed in changes) {
-            assertTrue("$changed", cueSetProblem(prepared, changed)!!.startsWith("The cue words,"))
+            assertTrue("$changed", cueSetProblem(prepared, changed)!!.startsWith("Your changes need the voice"))
         }
         // A set from before the fingerprint existed counts as changed; another voice changes the fingerprint.
         assertTrue(cueSetProblem(prepared.copy(fingerprint = ""), config) != null)

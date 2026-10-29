@@ -45,7 +45,6 @@ private enum class Step(val title: String) {
     WELCOME("Welcome"),
     SAFETY("Before you start"),
     WATCH("Your watch"),
-    SENSORS("The watch's sensors"),
     VOICE("The voice"),
     ALARMS("Alarms"),
     FIRST_NIGHT("Your first night"),
@@ -111,9 +110,9 @@ private fun StepPage(
                 Bullets(
                     "As you fall asleep, the phone or watch softly says \"You are dreaming. You are in control.\"",
                     "It waits until the watch shows you lying still, so tossing and turning is left alone.",
-                    "Optionally the watch wakes you briefly in the early morning (WBTB), the best-supported way " +
-                        "to have a lucid dream at home.",
-                    "In the morning the watch wakes you gently and you tell it your dream.",
+                    "Optionally the watch wakes you briefly in the early morning, the best-supported way to have a " +
+                        "lucid dream at home.",
+                    "In the morning the watch wakes you gently and asks about your dream.",
                     "Everything stays on your phone and watch.",
                 )
             }
@@ -147,28 +146,32 @@ private fun StepPage(
                 WatchSetupCard()
                 Help("Already have OpenTDI on the watch? Go on to the next step.")
             }
-            Step.SENSORS -> {
-                SensorsStep(onAllowBattery)
-                SamsungKitCard()
-            }
-
             Step.VOICE -> {
-                Help("Choose a voice, tap Prepare cues, then Play test cue at the volume you'll sleep with.")
+                Help("Choose a voice, tap Get the voice ready, then Test the voice at the volume you'll sleep with.")
                 VoiceCard(viewModel, ui, idle, volumeOff, cueProblem)
             }
             Step.ALARMS -> {
-                Help("A gentle wake-up on the watch, and if you like, a short WBTB wake in the early morning.")
+                Help(
+                    "The watch wakes you gently at this time, then asks about your dream. Change the time if you " +
+                        "need to.",
+                )
                 AlarmsCard(ui.config, idle, viewModel::edit, viewModel)
             }
             Step.FIRST_NIGHT -> Section(null) {
                 Text("Every night:", style = MaterialTheme.typography.titleMedium)
                 Bullets(
-                    "Read the Bedtime tips on the Tonight tab once.",
                     "Open OpenTDI on the watch: it waits for the phone.",
                     "Tap Start the night on the phone, lie down and let go. If anything needs fixing first, it tells you.",
-                    "In the morning, tell the watch your dream and answer its few questions.",
+                    "In the morning, answer the watch's dream questions.",
                 )
                 Help("Give it a few weeks: lucid dreams come on some nights, not every night.")
+                if (!ui.batteryUnrestricted) { // as checked at the last resume, so it goes once allowed
+                    Text("One last thing: let OpenTDI run all night.")
+                    Button(onClick = onAllowBattery, modifier = Modifier.fillMaxWidth()) {
+                        Text("Allow it to run all night")
+                    }
+                    if (ui.batteryManual) Help("Settings > Apps > OpenTDI > Battery > Unrestricted")
+                }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -188,17 +191,4 @@ private fun StepPage(
 @Composable
 private fun Bullets(vararg lines: String) {
     for (line in lines) Text("•  $line", style = MaterialTheme.typography.bodyMedium)
-}
-
-@Composable
-private fun SensorsStep(onAllowBattery: () -> Unit) {
-    Section(null) {
-        Text("Optional: Samsung's own sensors. The cues work with the watch's basic sensors too.")
-        Text("Samsung only lets approved apps read its sensors, or any app while the watch is in developer mode.")
-        // Samsung asks that its developer-mode guide come from Samsung, so the app links to it instead of copying it.
-        Help("Samsung explains developer mode on developer.samsung.com/health/sensor/guide/developer-mode.html.")
-        Text("Then add Samsung's kit below (it stays on your devices).")
-        Text("So Android does not stop a night's session:")
-        Button(onClick = onAllowBattery, modifier = Modifier.fillMaxWidth()) { Text("Allow unrestricted battery") }
-    }
 }

@@ -28,7 +28,6 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.opentdi.shared.model.AudioRouteMode
+import com.opentdi.mobile.audio.CuePlayer
 import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.audio.dndEffect
 import com.opentdi.mobile.audio.dndState
@@ -46,7 +46,6 @@ import com.opentdi.mobile.session.closeKilledSession
 import com.opentdi.mobile.session.deleteOldSessions
 import com.opentdi.mobile.ui.BottomTabs
 import com.opentdi.mobile.ui.OpenTdiTheme
-import com.opentdi.mobile.ui.SessionsScreen
 import com.opentdi.mobile.ui.SettingsScreen
 import com.opentdi.mobile.ui.TonightScreen
 import com.opentdi.mobile.ui.WatchScreen
@@ -69,12 +68,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
         quickTest = savedInstanceState?.getBoolean(KEY_QUICK_TEST) == true
+        volumeControlStream = AudioManager.STREAM_MUSIC // the volume keys set the voice's volume, not the ringer's
         if (savedInstanceState == null) {
             lifecycleScope.launch(Dispatchers.IO) {
                 deleteOldSessions(filesDir) // §12.1
                 closeKilledSession(applicationContext) // §14.3
             }
-            if (!batteryUnrestricted()) allowBattery() // once per launch; onResume only re-checks
         }
         lifecycle.addObserver(WatchStreamListener(applicationContext))
         setContent {
@@ -105,10 +104,10 @@ class MainActivity : ComponentActivity() {
                                     onAllowBattery = ::allowBattery,
                                     onRaiseVolume = ::raiseVolume,
                                     onOpenDnd = ::openDndSettings,
+                                    onOpenBluetooth = { openFirst(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) },
                                 )
                                 1 -> WatchScreen()
                                 2 -> StatsScreen(stats)
-                                3 -> SessionsScreen(viewModel)
                                 else -> SettingsScreen(viewModel)
                             }
                         }
@@ -134,10 +133,11 @@ class MainActivity : ComponentActivity() {
         quickTest = quick
         // The phone's volume and DND only matter when the phone speaker plays the cues.
         if (viewModel.ui.value.config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER) {
-            // A session calibrated at index 0 would scale later cues to silence (§7.7 step 5); the button is off then.
+            // Calibrated at index 0, a session would scale later cues to silence (§7.7 step 5); Start's popup blocks it.
             if (getSystemService(AudioManager::class.java).getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return
+            if (!CuePlayer(this).streamOnSpeaker()) return // earbuds connected since the last poll; the popup says why
             val (filter, categories) = getSystemService(NotificationManager::class.java).dndState()
-            if (dndEffect(filter, categories) == DndEffect.TOTAL_SILENCE) return // §7.7: blocks Start; Tonight says why
+            if (dndEffect(filter, categories) != DndEffect.PLAYS) return // Start's popup says why
         }
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             startSessionService(quick)
@@ -171,7 +171,7 @@ class MainActivity : ComponentActivity() {
         openFirst(Intent("android.settings.ZEN_MODE_SETTINGS"), Intent(Settings.ACTION_SOUND_SETTINGS))
     }
 
-    /** Opens the first screen that can make battery use "Unrestricted"; without one the card shows the path. */
+    /** Opens the first screen that can make battery use "Unrestricted"; without one, Start's popup shows the path. */
     @SuppressLint("BatteryLife") // an overnight session on a charging phone is the use this exemption is for
     private fun allowBattery() {
         val app = Uri.fromParts("package", packageName, null)

@@ -58,8 +58,9 @@ Never commit the AAR (`.gitignore` excludes `wear/libs/*.aar`). A watch APK buil
 so does a phone APK built with it (inside its copy of the watch app); OpenTDI's published builds contain none (§12).
 
 Without the AAR, or with `-Popentdi.forceSamsungStub=true` on the Gradle command line, `:wear` compiles against
-`:samsung-health-stub` and the watch uses Android's basic heart-rate and accelerometer sensors (no EDA, no IBI). It
-then shows "This build has no Samsung sensor SDK. Using basic watch sensors (no EDA or beat-to-beat data)."
+`:samsung-health-stub` and the watch uses Android's basic heart-rate and accelerometer sensors (no EDA, no IBI). Its
+Details page then says "Basic watch sensors: heart rate and movement. Samsung's extra sensors can be added on the
+phone's Watch tab."
 
 The SDK does not work on an emulator, so sensor work needs a real Galaxy Watch. EDA needs a Galaxy Watch8-series
 watch or later.
@@ -68,16 +69,17 @@ watch or later.
 
 Samsung's SDK delivers data only to apps registered with Samsung (package name, signing-key SHA-256 and tracker
 types), or to any app while developer mode is on in Health Sensor Service. OpenTDI is not registered, so turn
-developer mode on. Without it the trackers fail with `SDK_POLICY_ERROR`, and the watch app reports "Samsung
-blocked sensor access (SDK_POLICY_ERROR)". Samsung lists a missing or poor network connection as another cause of the
-same error, so also check that the watch is online.
+developer mode on. Without it the trackers fail with `SDK_POLICY_ERROR`, and the watch app says "Samsung's extra
+sensors are locked for this app. Tap Use basic sensors: your night is still tracked." Samsung lists a missing or
+poor network connection as another cause of the same error, so also check that the watch is online.
 
 Samsung's page is the authority for the steps:
 <https://developer.samsung.com/health/sensor/guide/developer-mode.html>. In short: on the watch, open Settings > Apps >
 Health Sensor Service (on the Galaxy Watch8 Classic with One UI 8 Watch the entry reads "Health Platform"), quickly
 tap the **title** at the top about 10 times (the title, not the version number: tapping the version does nothing)
 until a "Developer mode" row appears below the version, tap it, accept Samsung's terms when asked, and turn developer
-mode on. The README's "Device setup" section has the same steps with the phone's and the watch's own developer options.
+mode on. The README's "Putting OpenTDI on your own phone and watch" section has the same steps with the phone's and
+the watch's own developer options.
 
 ## 4. Health Sensor Service version
 
@@ -99,7 +101,7 @@ adb reaches the watch over Wi-Fi with wireless debugging (Android 11 and later).
 method.
 
 1. Turn on developer options and wireless debugging on each device: step by step for a Galaxy phone and a Galaxy
-   Watch in the README's "Device setup" section; Android's generic pages are
+   Watch in the README's "Putting OpenTDI on your own phone and watch" section; Android's generic pages are
    <https://developer.android.com/studio/debug/dev-options> (phone) and
    <https://developer.android.com/training/wearables/get-started/debug-wifi> (watch).
 2. Pair each device once. On the device, open Wireless debugging and choose to pair a new device with a pairing code.
@@ -120,8 +122,8 @@ method.
 
 ## 6. Installing debug builds
 
-Both apps have the application ID `com.opentdi`. From Phase 2 the watch–phone link also needs both APKs signed with
-the same key, so build both on the same machine (its debug keystore).
+Both apps have the application ID `com.opentdi`. The watch–phone link also needs both APKs signed with the same key,
+so build both on the same machine (its debug keystore).
 
 ```bash
 adb -s $W install -r -g --user 0 wear/build/outputs/apk/debug/wear-debug.apk
@@ -149,12 +151,15 @@ The apps request their permissions at first use, and `install -g` grants them al
 adb -s $W shell pm grant --user 0 com.opentdi android.permission.health.READ_HEART_RATE    # heart rate
 adb -s $W shell pm grant --user 0 com.opentdi com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA    # EDA
 adb -s $W shell pm grant --user 0 com.opentdi android.permission.ACTIVITY_RECOGNITION    # accelerometer
+adb -s $W shell pm grant --user 0 com.opentdi android.permission.RECORD_AUDIO    # dream recordings
 adb -s $W shell pm grant --user 0 com.opentdi android.permission.POST_NOTIFICATIONS
 adb -s $P shell pm grant --user 0 com.opentdi android.permission.POST_NOTIFICATIONS
+adb -s $P shell pm grant --user 0 com.opentdi android.permission.RECORD_AUDIO
 ```
 
-From Phase 2 the phone also needs `android.permission.RECORD_AUDIO`; the Phase 1 app does not request it, so granting
-it fails. `BODY_SENSORS` and `BODY_SENSORS_BACKGROUND` are not used on API 36 (granting them fails), and
+The watch asks for the microphone during its one-time setup, for recording your dream. The phone asks for
+`android.permission.RECORD_AUDIO` when you first tap **Record my voice** (Settings > Words > Edit the words);
+`install -g` grants it. `BODY_SENSORS` and `BODY_SENSORS_BACKGROUND` are not used on API 36 (granting them fails), and
 `BLUETOOTH_CONNECT` is not declared. Normal permissions such as `FOREGROUND_SERVICE_*`, `WAKE_LOCK` and `INTERNET`
 need no grant.
 
@@ -166,6 +171,7 @@ debuggable, so `run-as` can read them (spec §12.5):
 ```bash
 adb -s $W exec-out run-as --user 0 com.opentdi tar cf - files/sessions > watch_sessions.tar
 adb -s $P exec-out run-as --user 0 com.opentdi tar cf - files/sessions > phone_sessions.tar
+adb -s $P exec-out run-as --user 0 com.opentdi tar cf - files/watch > phone_watch_copies.tar
 # one file:
 adb -s $W exec-out run-as --user 0 com.opentdi cat files/sessions/<sessionId>/w_packets.csv > w_packets.csv
 ```
@@ -176,7 +182,8 @@ adb -s $W exec-out run-as --user 0 com.opentdi cat files/sessions/<sessionId>/w_
   corrupts the tar file.
 - Phase 1 files: on the watch `w_config.csv`, `w_sensor_raw.csv`, `w_packets.csv`, `w_accel_events.csv` and, only
   when "Log raw accelerometer" (watch, Details) is on, `w_accel_raw.csv`; on the phone `p_config.csv`, `p_transitions.csv` and
-  `p_audio.csv`. Spec §12.2–12.3 describes every file and column. From Phase 2 the phone also keeps `files/journal/`.
+  `p_audio.csv`. Spec §12.2–12.3 describes every file and column. The phone also keeps its copies of the watch's
+  nights in `files/watch/<sessionId>/` (CSVs, `w_dream_*.m4a` recordings and their `.txt` transcripts).
 - All but the last 30 sessions are deleted, on the phone when the app starts and on the watch when a logging session
   starts, so copy what you want to keep.
 
@@ -203,9 +210,10 @@ to work with this project's Android Gradle Plugin (`sdkmanager "build-tools;37.0
 
 ## 11. Natural voice (optional)
 
-The phone can render the cues with an on-device neural voice instead of Android's text-to-speech: Kokoro-82M v0.19
-(int8) through sherpa-onnx, with American and British voices (three women, three men). It runs only when you tap **Prepare cues**, never
-during a session, and needs no network. The model is not in the APK or the repository: download it once (103 MB, 152 MB
+The phone can make the voice with an on-device neural voice instead of Android's text-to-speech: Kokoro-82M v0.19
+(int8) through sherpa-onnx, with American and British voices (three women, three men). It runs only while the phone
+gets the voice ready (**Get the voice ready**, or leaving Settings after a change), never while the voice plays, and
+needs no network. The model is not in the APK or the repository: download it once (103 MB, 152 MB
 unpacked; Kokoro weights Apache-2.0, espeak-ng data GPL-3.0) and copy it into the app's private storage.
 
 ```bash
@@ -217,8 +225,9 @@ The push script copies the model to `/data/local/tmp`, moves it into the app's s
 com.opentdi` and deletes the temporary copy; it touches nothing else. Uninstalling the app deletes the model, so run
 the push script again after a reinstall (`install -r` keeps it).
 
-Then, in the cue sound settings, turn on **Natural voice**, choose a voice and tap **Prepare cues**. If the model is
-missing, does not load or fails while rendering, the app says so and prepares the cues with the phone's own voice. The
+Then, in Settings > Voice, turn on **Natural-sounding voice** (the switch shows only once the model is on the phone),
+choose a voice and tap **Get the voice ready**. If the model is missing, does not load or fails while rendering, the
+app says so and makes the voice with the phone's own voice instead. The
 build fetches the sherpa-onnx AAR (`mobile/libs/`, gitignored, pinned SHA-256) by itself.
 
 ## 12. Builds and releases (maintainers)
@@ -249,11 +258,11 @@ watch app signed with the same key.
 
 ## 13. Offline transcription (optional)
 
-After each copy from the watch (opening **Stats**, or the end of a phone session), the phone app turns new dream
-recordings into text: `w_dream_HHmmss.txt` beside each `w_dream_HHmmss.m4a` in `files/watch/<session>/`, where an empty
-file means no speech was found. It runs sherpa-onnx with the Silero VAD and a speech model on the phone, never during a
-session and never while **Prepare cues** uses the natural voice. Transcription itself uses no network; how recordings
-reach the phone is in the README ("Your data stays with you"). A transcript is a written copy of your dream report,
+After each copy from the watch (each time **Stats** opens, and when the voice ends on the phone), the phone app turns
+new dream recordings into text: `w_dream_HHmmss.txt` beside each `w_dream_HHmmss.m4a` in `files/watch/<session>/`,
+where an empty file means no speech was found. It runs sherpa-onnx with the Silero VAD and a speech model on the phone,
+never while the voice plays and never while **Get the voice ready** runs the natural voice. Transcription itself uses
+no network; how recordings reach the phone is in the README ("Your data stays with you"). A transcript is a written copy of your dream report,
 unchecked: speech recognition has not been tested on sleepy speech, so the recording stays the record. The model is in
 neither the APK nor the repository: download it once from the sherpa-onnx releases on GitHub (an ordinary download, so
 GitHub sees the request) and copy it into the app's private storage.
@@ -267,7 +276,7 @@ The default model is NVIDIA Parakeet TDT-CTC 110M int8 (104 MB download, 132 MB 
 Add `moonshine` to both commands for the smaller fallback, Moonshine tiny English (30 MB download, 44 MB installed,
 MIT); when both are installed the app uses Parakeet. The push script works like the voice one (section 11): through
 `/data/local/tmp` and `run-as com.opentdi --user 0`, touching nothing else. Uninstalling the app deletes the model, so
-run the push script again after a reinstall (`install -r` keeps it). Without a model the app reports "Transcription
-model not installed"; once one is pushed, the next copy transcribes the recordings that are waiting. Each recording is
+run the push script again after a reinstall (`install -r` keeps it). Without a model nothing is transcribed (the
+recordings wait); once one is pushed, the next copy transcribes them. Each recording is
 transcribed once: delete its `.txt` to redo it, for example with the other model. `adb -s $P logcat -s OTDI.Stt` shows
 which model loaded and each file's timings, never the text.

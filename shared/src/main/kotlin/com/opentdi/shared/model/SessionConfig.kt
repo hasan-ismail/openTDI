@@ -71,7 +71,7 @@ data class TimedCueConfig(
     val firstSleepMinMin: Int = 10, // 1..60
     val firstSleepMaxMin: Int = 15, // firstSleepMinMin..90
     val betweenSleepS: Int = 420, // 60..1200
-    val phase1ReportWindowS: Int = 60, // 30..90 (Phase 1 only)
+    val phase1ReportWindowS: Int = 60, // 30..90: after the wake question, before the back-to-sleep cue; not recorded
     val autoFallbackToTimed: Boolean = true,
     val watchLinkTimeoutS: Int = 120, // 30..600
     val waitForStillness: Boolean = true, // owner 2026-10-28: a loop also waits for the watch to show you still
@@ -143,7 +143,7 @@ data class SensorsConfig(
  */
 @Serializable
 data class AlarmConfig(
-    val wakeEnabled: Boolean = false,
+    val wakeEnabled: Boolean = true, // on: the dream questions open only after an alarm (WakeAlarms.stop)
     val wakeAtMin: Int = 420, // 0..1439 (07:00)
     val wakeTone: AlarmTone = AlarmTone.MELODY,
     val wbtbEnabled: Boolean = false,

@@ -26,7 +26,7 @@ fun speakerLabel(speaker: String): String =
 /** The model's speaker id for [speaker] (its place in voices.bin); throws [CueException] for a name it lacks. */
 fun neuralSpeakerId(speaker: String): Int =
     NEURAL_SPEAKERS.indexOf(speaker).takeIf { it >= 0 }
-        ?: throw CueException("The natural voice has no speaker \"$speaker\". Choose one in the cue settings.")
+        ?: throw CueException("The natural voice has no speaker \"$speaker\". Choose one in Settings.")
 
 private const val MODEL_FILE = "model.int8.onnx"
 private const val VOICES_FILE = "voices.bin"

@@ -94,8 +94,10 @@ class AlarmPlayer(private val context: Context) {
         return audio.samples.copyOf(audio.samples.size + 3 * audio.sampleRate)
     }
 
-    /** One short buzz, e.g. WBTB's "go back to sleep". */
-    fun buzz() = vibrate(VibrationEffect.createOneShot(400, 120))
+    /** Three short buzzes, e.g. the early wake-up's "go back to bed": one soft pulse was easy to miss. */
+    fun buzz() = vibrate(
+        VibrationEffect.createWaveform(longArrayOf(0, 300, 250, 300, 250, 300), intArrayOf(0, 160, 0, 160, 0, 160), -1),
+    )
 
     /** The alarm stream's volume step, 0 = the tone is silent (the vibration still runs). */
     fun alarmVolumeIndex(): Int = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)

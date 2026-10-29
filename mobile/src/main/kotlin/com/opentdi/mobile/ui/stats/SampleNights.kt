@@ -46,7 +46,7 @@ fun sampleNights(today: LocalDate, zone: ZoneId, count: Int = 120, seed: Int = 2
         val finalWake = maxOf(if (alarm) 1141 + r.nextInt(6) else 1170 + (gauss() * 45).roundToInt(), reOnset + 30)
         val wbtb = when {
             !wbtbOn -> null
-            skipped -> WbtbOutcome(skipped = "Less than 4 h of estimated sleep before it")
+            skipped -> WbtbOutcome(skipped = "MIN_SLEEP_BEFORE_WBTB") // as NightSummaries stores it
             else -> WbtbOutcome(at(990), at(up), at(backToBed), at(reOnset), reOnset - backToBed)
         }
         val lateCues = if (wbtb?.reOnsetMs == null) null else if (back <= 60) {
@@ -161,11 +161,11 @@ fun sampleNights(today: LocalDate, zone: ZoneId, count: Int = 120, seed: Int = 2
         )
         val phone = if (back <= 100 && chance(0.3f)) {
             val loops = 2 + r.nextInt(3)
-            PhoneNight(listOf("sample-$night"), at(bed), at(bed + 50 + r.nextInt(50)), loops, loops * 3)
+            PhoneNight(at(bed), at(bed + 50 + r.nextInt(50)), loops, loops * 3)
         } else {
             null
         }
-        rows += NightRow(night, summary, phone, null, null) // the routine is no longer ticked (2026-10-29)
+        rows += NightRow(night, summary, phone)
     }
     return rows.reversed()
 }

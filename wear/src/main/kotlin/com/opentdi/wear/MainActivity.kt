@@ -13,19 +13,15 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
-import android.view.InputDevice
-import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -75,6 +71,7 @@ import com.opentdi.shared.model.SensorSource
 import com.opentdi.shared.model.SensorStatus
 import com.opentdi.shared.sensing.AccelProcessor
 import com.opentdi.wear.alarm.WakeAlarms
+import com.opentdi.wear.link.PhoneLink
 import com.opentdi.wear.sensing.HealthTrackingForegroundService
 import com.opentdi.wear.sensing.SensingState
 import com.opentdi.wear.sensing.SensingStateHolder
@@ -84,10 +81,12 @@ import com.opentdi.wear.sensing.statusText
 import java.io.File
 import java.time.ZoneId
 import java.util.Locale
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
-/** Starts and stops watch recording sessions and shows the sensor status and live values (Phase 1, §0). */
+/**
+ * The watch app: waits for the phone's Start the night, shows the recording, the alarms, the guided back-to-sleep, the
+ * dream report and End night.
+ */
 class MainActivity : ComponentActivity() {
     private var afterPermissions: (() -> Unit)? = null
     private var resolving = false // Galaxy Store was opened to install or update Health Sensor Service
@@ -107,14 +106,37 @@ class MainActivity : ComponentActivity() {
             val state by SensingStateHolder.state.collectAsStateWithLifecycle()
             var logRawAccelChoice by rememberSaveable { mutableStateOf(AccelConfig().logRawAccel) }
             var page by rememberSaveable { mutableStateOf(Page.MAIN) }
+            var reportFromEnd by rememberSaveable { mutableStateOf(false) } // opened from End the night
+            fun openReport(fromEnd: Boolean) {
+                reportFromEnd = fromEnd
+                page = Page.REPORT
+            }
+            // One step back; a report opened from End the night goes back there, so the night still ends.
+            val backTo = when {
+                page == Page.REPORT && reportFromEnd -> Page.END_NIGHT
+                page == Page.SESSIONS -> Page.DETAILS
+                else -> Page.MAIN
+            }
             val logRawAccel = if (state.running) state.logRawAccel else logRawAccelChoice
             MaterialTheme(colorScheme = NightColors) {
                 AppScaffold {
-                    BackHandler(enabled = page != Page.MAIN) { page = Page.MAIN }
+                    BackHandler(enabled = page != Page.MAIN) { page = backTo }
                     val ringing = state.alarmRinging
-                    // Under the alarm, so I'm awake leads to "Record your dream"; an open report stays open.
-                    LaunchedEffect(ringing) { if (ringing != null && page != Page.REPORT) page = Page.MAIN }
+                    var lastRing by remember { mutableStateOf<String?>(null) }
+                    // Under the alarm an open report stays open. Then I'm awake opens the dream questions: only it sets
+                    // reportAfter in the update that ends the ring; Snooze and a timeout do not.
+                    LaunchedEffect(ringing) {
+                        if (ringing != null) {
+                            lastRing = ringing
+                            if (page != Page.REPORT) page = Page.MAIN
+                        } else if (lastRing != null) {
+                            if (state.reportAfter == lastRing && page != Page.REPORT) openReport(fromEnd = false)
+                            lastRing = null
+                        }
+                    }
                     val stop = {
+                        // The night is over: a report left without Save is written as it stands.
+                        if (ReportDraft.flush()) SensingStateHolder.update { it.copy(reportAfter = null) }
                         // Closing too: an open app would start waiting again the next time it resumes. The whole task,
                         // so an older copy of this screen underneath cannot resume and start waiting.
                         HealthTrackingForegroundService.stop(this@MainActivity)
@@ -122,26 +144,29 @@ class MainActivity : ComponentActivity() {
                     }
                     Box(Modifier.fillMaxSize()) {
                         SwipeToDismissBox(
-                            onDismissed = { page = Page.MAIN },
-                            userSwipeEnabled = page != Page.MAIN && ringing == null,
+                            onDismissed = { page = backTo },
+                            // Not on the report: a swipe meant as back would leave it; the back key steps through it.
+                            userSwipeEnabled = page !in setOf(Page.MAIN, Page.REPORT) && ringing == null,
                         ) { isBackground ->
-                            when (if (isBackground) Page.MAIN else page) {
+                            when (if (isBackground) backTo else page) {
                                 Page.MAIN -> MainScreen(
                                     state = state,
-                                    onStart = { startSession(logRawAccel, androidSensorsOnly = false) },
-                                    // Stop recording ends the night, so it asks first; Stop and close does not.
+                                    needsSetup = !state.running && !state.waiting && !sensorAllowed(),
+                                    // End the night asks first; Close OpenTDI does not.
                                     onStop = { if (state.running) page = Page.END_NIGHT else stop() },
+                                    onAllow = ::allowSensors,
                                     onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
                                     onStatusTap = ::onStatusTap,
                                     onInBed = { HealthTrackingForegroundService.startGuide(this@MainActivity) },
-                                    onReport = { page = Page.REPORT },
+                                    onReport = { openReport(fromEnd = false) },
                                     onDetails = { page = Page.DETAILS },
-                                    onSessions = { page = Page.SESSIONS },
                                 )
                                 Page.DETAILS -> DetailsScreen(
                                     state = state,
                                     logRawAccel = logRawAccel,
                                     onLogRawAccelChange = { logRawAccelChoice = it },
+                                    onStart = { startSession(logRawAccel, androidSensorsOnly = false) },
+                                    onSessions = { page = Page.SESSIONS },
                                 )
                                 Page.SESSIONS -> SessionsScreen(runningId = state.sessionId.takeIf { state.running })
                                 Page.REPORT -> DreamReportScreen(
@@ -149,16 +174,20 @@ class MainActivity : ComponentActivity() {
                                     dir = File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
                                     requestMic = ::requestMic,
                                     onSaved = { SensingStateHolder.update { it.copy(reportAfter = null) } },
-                                    onDone = { page = Page.MAIN },
+                                    onDone = { page = backTo },
                                 )
                                 Page.END_NIGHT -> EndNightScreen(
                                     reportDue = state.reportAfter != null,
-                                    onReport = { page = Page.REPORT },
+                                    onReport = { openReport(fromEnd = true) },
                                     alarmsAhead = remember {
                                         val alarms = WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity))
                                         alarmsAhead(alarms, System.currentTimeMillis(), ZoneId.systemDefault())
                                     },
-                                    onEnd = stop,
+                                    onEnd = {
+                                        // Only here: Close OpenTDI while waiting must not stop a phone's Quick test.
+                                        PhoneLink.endNight(this@MainActivity)
+                                        stop()
+                                    },
                                     onKeep = { page = Page.MAIN },
                                 )
                             }
@@ -173,6 +202,9 @@ class MainActivity : ComponentActivity() {
                                 BackHandler {}
                                 AlarmScreen(
                                     kind = ringing,
+                                    snoozeMin = remember(ringing) {
+                                        WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity)).snoozeMin
+                                    },
                                     snoozesLeft = state.snoozesLeft,
                                     onAlarmStop = { HealthTrackingForegroundService.stopAlarm(this@MainActivity) },
                                     onSnooze = { HealthTrackingForegroundService.snoozeAlarm(this@MainActivity) },
@@ -185,18 +217,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // A bezel turn stops the guided back-to-sleep here, before any view: rotary input goes only to the focused one.
-    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
-        if (ev.action == MotionEvent.ACTION_SCROLL && ev.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER) &&
-            SensingStateHolder.state.value.guideRunning
-        ) {
-            HealthTrackingForegroundService.stopGuide(this)
-            return true
-        }
-        return super.dispatchGenericMotionEvent(ev)
-    }
-
-    /** Runs [then] once the microphone may be used, asking for it first; refused, nothing happens. */
+    /** Runs [then] once the microphone may be used, asking for it first; refused, the report says it didn't start. */
     private fun requestMic(then: () -> Unit) {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             then()
@@ -212,13 +233,23 @@ class MainActivity : ComponentActivity() {
         checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
     }
 
+    /** The heart rate or movement may be read: a health service needs one of them (§14.3). */
+    private fun sensorAllowed(): Boolean {
+        val missing = missingPermissions()
+        return heartRatePermission(Build.VERSION.SDK_INT) !in missing ||
+            Manifest.permission.ACTIVITY_RECOGNITION !in missing
+    }
+
+    /** The one-time setup's Allow: asks for the permissions, then waits for the phone; it never starts a night. */
+    private fun allowSensors() {
+        afterPermissions = { if (sensorAllowed()) HealthTrackingForegroundService.waitForPhone(this) }
+        permissionRequest.launch(missingPermissions().toTypedArray())
+    }
+
     /** Requests the runtime permissions first: a health FGS started without them throws (§14.3). */
     private fun startSession(logRawAccel: Boolean, androidSensorsOnly: Boolean) {
         val start = {
-            val missing = missingPermissions()
-            if (heartRatePermission(Build.VERSION.SDK_INT) !in missing ||
-                Manifest.permission.ACTIVITY_RECOGNITION !in missing
-            ) {
+            if (sensorAllowed()) {
                 HealthTrackingForegroundService.start(this, logRawAccel, androidSensorsOnly)
             } else {
                 SensingStateHolder.update { it.copy(status = SensorStatus.PERMISSION_MISSING) }
@@ -236,14 +267,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         // Opening the app waits for the phone's Start session (owner, 2026-10-28), once a sensor permission allows a
-        // health service; without one, Start recording asks for it first.
+        // health service; without one, the one-time setup's Allow asks for it first.
         val s0 = SensingStateHolder.state.value
-        val missing = missingPermissions()
-        if (!s0.running && !s0.waiting &&
-            (heartRatePermission(Build.VERSION.SDK_INT) !in missing || Manifest.permission.ACTIVITY_RECOGNITION !in missing)
-        ) {
-            HealthTrackingForegroundService.waitForPhone(this)
-        }
+        if (!s0.running && !s0.waiting && sensorAllowed()) HealthTrackingForegroundService.waitForPhone(this)
         if (!resolving) return
         resolving = false
         // Back from Galaxy Store: only a new session reconnects to Health Sensor Service; still missing, it falls back.
@@ -251,6 +277,15 @@ class MainActivity : ComponentActivity() {
         if (s.running && s.fallbackCause in setOf(SensorStatus.HSS_NOT_INSTALLED, SensorStatus.HSS_TOO_OLD)) {
             HealthTrackingForegroundService.start(this, s.logRawAccel, androidSensorsOnly = false)
         }
+    }
+
+    override fun onDestroy() {
+        // Closed with no night tracked or awaited, nothing keeps the app alive: write a report left without Save now.
+        val s = SensingStateHolder.state.value
+        if (isFinishing && !s.running && !s.waiting && ReportDraft.flush()) {
+            SensingStateHolder.update { it.copy(reportAfter = null) }
+        }
+        super.onDestroy()
     }
 
     private fun onStatusTap(status: SensorStatus) {
@@ -291,20 +326,23 @@ private val NightColors = ColorScheme(
     onBackground = Color(0xFFA9A7B8),
 )
 
-/** The main screen: the sensor status in plain words, Start/Stop with the elapsed time, and the live values. */
+/**
+ * The main screen: waiting for the phone, the one-time setup, the night being tracked with its alarms and End the
+ * night, or the night saved; after an alarm, the dream questions and the early wake-up come first.
+ */
 @Composable
 private fun MainScreen(
     state: SensingState,
-    onStart: () -> Unit,
+    needsSetup: Boolean,
     onStop: () -> Unit,
+    onAllow: () -> Unit,
     onBasicSensors: () -> Unit,
     onStatusTap: (SensorStatus) -> Unit,
     onInBed: () -> Unit,
     onReport: () -> Unit,
     onDetails: () -> Unit,
-    onSessions: () -> Unit,
 ) {
-    // Off in ambient and with the screen off: the stars stop, and the clock ticks once a minute (shown as h:mm).
+    // Off in ambient and with the screen off: the stars stop, and the clock ticks once a minute.
     val awake = rememberInteractive()
     var nowMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     if (state.running) {
@@ -315,7 +353,12 @@ private fun MainScreen(
             }
         }
     }
-    val packet = state.lastPacket?.packet
+    val context = LocalContext.current
+    // The alarms still to ring, so a night begun with old or no alarms shows it; once a minute.
+    val alarms = remember(nowMs / 60_000) {
+        val config = WakeAlarms.parse(WakeAlarms.loadConfigJson(context))
+        alarmsAhead(config, System.currentTimeMillis(), ZoneId.systemDefault())
+    }
     val listState = rememberTransformingLazyColumnState()
     val moon = remember { moonPhase(System.currentTimeMillis()) }
     val waitingOnly = state.waiting && !state.running
@@ -334,24 +377,32 @@ private fun MainScreen(
                     }
                 }
             }
-            // The WBTB awake time (sleep_and_dreams.md §4 [63][65], §6 [83]): the morning's reality check, one
-            // simple dream goal, and the side to sleep on.
-            state.wbtbBackToSleepAtMs?.let { at ->
-                item { Line("Pinch your nose and try to breathe through it; if you can, you are dreaming.") }
-                item { Line("Stay up until ${WakeAlarms.hhmm(at)}. Keep the light dim and drink only water.") }
-                item { Line("Recall your last dream and its odd moments.") }
+            // First: a dream fades within minutes of waking.
+            if (state.reportAfter != null) {
                 item {
-                    Line(
-                        "Picture going back into it and noticing you're dreaming: next time I'm dreaming, I'll " +
-                            "remember I'm dreaming.",
-                    )
+                    Button(onClick = onReport, modifier = Modifier.fillMaxWidth(), label = { Text("Record your dream") })
                 }
-                item { Line("Pick one simple thing to do in your next dream.") }
-                item { Line("A buzz says go back to sleep.") }
-                item { Line("Lie on your side to fall back asleep.") }
+            }
+            // The WBTB awake time (sleep_and_dreams.md §4 [63][65], §6 [83]): the stay-up time first, then the
+            // reality check, one simple dream goal, and the side to sleep on, short for the small screen.
+            state.wbtbBackToSleepAtMs?.let { at ->
+                item { BigLine("Up until ${WakeAlarms.hhmm(at)}") }
+                item { Line("Dim light. Water only.") }
+                item { Line("Pinch your nose and try to breathe. If you can, you're dreaming.") }
+                item { Line("Replay your dream. Think: next time I'm dreaming, I'll notice.") }
+                item { Line("Pick one thing to do in that dream.") }
+                item { Line("When the watch buzzes, go back to bed and lie on your side.") }
             }
             if (state.guideOffered) {
-                item { Button(onClick = onInBed, modifier = Modifier.fillMaxWidth(), label = { Text("I'm in bed") }) }
+                item { BigLine("Back to bed") }
+                item {
+                    Button(
+                        onClick = onInBed,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("I'm in bed") },
+                        secondaryLabel = { Text("Starts the sleep guide (19 min)") },
+                    )
+                }
             }
             // Only without the guided back-to-sleep: with it the cue is trained in bed, and the guide says this aloud.
             if (state.lateCuesTraining && state.wbtbBackToSleepAtMs != null) {
@@ -366,17 +417,11 @@ private fun MainScreen(
                 }
             }
             state.lastWakeText?.let { item { Line(it) } }
-            if (state.reportAfter != null) {
-                item {
-                    Button(onClick = onReport, modifier = Modifier.fillMaxWidth(), label = { Text("Record your dream") })
-                }
-            }
             if (waitingOnly) {
                 item { Canvas(Modifier.fillMaxWidth().height(56.dp)) { drawMoon(moon) } } // tonight's real moon phase
                 item { BigLine("Ready for tonight") }
                 item { Line("Tap Start the night on your phone. The watch starts with it.") }
                 item {
-                    val context = LocalContext.current
                     // Apps cannot read or change Always On Display, so the watch offers its display settings instead.
                     // With it off the watch went back to the watch face during the night (owner, 2026-10-29); with it
                     // on, this always-on app stays on the dim screen.
@@ -384,41 +429,41 @@ private fun MainScreen(
                         onClick = { openDisplaySettings(context) },
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Keep Always On Display on") },
-                        secondaryLabel = { Text("So OpenTDI stays on screen all night") },
+                        label = { Text("Turn on Always On Display") },
+                        secondaryLabel = { Text("Opens Settings. Switch it on, then swipe right to come back.") },
                     )
                 }
-            } else if (!state.running) {
-                item { BigLine("Not recording") }
-            } else if (state.status == null) {
-                item { BigLine("Starting sensors…") }
+            } else if (state.running) {
+                item { BigLine(if (state.status == null) "Starting…" else "Tracking your sleep") }
+                item { Line(alarms?.let { "${it.replaceFirstChar(Char::uppercase)}." } ?: "No alarm set on the watch") }
+            } else if (needsSetup) {
+                item { BigLine("One-time setup") }
+                item { Line("Let OpenTDI read your heart rate and movement.") }
+                item { Button(onClick = onAllow, modifier = Modifier.fillMaxWidth(), label = { Text("Allow") }) }
+            } else if (state.sessionId != null) { // without one, the app is just starting to wait
+                item { BigLine("Night saved") }
+                item { Line("See it on your phone in Stats.") }
+                item { Button(onClick = onStop, modifier = Modifier.fillMaxWidth(), label = { Text("Close OpenTDI") }) }
             }
-            // Stopped, only problems stay up: a denied permission is reported before any session runs.
-            val shown = statuses(state).filter { state.running || it !in FINE }
-            for (status in shown) item { StatusLine(status, state, onStatusTap, short = true) }
+            // Only problems; Details lists every status.
+            for (status in statuses(state).filter { it !in FINE }) {
+                item { StatusLine(status, state, onStatusTap, short = true) }
+            }
             if (state.status == SensorStatus.SDK_POLICY_ERROR) {
                 item {
                     FilledTonalButton(onClick = onBasicSensors, modifier = Modifier.fillMaxWidth()) {
-                        Text("Use basic watch sensors")
+                        Text("Use basic sensors")
                     }
                 }
             }
-            item {
-                if (state.running) {
+            if (state.running) {
+                item {
                     Button(
                         onClick = onStop,
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         modifier = Modifier.fillMaxWidth(),
-                        secondaryLabel = { Text(elapsed(nowMs - state.startedElapsedMs, seconds = awake)) },
-                        label = { Text("Stop recording") },
-                    )
-                } else {
-                    Button(
-                        onClick = onStart,
-                        // While waiting, the phone's Start session is the main way to start.
-                        colors = if (waitingOnly) ButtonDefaults.filledTonalButtonColors() else ButtonDefaults.buttonColors(),
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Start recording") },
+                        secondaryLabel = { Text(elapsed(nowMs - state.startedElapsedMs)) },
+                        label = { Text("End the night") },
                     )
                 }
             }
@@ -428,39 +473,28 @@ private fun MainScreen(
                         onClick = onStop,
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Stop and close") },
+                        label = { Text("Close OpenTDI") },
+                        secondaryLabel = { Text("Open it again before bed") },
                     )
                 }
             }
-            if (state.sessionId != null && awake) { // in ambient they would redraw the screen every second
-                item {
-                    TileRow {
-                        Tile("Heart", format("%.0f", packet?.hr), "bpm", Modifier.weight(1f))
-                        Tile("EDA", format("%.2f", packet?.skinConductance), "µS", Modifier.weight(1f))
-                    }
-                }
-                item {
-                    TileRow {
-                        val still = packet?.stillnessScore?.let { "${(it * 100).roundToInt()}" } ?: "—"
-                        Tile("Still", still, "%", Modifier.weight(1f))
-                        Tile("Skin", format("%.1f", packet?.skinTemperature), "°C", Modifier.weight(1f))
-                    }
-                }
-                item {
-                    // %tR: the local 24-hour time of the epoch-ms timestamp
-                    val at = state.lastSpo2AtMs?.let { String.format(Locale.ROOT, "%% at %tR", it) } ?: "%"
-                    Tile("Last SpO2", state.lastSpo2?.toString() ?: "—", at, Modifier.fillMaxWidth())
-                }
-            }
             item { FilledTonalButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) { Text("Details") } }
-            item { FilledTonalButton(onClick = onSessions, modifier = Modifier.fillMaxWidth()) { Text("Sessions") } }
         }
     }
 }
 
-/** Everything else: the exact §11.6 texts, extra sensors, the raw accelerometer choice and the technical values. */
+/**
+ * Everything else: the exact §11.6 texts, extra sensors, the raw accelerometer choice, the technical values, a night
+ * without the phone and the saved nights.
+ */
 @Composable
-private fun DetailsScreen(state: SensingState, logRawAccel: Boolean, onLogRawAccelChange: (Boolean) -> Unit) {
+private fun DetailsScreen(
+    state: SensingState,
+    logRawAccel: Boolean,
+    onLogRawAccelChange: (Boolean) -> Unit,
+    onStart: () -> Unit,
+    onSessions: () -> Unit,
+) {
     val context = LocalContext.current
     @Suppress("DEPRECATION") // the flags overload needs API 33; the watch's minSdk is 30
     val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
@@ -485,22 +519,39 @@ private fun DetailsScreen(state: SensingState, logRawAccel: Boolean, onLogRawAcc
             }
             for (value in liveValues(state)) item { Line(value) }
             item { Line("App $version · protocol $PROTOCOL_VERSION") }
+            if (!state.running) {
+                item {
+                    Button(
+                        onClick = onStart,
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Start without the phone") },
+                        secondaryLabel = { Text("Alarms from your last night, no voice") },
+                    )
+                }
+            }
+            item {
+                FilledTonalButton(onClick = onSessions, modifier = Modifier.fillMaxWidth()) { Text("Saved nights") }
+            }
         }
     }
 }
 
-private val FINE = setOf(SensorStatus.CONNECTED_SAMSUNG, SensorStatus.FALLBACK_ANDROID_SENSORS, SensorStatus.SIMULATION)
+// The night is tracked in all of these; the basic sensors are the public app's normal case.
+private val FINE = setOf(
+    SensorStatus.CONNECTED_SAMSUNG,
+    SensorStatus.FALLBACK_ANDROID_SENSORS,
+    SensorStatus.SIMULATION,
+    SensorStatus.AAR_NOT_BUNDLED,
+    SensorStatus.TRACKER_UNSUPPORTED,
+)
 
 private fun statuses(state: SensingState) =
     listOfNotNull(state.fallbackCause?.takeIf { it != state.status }, state.status)
 
-/** A status on the main screen ([short]): connected in two words, a problem in its §11.6 text with its tap fix. */
+/** A status: a problem on the main screen ([short]) with its tap fix, or any status on Details, in plain words. */
 @Composable
 private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (SensorStatus) -> Unit, short: Boolean) {
-    if (short && status == SensorStatus.CONNECTED_SAMSUNG) {
-        BigLine(if (state.edaAvailable) "Sensors connected" else "Sensors connected, no EDA")
-        return
-    }
     val text = statusText(status, state.unsupported, state.edaAvailable, state.statusMessage)
     val tappable = status == SensorStatus.PERMISSION_MISSING ||
         (status in setOf(SensorStatus.HSS_NOT_INSTALLED, SensorStatus.HSS_TOO_OLD) && state.resolve != null)
@@ -511,7 +562,7 @@ private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (Sensor
     }
 }
 
-/** Asks before Stop recording ends the night and closes the app; Keep recording, or swiping back, goes back. */
+/** Asks before End the night stops tracking and closes the app; Keep going, or swiping back, goes back. */
 @Composable
 private fun EndNightScreen(
     reportDue: Boolean,
@@ -524,12 +575,12 @@ private fun EndNightScreen(
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item { BigLine("End the night?") }
-            item { Line("Recording stops and the app closes.") }
+            item { Line("Tracking stops and the app closes.") }
 
             alarmsAhead?.let { item { Line("${it.replaceFirstChar(Char::uppercase)} won't ring.") } }
-            // The report waits only in memory: once the night ends and the app closes, it is gone.
+            // Ending the night saves an unfinished report as it stands; questions not reached stay unanswered.
             if (reportDue) {
-                item { Line("Your dream isn't recorded yet.") }
+                item { Line("Your dream questions aren't done yet.") }
                 item {
                     Button(
                         onClick = onReport,
@@ -542,7 +593,7 @@ private fun EndNightScreen(
                 Button(
                     onClick = onKeep,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Keep recording", Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                    label = { Text("Keep going", Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
                 )
             }
             item {
@@ -550,7 +601,7 @@ private fun EndNightScreen(
                     onClick = onEnd,
                     colors = ButtonDefaults.filledTonalButtonColors(),
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("End night", Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                    label = { Text("End the night", Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
                 )
             }
         }
@@ -558,8 +609,8 @@ private fun EndNightScreen(
 }
 
 /**
- * While the guided back-to-sleep plays (owner, 2026-10-28), over every page: black, and any tap or back press stops it,
- * as a bezel turn does ([MainActivity.dispatchGenericMotionEvent]).
+ * While the guided back-to-sleep plays (owner, 2026-10-28), over every page: black. Holding the screen or the back key
+ * stops it; a brush, a swipe or the bezel rolling against the pillow does not, since it cannot be restarted.
  */
 @Composable
 private fun GuideScreen(onStop: () -> Unit) {
@@ -567,11 +618,11 @@ private fun GuideScreen(onStop: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) { detectTapGestures(onPress = { onStop() }) },
+            .pointerInput(Unit) { detectTapGestures(onLongPress = { onStop() }) },
         contentAlignment = Alignment.Center,
     ) {
         BackHandler(onBack = onStop)
-        Line("Tap to stop the guide", style = MaterialTheme.typography.labelSmall)
+        Line("Sleep guide playing. Hold the screen to stop it.", style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -580,7 +631,7 @@ private fun GuideScreen(onStop: () -> Unit) {
  * (WBTB) wake, with "I'm awake" in the large button at the bottom edge.
  */
 @Composable
-private fun AlarmScreen(kind: String, snoozesLeft: Int, onAlarmStop: () -> Unit, onSnooze: () -> Unit) {
+private fun AlarmScreen(kind: String, snoozeMin: Int, snoozesLeft: Int, onAlarmStop: () -> Unit, onSnooze: () -> Unit) {
     val listState = rememberTransformingLazyColumnState()
     val moon = remember { moonPhase(System.currentTimeMillis()) }
     val morning = kind == "WAKE"
@@ -595,7 +646,7 @@ private fun AlarmScreen(kind: String, snoozesLeft: Int, onAlarmStop: () -> Unit,
             if (!morning) item { Canvas(Modifier.fillMaxWidth().height(72.dp)) { drawMoon(moon) } }
             item {
                 Text(
-                    if (morning) "Good morning" else "Early wake",
+                    if (morning) "Good morning" else "Early wake-up",
                     style = MaterialTheme.typography.displaySmall,
                     color = MaterialTheme.colorScheme.primary,
                     textAlign = TextAlign.Center,
@@ -603,7 +654,13 @@ private fun AlarmScreen(kind: String, snoozesLeft: Int, onAlarmStop: () -> Unit,
                 )
             }
             item {
-                Line(if (morning) "Keep your eyes closed and replay your dream first." else "Wake back to bed (WBTB)")
+                Line(
+                    if (morning) {
+                        "Keep your eyes closed and replay your dream first."
+                    } else {
+                        "Up for a short while, then back to bed."
+                    },
+                )
             }
             if (snoozesLeft > 0) {
                 item {
@@ -611,7 +668,7 @@ private fun AlarmScreen(kind: String, snoozesLeft: Int, onAlarmStop: () -> Unit,
                         onClick = onSnooze,
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Snooze") },
+                        label = { Text("Snooze $snoozeMin min") },
                         secondaryLabel = { Text("$snoozesLeft left") },
                     )
                 }
@@ -635,26 +692,6 @@ private fun BigLine(text: String) {
 @Composable
 internal fun Line(text: String, style: TextStyle = LocalTextStyle.current) {
     Text(text, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, style = style)
-}
-
-@Composable
-private fun TileRow(content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), content = content)
-}
-
-@Composable
-private fun Tile(label: String, value: String, unit: String, modifier: Modifier) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(vertical = 6.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-        Text(unit, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
 }
 
 private fun liveValues(state: SensingState): List<String> {
@@ -684,14 +721,10 @@ private fun liveValues(state: SensingState): List<String> {
 
 private fun format(pattern: String, value: Float?) = value?.let { String.format(Locale.ROOT, pattern, it) } ?: "—"
 
-/** h:mm:ss, or h:mm without [seconds] (the screen is dim and updates once a minute). */
-private fun elapsed(ms: Long, seconds: Boolean): String {
-    val s = ms.coerceAtLeast(0) / 1000
-    return if (seconds) {
-        String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
-    } else {
-        String.format(Locale.ROOT, "%d:%02d", s / 3600, s / 60 % 60)
-    }
+/** "2 h 5 min": in words, so the dim screen's once-a-minute update never reads like the clock. */
+private fun elapsed(ms: Long): String {
+    val min = ms.coerceAtLeast(0) / 60_000
+    return "${min / 60} h ${min % 60} min"
 }
 
 /** The watch's display settings, where Always On Display is switched off; a watch without that screen does nothing. */

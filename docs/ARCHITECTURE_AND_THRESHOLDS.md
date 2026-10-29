@@ -2,6 +2,14 @@
 
 Version 1.1, 2026-10-27 (1.0 revised after review). This is the spec that implementing engineers code from.
 
+> **Status 2026-10-29: much of this spec was never built.** Built: `TIMED_CUES` with the StillnessGate (§4.1, wait
+> for stillness), the watch tracking the whole night, the alarms, the back-to-sleep guide, the late cues, the dream
+> questions on the watch, and copying the watch's files to the phone, which also transcribes the watch's dream
+> recordings offline ([SETUP.md](SETUP.md) §13, not as §7.9 describes). Not built: the `DETECTION` engine (§4.4,
+> §5.3 rows 1, 3–10 and 16–18, §8.3–8.13, §9.3, §9.6), simulation (§13), recording, speech-to-text and the journal on
+> the phone (§7.8–7.9, §12.4), the keep-alive carrier (§7.5) and the replay harness (§12.6). Read those sections as
+> design notes, not as a description of the code.
+
 **Order of authority.** (1) Owner requirements A1–G23. (2) Lead-engineer design decisions D1–D18. (3) This document.
 (4) `CLAUDE.md`. Where this document departs from D1–D18, the place is marked **[EXT]** (an extension the decisions
 do not cover) or **[DEV]** (a deviation), and every one is listed in §17.1.
@@ -627,7 +635,7 @@ mute media. A muted track plays silence with no error.
 | Check (session start and before each cue) | Action |
 |---|---|
 | `getCurrentInterruptionFilter() == INTERRUPTION_FILTER_NONE` | Block session start: "Do Not Disturb (Total silence) will mute every cue. Turn it off or allow media." Mid-session: log `dnd_muted`; a muted `WAKE_PROMPT` aborts the cycle (row 15) |
-| `PRIORITY` and `(getConsolidatedNotificationPolicy().priorityCategories & PRIORITY_CATEGORY_MEDIA) == 0` (64) | Warn at start: "Do Not Disturb may mute cues. Allow 'Media sound' in the Do Not Disturb exceptions." Same mid-session rule |
+| `PRIORITY` and `(getConsolidatedNotificationPolicy().priorityCategories & PRIORITY_CATEGORY_MEDIA) == 0` (64) | Block session start on the phone route (the watch route is not affected): "Do Not Disturb is silencing media, so you would not hear the voice. In Do Not Disturb, allow Media, then come back." Same mid-session rule |
 | always | Log the filter and categories to `p_audio.csv` |
 
 Cues stay on `USAGE_MEDIA`, never `USAGE_ALARM` (an alarm may play on headphones and the speaker together, [U] §0 D2).

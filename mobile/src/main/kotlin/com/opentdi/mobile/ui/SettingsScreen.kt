@@ -8,8 +8,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import android.Manifest
+import android.content.Intent
+import android.media.AudioManager
+import android.net.Uri
+import android.provider.Settings
 import com.opentdi.shared.time.clock12
-import java.util.Locale
+import java.io.File
 import java.util.Optional
 import kotlinx.coroutines.flow.map
 import com.opentdi.shared.model.AlarmTone
@@ -39,8 +43,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opentdi.mobile.MainViewModel
+import com.opentdi.mobile.cues.NEURAL_MODEL
 import com.opentdi.mobile.cues.NEURAL_VOICE_CHOICES
 import com.opentdi.mobile.cues.PHASE1_CUES
 import com.opentdi.mobile.cues.THEME_PLACEHOLDER
@@ -68,7 +75,7 @@ import kotlin.math.roundToInt
 
 internal typealias Edit = ((SessionConfig) -> SessionConfig) -> Unit
 
-/** Settings in cards: cue words, voice, timing, sound, about. Locked while a session runs or cues are prepared. */
+/** Settings in cards, expert controls behind More settings at the bottom. Locked while the voice plays or is made. */
 @Composable
 fun SettingsScreen(viewModel: MainViewModel) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -78,23 +85,35 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val idle = !status.running && !ui.preparing && !ui.testing
     val edit: Edit = viewModel::edit
     var advanced by rememberSaveable { mutableStateOf(false) }
+    // Leaving Settings gets the voice ready for what changed here, so Start is not blocked at bedtime.
+    val latest by rememberUpdatedState(Triple(idle, cueProblem, ui.config.theme.length in 1..60))
+    DisposableEffect(Unit) {
+        onDispose { if (latest.first && latest.second != null && latest.third) viewModel.prepareCues() }
+    }
 
     Page("Settings") {
         when {
-            status.running -> Help("Settings are locked while a session runs.")
-            !idle -> Help("Settings are locked while the cues are prepared or tested.")
+            status.running ->
+                Help("Settings are locked while the voice plays. Tap Stop the voice on Tonight to change them.")
+            !idle -> Help("Settings are locked while the voice is made or tested.")
         }
-        SwitchRow("Show advanced settings", advanced, enabled = true) { advanced = it }
         CompositionLocalProvider(LocalAdvanced provides advanced) { SettingsCards(viewModel, ui, idle, volumeOff, cueProblem) }
+        SwitchRow("More settings (most people never need these)", advanced, enabled = true) { advanced = it }
         AnimatedVisibility(advanced, label = "defaults") {
-            Section("Defaults") {
-                Help(
-                    "The default timing follows MIT Dormio's timer method (first cue after 10–15 min, 3 min drifting " +
-                        "off, 7 min back to sleep). Resetting keeps your words, voice, alarm times and recordings.",
-                )
-                OutlinedButton(onClick = { edit(::withDefaultNumbers) }, enabled = idle, modifier = Modifier.fillMaxWidth()) {
-                    Text("Reset sliders to the defaults")
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Section("Defaults") {
+                    Help(
+                        "The normal timing follows MIT Dormio's timer method: the first voice after 10–15 min, 3 min " +
+                            "before the question, 7 min before the next round. Resetting keeps your words, voice, " +
+                            "alarm times and recordings.",
+                    )
+                    OutlinedButton(
+                        onClick = { edit(::withDefaultNumbers) },
+                        enabled = idle,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Reset all of these to normal") }
                 }
+                SavedNights(viewModel)
             }
         }
         Section("Set-up guide") {
@@ -141,32 +160,37 @@ private fun SettingsCards(viewModel: MainViewModel, ui: UiState, idle: Boolean, 
         AlarmsCard(config, idle, edit, viewModel)
         VoiceCard(viewModel, ui, idle, volumeOff, cueProblem)
         CueWordsCard(config, idle, edit, viewModel, ui.recordingCue)
-        TimingCard(config, idle, edit)
+        if (LocalAdvanced.current) TimingCard(config, idle, edit)
         SoundCard(config, idle, edit)
     }
 }
 
-/** The voice and the cues: engine, voice, Prepare cues and Test cue (also a step of the set-up guide). */
+/** The voice: engine, speaker, Get the voice ready and Test the voice (also a step of the set-up guide). */
 @Composable
 internal fun VoiceCard(viewModel: MainViewModel, ui: UiState, idle: Boolean, volumeOff: Boolean, cueProblem: String?) {
     val config = ui.config
     val edit: Edit = viewModel::edit
+    val context = LocalContext.current
     Section("Voice") {
-        // These apply when the cues are prepared; after a change the status line below asks for Prepare cues.
+        // These apply when the voice is made; after a change the status line below asks for Get the voice ready.
         val neural = config.audio.ttsEngine == TtsEngine.NEURAL
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .toggleable(value = neural, enabled = idle, role = Role.Switch) { on ->
-                    edit { it.copy(audio = it.audio.copy(ttsEngine = if (on) TtsEngine.NEURAL else TtsEngine.SYSTEM)) }
-                },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Natural-sounding voice", modifier = Modifier.weight(1f))
-            Switch(checked = neural, onCheckedChange = null, enabled = idle)
+        // Its model can only be put on the phone with adb (tools/voice), so most phones never have it.
+        val installed = remember { File(context.filesDir, "voice/$NEURAL_MODEL/model.int8.onnx").isFile }
+        if (installed || neural) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .toggleable(value = neural, enabled = idle, role = Role.Switch) { on ->
+                        edit { it.copy(audio = it.audio.copy(ttsEngine = if (on) TtsEngine.NEURAL else TtsEngine.SYSTEM)) }
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Natural-sounding voice", modifier = Modifier.weight(1f))
+                Switch(checked = neural, onCheckedChange = null, enabled = idle)
+            }
+            Help("Works without internet. Off: your phone's built-in voice.")
         }
-        Help("It runs on the phone itself. Off: your phone's own text-to-speech voice.")
         if (neural) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (speaker in NEURAL_VOICE_CHOICES) {
@@ -183,37 +207,40 @@ internal fun VoiceCard(viewModel: MainViewModel, ui: UiState, idle: Boolean, vol
             "Speaking speed", "How fast the voice speaks; 100 % is normal speed.",
             (config.audio.ttsSpeechRate * 100).roundToInt(), 50..120, 5, "%", idle,
         ) { v -> edit { it.copy(audio = it.audio.copy(ttsSpeechRate = v / 100f)) } }
-        IntSetting(
-            "Pause between phrases", "Silence between the short phrases of a cue.",
-            config.audio.phrasePauseMs, 0..2000, 100, "ms", idle,
-        ) { v -> edit { it.copy(audio = it.audio.copy(phrasePauseMs = v)) } }
         Text(
             when {
                 ui.preparing -> ui.prepareStatus
-                ui.testing -> "Playing the test cue…"
-                cueProblem == null -> "Cues are ready."
+                ui.testing -> "Testing the voice…"
+                cueProblem == null -> "The voice is ready."
                 else -> cueProblem
             },
             style = MaterialTheme.typography.bodyMedium,
         )
         ui.cueMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        // The phone's media volume only matters when the phone speaker plays the voice.
+        val muted = volumeOff && config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER
+        if (muted) {
+            Text("Phone volume is off, so you would not hear the voice.", color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = {
+                context.getSystemService(AudioManager::class.java)
+                    .adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+            }) { Text("Turn up") }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = viewModel::prepareCues,
                 enabled = idle && config.theme.isNotBlank() && config.theme.length <= 60,
                 modifier = Modifier.weight(1f),
-            ) { Text("Prepare cues") }
+            ) { Text("Get the voice ready") }
             OutlinedButton(
                 onClick = viewModel::testCue,
-                // The phone's media volume only matters when the phone speaker plays the cues.
-                enabled = idle && cueProblem == null &&
-                    (!volumeOff || config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER),
+                enabled = idle && cueProblem == null && !muted,
                 modifier = Modifier.weight(1f),
-            ) { Text("Play test cue") }
+            ) { Text("Test the voice") }
         }
         Help(
-            "Prepare cues turns the words into speech on the phone. Play test cue plays the first cue once: " +
-                "play it at the volume you'll sleep with, because cues never get louder than that.",
+            "Get the voice ready turns the words into speech (about a minute). Then test it at the volume you'll " +
+                "sleep with: the voice never gets louder than that.",
         )
     }
 }
@@ -226,30 +253,40 @@ private fun CueWordsCard(
     viewModel: MainViewModel,
     recordingCue: PromptCue?,
 ) {
-    Section("Cue words") {
-        Help("What the voice says. By default it tells you that you are dreaming and leaves the rest to you.")
-        OutlinedTextField(
-            value = config.theme,
-            onValueChange = { theme -> edit { it.copy(theme = theme) } },
-            label = { Text("Theme") },
-            supportingText = { Text("Said wherever the words contain $THEME_PLACEHOLDER.") },
-            singleLine = true,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedButton(
-            onClick = {
-                // Kept with the placeholder, so the words follow a later theme change.
-                val mit = PHASE1_CUES.associateWith { mitThemeCueText(it, THEME_PLACEHOLDER) }
-                    .filter { (cue, text) -> text != cueText(cue, THEME_PLACEHOLDER) }
-                edit { it.copy(audio = it.audio.copy(cueTexts = it.audio.cueTexts + mit)) }
-            },
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Use MIT theme wording") }
-        Help("MIT Dormio's wording asks you to think of the theme instead.")
+    Section("Words") {
+        Help("What the voice says. By default: that you are dreaming.")
+        // The default words ignore the topic. A topic left blank by an older version stays shown, as it blocks Start.
+        val showTopic = remember { config.theme.length !in 1..60 } ||
+            config.audio.cueTexts.values.any { THEME_PLACEHOLDER in it }
+        if (showTopic) {
+            OutlinedTextField(
+                value = config.theme,
+                onValueChange = { theme -> edit { it.copy(theme = theme.take(60)) } },
+                label = { Text("Dream topic") },
+                supportingText = {
+                    Text("The voice says this wherever the words show $THEME_PLACEHOLDER. Up to 60 letters.")
+                },
+                singleLine = true,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         // Kept open while a cue is being recorded, so its Stop button never hides.
         Fold("Edit the words", forceOpen = recordingCue != null) {
+            OutlinedButton(
+                onClick = {
+                    // Kept with the placeholder, so the words follow a later topic change.
+                    val mit = PHASE1_CUES.associateWith { mitThemeCueText(it, THEME_PLACEHOLDER) }
+                        .filter { (cue, text) -> text != cueText(cue, THEME_PLACEHOLDER) }
+                    edit { it.copy(audio = it.audio.copy(cueTexts = it.audio.cueTexts + mit)) }
+                },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Use dream-topic wording") }
+            Help(
+                "Instead of \"You are dreaming\", the voice asks you to think of a topic you choose (MIT Dormio's " +
+                    "wording).",
+            )
             for (cue in PHASE1_CUES) CueWords(cue, config, enabled, edit, viewModel, recordingCue)
             TextButton(
                 onClick = { edit { it.copy(audio = it.audio.copy(cueTexts = emptyMap())) } },
@@ -297,7 +334,10 @@ private fun OwnVoiceRow(
     viewModel: MainViewModel,
     recordingCue: PromptCue?,
 ) {
+    var micBlocked by remember { mutableStateOf(false) }
     val mic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        // After two refusals Android answers false at once, without asking: say why and where to allow it.
+        micBlocked = !granted
         if (granted) viewModel.recordOwnVoice(cue)
     }
     val context = LocalContext.current
@@ -317,12 +357,23 @@ private fun OwnVoiceRow(
         }
         if (cue in config.audio.ownVoice) {
             TextButton(onClick = { viewModel.deleteOwnVoice(cue) }, enabled = enabled && recordingCue == null) {
-                Text("Use the synthetic voice")
+                Text("Use the app's voice")
             }
         }
     }
+    if (micBlocked) {
+        Help("OpenTDI is not allowed to use the microphone. Tap below, then Permissions > Microphone > Allow.")
+        TextButton(onClick = {
+            micBlocked = false
+            context.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+            )
+        }) { Text("Allow the microphone") }
+    }
     if (recordingCue == cue) Help("Say the words slowly and calmly, then tap Stop (at most 20 s).")
-    if (cue in config.audio.ownVoice && recordingCue != cue) Help("Your own recording plays for this cue. Tap Prepare cues.")
+    if (cue in config.audio.ownVoice && recordingCue != cue) {
+        Help("Your own recording plays here. Tap Get the voice ready.")
+    }
 }
 
 private fun cueLabel(cue: PromptCue) = when (cue) {
@@ -330,15 +381,20 @@ private fun cueLabel(cue: PromptCue) = when (cue) {
     PromptCue.WAKE_PROMPT -> "The question that wakes you lightly"
     PromptCue.SLEEP_STATE_QUESTION -> "Sleep-state question"
     PromptCue.RE_INCUBATION -> "Back to sleep"
-    PromptCue.SESSION_END -> "When the session ends"
-    PromptCue.MORNING_WAKE -> "Spoken morning alarm (on the watch)"
+    PromptCue.SESSION_END -> "After the last round"
+    PromptCue.MORNING_WAKE -> "Spoken wake-up alarm (watch)"
 }
 
 @Composable
 private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
     val timed = config.timed
-    Section("Timing: ${presetOf(config)?.label ?: "Custom"}") {
-        PresetButtons(config, enabled, edit)
+    val recommended = presetOf(config) == TimingPreset.LUCID_NIGHT
+    Section("Timing: ${if (recommended) "recommended" else "your own"}") {
+        if (!recommended) {
+            TextButton(onClick = { edit(TimingPreset.LUCID_NIGHT::applyTo) }, enabled = enabled) {
+                Text("Back to the recommended timing")
+            }
+        }
         val still = timed.waitForStillness
         Row(
             Modifier
@@ -352,28 +408,38 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
             Column(Modifier.weight(1f)) {
                 Text("Wait until I'm still")
                 Help(
-                    "Each loop also waits until the watch shows you lying still with your heart rate settling, and " +
-                        "moving restarts the wait. Needs the watch recording; without it the timer alone runs.",
+                    "Each round also waits until the watch shows you lying still with your heart rate settling, and " +
+                        "moving restarts the wait. Needs the watch tracking your sleep; without it the timer alone " +
+                        "runs.",
                 )
             }
             Switch(checked = still, onCheckedChange = null, enabled = enabled)
         }
         if (still) {
             IntSetting(
-                "Still for", "How long you lie still before a loop starts.",
+                "Still for", "How long you lie still before a round starts.",
                 timed.stillForS / 60, 1..30, 1, "min", enabled,
             ) { v -> edit { it.copy(timed = it.timed.copy(stillForS = v * 60)) } }
         }
+        // Each pushes the other along, so earliest never passes latest (validation would block Start).
         IntSetting(
-            "First cue, earliest", "The first cue comes at a random minute between earliest and latest.",
+            "First voice, earliest", "The voice first comes at a random minute between earliest and latest.",
             timed.firstSleepMinMin, 1..60, 1, "min", enabled,
-        ) { v -> edit { it.copy(timed = it.timed.copy(firstSleepMinMin = v)) } }
+        ) { v ->
+            edit {
+                it.copy(timed = it.timed.copy(firstSleepMinMin = v, firstSleepMaxMin = maxOf(v, it.timed.firstSleepMaxMin)))
+            }
+        }
         IntSetting(
-            "First cue, latest", "Give yourself time to fall asleep before the first cue.",
+            "First voice, latest", "Give yourself time to fall asleep before the voice first comes.",
             timed.firstSleepMaxMin, 1..90, 1, "min", enabled,
-        ) { v -> edit { it.copy(timed = it.timed.copy(firstSleepMaxMin = v)) } }
+        ) { v ->
+            edit {
+                it.copy(timed = it.timed.copy(firstSleepMaxMin = v, firstSleepMinMin = minOf(v, it.timed.firstSleepMinMin)))
+            }
+        }
         IntSetting(
-            "Drifting off", "Time between the dream cue and the question that wakes you lightly.",
+            "Before the question", "Time between the voice and its question.",
             config.countdownS, 60..300, 15, "s", enabled,
         ) { v -> edit { it.copy(countdownS = v) } }
         IntSetting(
@@ -381,15 +447,15 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
             timed.phase1ReportWindowS, 30..90, 5, "s", enabled,
         ) { v -> edit { it.copy(timed = it.timed.copy(phase1ReportWindowS = v)) } }
         IntSetting(
-            "Back to sleep", "Time to drift off again before the next loop.",
+            "Before the next round", "Time to drift off again before the next round.",
             timed.betweenSleepS, 60..1200, 30, "s", enabled,
         ) { v -> edit { it.copy(timed = it.timed.copy(betweenSleepS = v)) } }
         IntSetting(
-            "Loops", "How many cue-and-question rounds one session has.",
+            "Rounds", "How many times the voice speaks and asks its question.",
             config.maxCycles, 1..10, 1, "", enabled,
         ) { v -> edit { it.copy(maxCycles = v) } }
         IntSetting(
-            "Session limit", "The session ends after this long at the latest.",
+            "Stop after", "The voice stops after this long, even if rounds are left.",
             config.sessionMaxMin, 15..180, 5, "min", enabled,
         ) { v -> edit { it.copy(sessionMaxMin = v) } }
     }
@@ -402,11 +468,10 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
     val alarms = config.alarms
     fun change(transform: (AlarmConfig) -> AlarmConfig) = edit { it.copy(alarms = transform(it.alarms)) }
     Section("Alarms (on the watch)") {
-        Help("They ring on the watch while it records. Start the night sends them to the watch.")
+        Help("They ring on the watch while it tracks your sleep. Start the night sends them to the watch.")
         SwitchRow("Wake-up alarm", alarms.wakeEnabled, enabled) { on -> change { it.copy(wakeEnabled = on) } }
         if (alarms.wakeEnabled) {
             TimeRow("Wake up at", alarms.wakeAtMin, enabled) { m -> change { it.copy(wakeAtMin = m) } }
-            Help("The watch logs how long you take to wake up: your first movement, and when you tap I'm awake.")
             ToneChips(alarms.wakeTone, enabled, onTest) { t -> change { it.copy(wakeTone = t) } }
             IntSetting(
                 "Snoozes", "Each one waits ${alarms.snoozeMin} min. 0 = no snooze button.", alarms.maxSnoozes, 0..5, 1,
@@ -423,48 +488,51 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 onValueChange = { name -> change { it.copy(sleeperName = name.take(30)) } },
                 label = { Text("Your name") },
                 supportingText = {
-                    Text("The spoken wake-up says it (Settings > Cue words has its words). Then tap Prepare cues.")
+                    val name = alarms.sleeperName.trim().ifEmpty { "<name>" }
+                    Text("The spoken wake-up says \"Good morning, $name.\" Then tap Get the voice ready.")
                 },
                 singleLine = true,
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        SwitchRow("Early wake, then back to bed (WBTB)", alarms.wbtbEnabled, enabled) { on ->
+        SwitchRow("Early wake-up", alarms.wbtbEnabled, enabled) { on ->
             // Late cues follow a WBTB alarm, so they go off with it (else Start would be blocked by validation).
             change { it.copy(wbtbEnabled = on, lateCues = if (on) it.lateCues else LateCueMode.OFF) }
         }
         if (alarms.wbtbEnabled) {
-            TimeRow("Wake briefly at", alarms.wbtbAtMin, enabled) { m -> change { it.copy(wbtbAtMin = m) } }
+            TimeRow("Early wake-up at", alarms.wbtbAtMin, enabled) { m -> change { it.copy(wbtbAtMin = m) } }
             Help(
-                "About 5 to 6 hours after you fall asleep. Stay up for a while, recall your last dream and repeat " +
-                    "\"next time I'm dreaming, I'll remember I'm dreaming\"; a buzz then says go back to sleep. " +
-                    "1 to 3 nights a week; set the wake-up alarm at least 2 h after you go back to bed.",
+                "About 5 to 6 hours after you fall asleep. Stay up a while and think about your last dream; a buzz " +
+                    "tells you when to go back to bed. Best on 1 to 3 nights a week. (This is called WBTB.)",
             )
             IntSetting(
                 "Stay up for", "Before the back-to-sleep buzz.", alarms.wbtbAwakeMin, 5..60, 5, "min", enabled,
             ) { v -> change { it.copy(wbtbAwakeMin = v) } }
             if (alarms.wakeTooSoonAfterWbtb()) {
                 Text(
-                    "Your wake-up is less than 2 h after you go back to bed: dreams after WBTB usually start about " +
-                        "75 min later.",
+                    "Your wake-up alarm is less than 2 hours after you go back to bed: too soon for the dreams " +
+                        "that follow.",
                     color = MaterialTheme.colorScheme.tertiary,
                 )
                 TextButton(
                     onClick = { change { it.copy(wbtbAtMin = it.wbtbAtMinBeforeWake()) } },
                     enabled = enabled,
-                ) { Text("Wake briefly at ${hhmm(alarms.wbtbAtMinBeforeWake())} instead") }
+                ) { Text("Early wake-up at ${clock12(alarms.wbtbAtMinBeforeWake())} instead") }
             }
             ToneChips(alarms.wbtbTone, enabled, onTest) { t -> change { it.copy(wbtbTone = t) } }
-            SwitchRow(
-                "Guided back-to-sleep (about 19 min, on the watch). Practice aid; unproven.",
-                alarms.wbtbGuide,
-                enabled,
-            ) { on -> change { it.copy(wbtbGuide = on) } }
-            if (alarms.wbtbGuide) {
-                Help("After the buzz, tap I'm in bed on the watch. Prepare cues sends the guide to the watch.")
+            if (LocalAdvanced.current) {
+                SwitchRow("Guided back-to-sleep (on the watch)", alarms.wbtbGuide, enabled) { on ->
+                    change { it.copy(wbtbGuide = on) }
+                }
+                if (alarms.wbtbGuide) {
+                    Help(
+                        "After the buzz, tap I'm in bed on the watch. Get the voice ready sends the guide to the " +
+                            "watch.",
+                    )
+                }
+                LateCuesSettings(alarms, enabled, viewModel, ::change)
             }
-            LateCuesSettings(alarms, enabled, viewModel, ::change)
         }
         if (alarms.wakeEnabled || alarms.wbtbEnabled) {
             IntSetting(
@@ -483,9 +551,10 @@ private fun LateCuesSettings(
     viewModel: MainViewModel,
     change: ((AlarmConfig) -> AlarmConfig) -> Unit,
 ) {
-    Text("Late-night cues")
+    Text("Soft sounds after the early wake-up")
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for ((mode, label) in listOf(LateCueMode.OFF to "Off", LateCueMode.ON to "On", LateCueMode.EXPERIMENT to "Experiment")) {
+        val modes = listOf(LateCueMode.OFF to "Off", LateCueMode.ON to "On", LateCueMode.EXPERIMENT to "Test if they help")
+        for ((mode, label) in modes) {
             FilterChip(
                 selected = alarms.lateCues == mode,
                 onClick = { change { it.copy(lateCues = mode) } },
@@ -496,16 +565,17 @@ private fun LateCuesSettings(
     }
     Help(
         when (alarms.lateCues) {
-            LateCueMode.OFF -> "Soft three-note cues after WBTB, while you lie still. Unproven: try them as an experiment."
-            LateCueMode.ON -> "After WBTB the watch trains the cue, then plays it softly once you are still again."
+            LateCueMode.OFF -> "No sounds after the early wake-up."
+            LateCueMode.ON ->
+                "The watch teaches you a soft three-note sound, then plays it quietly once you're asleep again. Not " +
+                    "proven to work."
             LateCueMode.EXPERIMENT ->
-                "Each night the watch secretly picks cues or no cues, balanced over nights, so your morning " +
-                    "reports show whether they help."
+                "The watch secretly plays the sounds on some nights and not others, so Stats can show whether they help."
         },
     )
     if (alarms.lateCues != LateCueMode.OFF) {
-        Text("Cue loudness: ${(alarms.lateCueVolume * 100).roundToInt()} %")
-        Help("Lying in bed, set it so you would notice the cue but it would not wake you.")
+        Text("Sound loudness: ${(alarms.lateCueVolume * 100).roundToInt()} %")
+        Help("Lying in bed, set it so you would notice the sound but it would not wake you.")
         Slider(
             value = alarms.lateCueVolume,
             onValueChange = { v -> change { it.copy(lateCueVolume = (v * 50).roundToInt() / 50f) } },
@@ -513,12 +583,11 @@ private fun LateCuesSettings(
             enabled = enabled,
         )
         TextButton(onClick = { viewModel.testLateCue(alarms.lateCueVolume) }, enabled = enabled) {
-            Text("Play the cue on the watch")
+            Text("Play the sound on the watch")
         }
         IntSetting(
-            "Cues start after",
-            "Minutes after you fall back asleep: the watch takes your first 10 still minutes after the buzz, or " +
-                "after the guide, as sleep. REM came about 42 min after falling back asleep in a lab study.",
+            "First sound after",
+            "How long after you fall back asleep. Dreams usually return about 40 minutes later.",
             alarms.lateCueAfterOnsetMin, 10..120, 5, "min", enabled,
         ) { v -> change { it.copy(lateCueAfterOnsetMin = v) } }
     }
@@ -543,7 +612,7 @@ private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean, onChang
 private fun TimeRow(label: String, minuteOfDay: Int, enabled: Boolean, onChange: (Int) -> Unit) {
     var picking by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("$label ${hhmm(minuteOfDay)}", modifier = Modifier.weight(1f))
+        Text("$label ${clock12(minuteOfDay)}", modifier = Modifier.weight(1f))
         TextButton(onClick = { picking = true }, enabled = enabled) { Text("Change") }
     }
     if (picking) {
@@ -584,10 +653,8 @@ private fun toneLabel(tone: AlarmTone) = when (tone) {
     AlarmTone.RISING_TONE -> "Rising tone"
     AlarmTone.CLASSIC_BEEPS -> "Low beeps"
     AlarmTone.VIBRATE_ONLY -> "Vibrate only"
-    AlarmTone.SPOKEN -> "Spoken (cue voice)"
+    AlarmTone.SPOKEN -> "Spoken"
 }
-
-private fun hhmm(minuteOfDay: Int) = clock12(minuteOfDay)
 
 /** Where the cues play (phone or watch), and where the watch plays them and its alarms: speaker or its earbuds. */
 @Composable
@@ -613,19 +680,19 @@ private fun WatchAudioCard(config: SessionConfig, enabled: Boolean, edit: Edit, 
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Play cues on the watch")
+                Text("Play the voice on the watch")
                 Help(
                     if (onWatch) {
-                        "The watch plays the cues, at its media volume. The phone can be in another room."
+                        "The watch plays the voice at its media volume. The phone can be in another room."
                     } else {
-                        "Cues play from the phone speaker (nightstand)."
+                        "The voice plays from the phone speaker."
                     },
                 )
             }
             Switch(checked = onWatch, onCheckedChange = null, enabled = enabled)
         }
         Text("The watch plays through:")
-        Help("Where the watch plays cues and alarms. Earbuds let you sleep with one or both in without waking anyone.")
+        Help("Where the watch plays the voice and alarms. Earbuds let you sleep with them in without waking anyone.")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for ((output, label) in listOf(WatchOutput.SPEAKER to "Watch speaker", WatchOutput.EARBUDS to "Earbuds")) {
                 FilterChip(
@@ -647,7 +714,7 @@ private fun WatchAudioCard(config: SessionConfig, enabled: Boolean, edit: Edit, 
             Help(
                 "Pair the earbuds with the watch, not the phone: on the watch, Settings > Connections > Bluetooth. " +
                     "Alarms ring in the earbuds and on the watch, so an earbud that falls out cannot hide them. " +
-                    "Play a test cue once with the earbuds in: they keep their own volume.",
+                    "Test the voice once with the earbuds in: they keep their own volume.",
             )
         }
     }
@@ -656,27 +723,24 @@ private fun WatchAudioCard(config: SessionConfig, enabled: Boolean, edit: Edit, 
 @Composable
 private fun SoundCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
     val cap = config.audio.routeCapGain[AudioRouteMode.NIGHTSTAND_SPEAKER] ?: 0f
-    val gain = config.audio.userGain.coerceIn(0f, cap)
+    val top = maxOf(MIN_GAIN, cap)
+    val gain = config.audio.userGain.coerceIn(MIN_GAIN, top)
     Section("Sound") {
         AnimatedVisibility(LocalAdvanced.current, label = "volume") {
             Column {
-                Text("Cue volume: ${percent(gain)}")
-                Help("Never above the speaker cap of ${percent(cap)}, and never louder than your test cue.")
+                Text("Voice loudness")
+                Help("Fine-tunes the voice. Set the main loudness with your volume buttons, then Test the voice.")
                 // The slider stops at the speaker cap (§7.7 step 3); playback clamps to it as well.
                 Slider(
                     value = gain,
                     onValueChange = { g ->
                         edit { it.copy(audio = it.audio.copy(userGain = (g * 100).roundToInt() / 100f)) }
                     },
-                    valueRange = 0f..cap,
+                    valueRange = MIN_GAIN..top,
                     enabled = enabled,
                 )
             }
         }
-        IntSetting(
-            "Fade-in", "The voice rises gently over this time so it does not startle you.",
-            config.audio.fadeInMs, 0..5000, 100, "ms", enabled,
-        ) { v -> edit { it.copy(audio = it.audio.copy(fadeInMs = v)) } }
         val chime = config.audio.endAlarm == EndAlarm.CHIME
         Row(
             Modifier
@@ -688,8 +752,8 @@ private fun SoundCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("End chime")
-                Help("A soft chime and \"That was the last cue for tonight. Sleep well.\" after the last cue.")
+                Text("Goodnight chime")
+                Help("A soft chime and a goodnight line after the last round.")
             }
             Switch(checked = chime, onCheckedChange = null, enabled = enabled)
         }
@@ -710,7 +774,7 @@ private fun AboutCard() {
     }
 }
 
-private fun percent(gain: Float) = "${(gain * 100).roundToInt()} %"
+private const val MIN_GAIN = 0.15f // a voice at 0 % would make the night silent
 
 // §17.4, which includes the FS24 screening advice.
 private const val WELLNESS_STATEMENT =

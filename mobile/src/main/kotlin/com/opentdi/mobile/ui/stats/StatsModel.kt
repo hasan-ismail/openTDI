@@ -15,7 +15,6 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
-import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.log10
@@ -115,9 +114,9 @@ val NightRow.nightmare: Boolean get() = reports.any { it.nightmare == true }
 
 /** A night's morning, in order: the dream calendar's colour steps. */
 enum class Outcome(val label: String) {
-    NO_REPORT("No report"),
+    NO_REPORT("Not answered"),
     NO_DREAM("No dream"),
-    WHITE("Dreamed, no content"),
+    WHITE("Dreamed, can't recall it"),
     DREAM("Dream"),
     LUCID("Lucid moment"),
 }
@@ -214,7 +213,8 @@ fun armShown(row: NightRow, today: LocalDate): Boolean =
 
 /**
  * The late-cue experiment in [nights]: pairs of one cue and one no-cue night (the watch's "1/2" then "2/2") whose
- * morning reports both rate insight. Only the WAKE report counts, as the cues play after WBTB.
+ * morning reports both rate insight or say no dream was remembered (the watch asks insight only about a remembered
+ * dream, so that morning is not lucid). Only the WAKE report counts, as the cues play after WBTB.
  */
 data class Experiment(
     val pairs: Int,
@@ -231,7 +231,9 @@ data class Experiment(
 }
 
 fun experiment(nights: List<NightRow>, today: LocalDate): Experiment {
-    fun morningInsight(n: NightRow) = n.reports.filter { it.after == "WAKE" }.mapNotNull { it.insight }.maxOrNull()
+    // A remembered dream whose insight was skipped stays unrated.
+    fun morningInsight(n: NightRow) = n.reports.filter { it.after == "WAKE" }
+        .mapNotNull { it.insight ?: if (it.recalled == "NO" || it.recalled == "WHITE") 0 else null }.maxOrNull()
     val shown = nights.filter { it.watch?.lateCues?.mode == "EXPERIMENT" && armShown(it, today) }.sortedBy { it.night }
     val pairs = mutableListOf<Pair<Int, Int>>() // (cue night insight, no-cue night insight)
     var first: NightRow? = null
@@ -267,10 +269,10 @@ fun armValue(lucid: Int, pairs: Int): String =
 
 /** What the experiment shows so far, never more than the numbers carry; it never says the cues work. */
 fun verdict(e: Experiment): String = when {
-    e.pairs < MIN_PAIRS -> "${e.pairs} of $MIN_PAIRS pairs so far: shares show from $MIN_PAIRS pairs."
+    e.pairs < MIN_PAIRS -> "${e.pairs} of $MIN_PAIRS pairs so far: results show after $MIN_PAIRS pairs."
     !e.clear -> "No clear difference yet."
-    else -> "More lucid moments on ${if (e.onlyCue > e.onlyNoCue) "cue" else "no-cue"} nights so far. " +
-        "Small numbers can mislead: keep going."
+    else -> "More lucid moments on nights ${if (e.onlyCue > e.onlyNoCue) "with" else "without"} soft sounds so " +
+        "far. Small numbers can mislead: keep going."
 }
 
 /** The dream calendar's takeaway for screen readers. */
@@ -280,9 +282,9 @@ fun outcomeTakeaway(counts: Map<Outcome, Int>): String {
         when (o) {
             Outcome.LUCID -> plural(n, "lucid moment")
             Outcome.DREAM -> plural(n, "dream")
-            Outcome.WHITE -> "$n dreamed without content"
+            Outcome.WHITE -> "$n dreamed but can't recall it"
             Outcome.NO_DREAM -> "$n with no dream"
-            Outcome.NO_REPORT -> "$n without a report"
+            Outcome.NO_REPORT -> "$n not answered"
         }
     }
     return if (parts.isEmpty()) "No recorded nights in this range yet." else "Mornings: ${parts.joinToString(", ")}."
@@ -305,7 +307,7 @@ fun signTestP(a: Int, b: Int): Double {
 fun syncWords(copying: Boolean, result: SyncResult?): String? = when {
     copying -> "Copying from the watch…"
     result == null -> null
-    result.error != null -> "Couldn't copy from the watch: ${result.error}"
+    result.error != null -> result.error
     result.files == 0 -> "Up to date with the watch"
     else -> "Copied ${plural(result.files, "new file")} from the watch"
 }
@@ -370,8 +372,8 @@ data class Mark(val atMs: Long, val label: String, val short: String)
 /** The night's alarms, WBTB steps and reports, in time order. */
 fun marks(s: NightSummary): List<Mark> = buildList {
     s.wbtb?.let { w ->
-        w.ringAtMs?.let { add(Mark(it, "WBTB alarm", "WBTB")) }
-        w.upAtMs?.let { add(Mark(it, "Up for WBTB", "Up")) }
+        w.ringAtMs?.let { add(Mark(it, "Early wake-up", "Early")) }
+        w.upAtMs?.let { add(Mark(it, "Up for the early wake-up", "Up")) }
         w.backToSleepAtMs?.let { add(Mark(it, "Back to bed", "Bed")) }
         w.reOnsetMs?.let { add(Mark(it, "Asleep again (estimated)", "Asleep")) }
     }
@@ -379,7 +381,9 @@ fun marks(s: NightSummary): List<Mark> = buildList {
         add(Mark(a.ringAtMs, "Wake-up alarm", "Alarm"))
         a.stoppedAtMs?.let { add(Mark(it, "\"I'm awake\"", "Awake")) }
     }
-    for (r in s.reports) add(Mark(r.atMs, if (r.after == "WBTB") "WBTB report" else "Morning report", "Report"))
+    for (r in s.reports) {
+        add(Mark(r.atMs, if (r.after == "WBTB") "Early wake-up questions" else "Morning questions", "Questions"))
+    }
 }.sortedBy { it.atMs }
 
 /** "Recorded 6:45, after the wake-up alarm" from the watch's w_dream_HHmmss.m4a name and the report that made it. */
@@ -388,7 +392,7 @@ fun recordingLabel(name: String, reports: List<DreamReport>): String {
         ?.let { "Recorded ${it.groupValues[1].toInt()}:${it.groupValues[2]}" }
     val after = when (reports.firstOrNull { it.recording == name }?.after) {
         "WAKE" -> "after the wake-up alarm"
-        "WBTB" -> "at WBTB"
+        "WBTB" -> "at the early wake-up"
         else -> null
     }
     return listOfNotNull(time ?: name, after).joinToString(", ")
@@ -396,5 +400,5 @@ fun recordingLabel(name: String, reports: List<DreamReport>): String {
 
 /** The phone's sleep-onset cues of the night in one line. */
 fun phoneLine(p: PhoneNight, night: LocalDate, zone: ZoneId): String =
-    "${plural(p.loopsCompleted, "loop")}, ${plural(p.cuesPlayed, "cue")}, " +
+    "${plural(p.loopsCompleted, "round")}, ${plural(p.cuesPlayed, "line")} spoken, " +
         "${clockLabel(clockMin(p.startMs, night, zone))}–${clockLabel(clockMin(p.endMs, night, zone))}"

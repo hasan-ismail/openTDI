@@ -2,16 +2,21 @@ package com.opentdi.mobile.audio
 
 import android.app.NotificationManager
 
-/** How Do Not Disturb treats a USAGE_MEDIA cue (§7.7, from AOSP ZenModeHelper); [message] is the spec's user text. */
+/** How Do Not Disturb treats a USAGE_MEDIA cue (§7.7, from AOSP ZenModeHelper); [message] is Start's popup line. */
 enum class DndEffect(val message: String?) {
     PLAYS(null),
-    MEDIA_NOT_ALLOWED("Do Not Disturb may mute cues. Allow 'Media sound' in the Do Not Disturb exceptions."),
-    TOTAL_SILENCE("Do Not Disturb (Total silence) will mute every cue. Turn it off or allow media."),
+    MEDIA_NOT_ALLOWED(
+        "Do Not Disturb is silencing media, so you would not hear the voice. In Do Not Disturb, allow Media, then " +
+            "come back.",
+    ),
+    TOTAL_SILENCE(
+        "Do Not Disturb is on total silence, so you would not hear the voice. Turn it off, or allow Media in it.",
+    ),
 }
 
 /**
- * The §7.7 table. At session start TOTAL_SILENCE blocks Start and MEDIA_NOT_ALLOWED warns; before each cue anything
- * but PLAYS skips the cue as dnd_muted (the spec's "same mid-session rule" for both rows).
+ * The §7.7 table. On the phone route both rows block Start, since before each cue anything but PLAYS skips the cue
+ * as dnd_muted (the spec's "same mid-session rule" for both rows): a night with no voice at all.
  */
 fun dndEffect(interruptionFilter: Int, priorityCategories: Int): DndEffect = when {
     interruptionFilter == NotificationManager.INTERRUPTION_FILTER_NONE -> DndEffect.TOTAL_SILENCE

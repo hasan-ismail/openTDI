@@ -46,26 +46,19 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-/** Everything the Stats screens show about one night (noon to noon), from the watch, the phone and the routine. */
+/** Everything the Stats screens show about one night (noon to noon), from the watch and the phone. */
 data class NightRow(
     val night: LocalDate,
     /** From the phone's copy of the watch session that recorded the night; null when it recorded too little or none. */
     val watch: NightSummary?,
     /** The phone's sleep-onset cue session(s) that night; null when none ran. */
     val phone: PhoneNight?,
-    /**
-     * Bedtime-routine steps ticked that evening, and how many there were, as the night's last phone session logged
-     * them (RoutineStore keeps only tonight); null when none was ticked or no phone session ran.
-     */
-    val routineDone: Int?,
-    val routineTotal: Int?,
     /** The night's dream recordings copied from the watch (w_dream_*.m4a), oldest first. */
     val recordings: List<File> = emptyList(),
 )
 
 /** The phone's own sessions that night (p_transitions.csv, p_audio.csv). */
 data class PhoneNight(
-    val sessionIds: List<String>,
     val startMs: Long,
     val endMs: Long,
     val loopsCompleted: Int,
@@ -73,8 +66,11 @@ data class PhoneNight(
     val cuesPlayed: Int,
 )
 
-/** The result of one copy from the watch. */
+/** The result of one copy from the watch; [error] is a whole sentence for the screen. */
 data class SyncResult(val files: Int, val bytes: Long, val error: String? = null)
+
+// GUESSED (stats plan, 2026-10-28): full copies for 120 nights; w_packets.csv alone is ~0.7 MB an hour (§12.1)
+internal const val KEEP_CSV_NIGHTS = 120
 
 /**
  * The nights the phone knows, newest first, and copying new watch data to the phone (owner, 2026-10-28: "nice graphs
@@ -83,8 +79,6 @@ data class SyncResult(val files: Int, val bytes: Long, val error: String? = null
  */
 object NightsRepository {
     private const val PHONE_CACHE = "phone_sessions.json"
-    // GUESSED (stats plan, 2026-10-28): full copies for 120 nights; w_packets.csv alone is ~0.7 MB an hour (§12.1)
-    private const val KEEP_CSV_NIGHTS = 120
     private const val IDLE_TIMEOUT_MS = 60_000L // GUESSED: a link that sent nothing for a minute is gone
     private val copying = Mutex()
     private val background = CoroutineScope(
@@ -171,13 +165,15 @@ object NightsRepository {
                 null
             }
         } catch (e: IOException) {
+            Log.w(TAG_LINK, logLine("WATCH_COPY_FAILED", "error" to e))
             if (stalled.get()) {
                 "The watch stopped sending. Keep it near the phone and try again."
             } else {
-                "Could not copy from the watch: ${e.message}"
+                "Couldn't copy from the watch. Keep it near the phone and try again."
             }
         } catch (e: ApiException) {
-            "Could not reach the watch: ${e.message}"
+            Log.w(TAG_LINK, logLine("WATCH_COPY_FAILED", "error" to e))
+            "Couldn't reach the watch. Check it's connected to this phone."
         }
         // What arrived before an error is kept: the next copy continues from there.
         return SyncResult(files, copied.get(), error).also {
@@ -263,23 +259,41 @@ object NightsRepository {
         }
     }
 
-    /** The phone's sessions, each read again only when its CSVs changed (filesDir/phone_sessions.json). */
-    private fun phoneSessions(filesDir: File): List<PhoneSession> {
-        val cacheFile = File(filesDir, PHONE_CACHE)
-        val cached = try {
-            OpenTdiJson.decodeFromString<List<PhoneSession>>(cacheFile.readText())
+    /**
+     * Drops the sessions the user deleted from the stats; call it after their folders are gone, or a [rows] in between
+     * reads them back.
+     */
+    @Synchronized
+    fun forgetPhoneSessions(context: Context, ids: Collection<String>) {
+        val file = File(context.filesDir, PHONE_CACHE)
+        val cached = readPhoneCache(file) ?: return
+        val left = cached.filter { it.id !in ids }
+        if (left.size == cached.size) return
+        try {
+            writeWhole(file, OpenTdiJson.encodeToString(left))
         } catch (e: IOException) {
-            emptyList()
-        } catch (e: IllegalArgumentException) { // SerializationException: damaged
-            emptyList()
+            Log.w(TAG_SESSION, logLine("PHONE_NIGHTS_NOT_STORED", "error" to e.message))
         }
+    }
+
+    private fun readPhoneCache(file: File): List<PhoneSession>? = try {
+        OpenTdiJson.decodeFromString<List<PhoneSession>>(file.readText())
+    } catch (e: IOException) {
+        null
+    } catch (e: IllegalArgumentException) { // SerializationException: damaged
+        null
+    }
+
+    /** The phone's sessions, each read again only when its CSVs changed (filesDir/phone_sessions.json). */
+    internal fun phoneSessions(filesDir: File): List<PhoneSession> {
+        val cacheFile = File(filesDir, PHONE_CACHE)
+        val cached = readPhoneCache(cacheFile).orEmpty()
         val known = cached.associateBy { it.id }
         val dirs = sessionDirs(File(filesDir, SESSIONS_DIR))
-        // Retention (SessionRetention.kt) deletes only the oldest folders, so cached sessions older than every folder
-        // left stay in the stats; a newer one is gone because the Sessions screen deleted it. shortcut: deleting the
-        // oldest sessions there keeps them in the stats; log deletions if that matters.
-        val oldestLeft = dirs.lastOrNull()?.name
-        val retained = cached.filter { oldestLeft != null && it.id < oldestLeft }
+        // A session whose folder retention (SessionRetention.kt) deleted stays in the stats; the user's own deletions
+        // leave through forgetPhoneSessions.
+        val names = dirs.mapTo(HashSet()) { it.name }
+        val retained = cached.filter { it.id !in names }
         val sessions = dirs.mapNotNull { dir ->
             val files = fingerprint(dir)
             known[dir.name]?.takeIf { it.files == files } ?: readPhoneSession(dir)?.copy(files = files)

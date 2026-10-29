@@ -94,11 +94,11 @@ fun nextAlarmAt(minuteOfDay: Int, fromMs: Long, zone: ZoneId): Long {
 }
 
 /**
- * The alarms of [config] still to ring tonight, soonest first, e.g. "the WBTB alarm at 4:30 AM and the wake-up alarm at
- * 7 AM"; null when none. One more than 12 h away has already rung this night, or belongs to the next one.
+ * The alarms of [config] still to ring tonight, soonest first, e.g. "the early wake-up at 4:30 AM and the wake-up
+ * alarm at 7 AM"; null when none. One more than 12 h away has already rung this night, or belongs to the next one.
  */
 fun alarmsAhead(config: AlarmConfig, nowMs: Long, zone: ZoneId): String? = listOfNotNull(
-    config.wbtbAtMin.takeIf { config.wbtbEnabled }?.let { it to "the WBTB alarm" },
+    config.wbtbAtMin.takeIf { config.wbtbEnabled }?.let { it to "the early wake-up" },
     config.wakeAtMin.takeIf { config.wakeEnabled }?.let { it to "the wake-up alarm" },
 ).map { (minute, name) -> nextAlarmAt(minute, nowMs, zone) to "$name at ${clock12(minute)}" }
     .filter { (at, _) -> at - nowMs <= 12 * 3_600_000L }

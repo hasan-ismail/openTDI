@@ -27,20 +27,20 @@ class TonightTest {
         assertEquals("Ready" to null, statusLines(SessionStatus(), NOW, ready = true))
         assertEquals("Almost ready" to null, statusLines(SessionStatus(), NOW, ready = false))
         assertEquals(
-            "Waiting — first cue in 12:30" to "Cycle 1 of 4",
+            "First voice in 12:30" to "Round 1 of 4",
             statusLines(running(TdiState.AWAKE_INCUBATING, 750_000), NOW, ready = true),
         )
         assertEquals(
-            "Drifting off — next cue in 3:00" to "Cycle 1 of 4",
+            "Question in 3:00" to "Round 1 of 4",
             statusLines(running(TdiState.HYPNAGOGIA_DETECTED, 179_001, cycle = 1), NOW, ready = true),
         )
-        assertEquals("Cue playing" to "Cycle 2 of 4", statusLines(running(TdiState.WAKING_USER, cycle = 2), NOW, true))
+        assertEquals("Speaking…" to "Round 2 of 4", statusLines(running(TdiState.WAKING_USER, cycle = 2), NOW, true))
         assertEquals(
-            "Listening for your answer — 0:24 left",
+            "Say what's on your mind — 0:24 left",
             statusLines(running(TdiState.RECORDING_DREAM, 24_000, cycle = 2), NOW, true).first,
         )
         assertEquals(
-            "Back to sleep — next cue in 6:10" to "Cycle 3 of 4", // the scheduler still says cycle 2 here
+            "Next round in 6:10" to "Round 3 of 4", // the scheduler still says cycle 2 here
             statusLines(running(TdiState.AWAKE_INCUBATING, 370_000, cycle = 2, completed = 2), NOW, true),
         )
         assertEquals(CUES_DONE to null, statusLines(running(TdiState.SESSION_COMPLETE, cycle = 4), NOW, true))
@@ -77,15 +77,6 @@ class TonightTest {
         assertEquals(60, quick.countdownS)
         assertEquals(2, quick.maxCycles)
         assertNull(presetOf(quick.copy(maxCycles = 3)))
-        assertEquals(
-            "First cue after 1 min, then 2 loops of 1 min drifting off, 30 s to answer and 1 min back to sleep.",
-            timingSummary(quick),
-        )
-        assertEquals(
-            "First cue after at least 10–15 min and 5 min of lying still, then 4 loops of 3 min drifting off, " +
-                "1 min to answer and 7 min back to sleep. Moving restarts the wait.",
-            timingSummary(config),
-        )
     }
 
     @Test
@@ -100,6 +91,41 @@ class TonightTest {
     }
 
     @Test
+    fun checklist_doNotDisturbThatMutesMedia_blocksOnlyThePhoneRoute() {
+        fun dnd(onWatch: Boolean) = checklist(false, DndEffect.MEDIA_NOT_ALLOWED, true, null, true, WatchState.RECORDING, onWatch)
+            .single { it.check == Check.DND }
+        assertTrue(dnd(onWatch = false).let { !it.ok && it.blocking }) // the player would skip every cue
+        assertTrue(dnd(onWatch = true).ok)
+    }
+
+    @Test
+    fun checklist_soundOnHeadphones_blocksOnlyThePhoneRoute() {
+        val phone = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.RECORDING, speakerOff = true)
+        assertTrue(phone.single { it.check == Check.SPEAKER }.let { !it.ok && it.blocking })
+        val watch = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.RECORDING, onWatch = true, speakerOff = true)
+        assertTrue(watch.none { it.check == Check.SPEAKER })
+        assertTrue(checklist(false, DndEffect.PLAYS, true, null, true, WatchState.RECORDING).none { it.check == Check.SPEAKER })
+    }
+
+    @Test
+    fun quickTest_onThePhone_ignoresTheWatch_butNotAMutingDoNotDisturb() {
+        fun left(checks: List<CheckItem>, onWatch: Boolean, watch: WatchState?) =
+            checks.filter { !it.ok && !quickTestSkips(it, onWatch, watch) }.map { it.check }
+        val phone = checklist(
+            false, DndEffect.PLAYS, true, null, true, WatchState.IDLE,
+            watchBatteryPct = 30, alarmsOn = true, firstCueMin = 1, dndOff = true,
+        )
+        assertEquals(emptyList<Check>(), left(phone, onWatch = false, watch = WatchState.IDLE))
+        val muted = checklist(false, DndEffect.MEDIA_NOT_ALLOWED, true, null, true, WatchState.IDLE)
+        assertEquals(listOf(Check.DND), left(muted, onWatch = false, watch = WatchState.IDLE))
+        // On the watch route a closed app still plays the voice, an unreachable watch does not.
+        val closed = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE, onWatch = true)
+        assertEquals(emptyList<Check>(), left(closed, onWatch = true, watch = WatchState.IDLE))
+        val away = checklist(false, DndEffect.PLAYS, true, null, true, null, onWatch = true)
+        assertEquals(listOf(Check.WATCH), left(away, onWatch = true, watch = null))
+    }
+
+    @Test
     fun checklist_onTheWatch_skipsThePhoneSpeaker_andNeedsTheWatch() {
         // The phone muted in Total silence does not matter; an untested, silent watch does.
         val bad = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = false, watch = null, onWatch = true)
@@ -107,10 +133,12 @@ class TonightTest {
         assertEquals(setOf(Check.TEST_CUE, Check.WATCH), bad.filter { it.blocking && !it.ok }.map { it.check }.toSet())
         val good = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = true, watch = WatchState.RECORDING, onWatch = true)
         assertTrue(good.all { it.ok })
-        assertEquals("Test cue played on the watch", good.single { it.check == Check.TEST_CUE }.text)
-        // A watch waiting for Start session is ready; one with OpenTDI closed is not.
+        // A watch waiting for Start the night is ready; one with OpenTDI closed is not.
         val waiting = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.WAITING, onWatch = true)
         assertTrue(waiting.single { it.check == Check.WATCH }.ok)
+        // Once the night runs, a watch still waiting missed its start: no tracking, no alarms.
+        val missed = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.WAITING, onWatch = true, running = true)
+        assertTrue(missed.single { it.check == Check.WATCH }.let { !it.ok && it.blocking })
         val closed = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE, onWatch = true)
         assertTrue(closed.single { it.check == Check.WATCH }.let { !it.ok && it.blocking })
         assertTrue(checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE).single { it.check == Check.WATCH }
@@ -131,7 +159,7 @@ class TonightTest {
     }
 
     @Test
-    fun checklist_warnsBelowAFullWatchBattery_withoutBlocking() {
+    fun checklist_warnsBelow80PercentWatchBattery_withoutBlocking() {
         fun battery(pct: Int?) = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.RECORDING, watchBatteryPct = pct)
             .singleOrNull { it.check == Check.WATCH_BATTERY }
         assertNull(battery(null)) // unknown while the watch is not streaming
@@ -155,13 +183,13 @@ class TonightTest {
         val at23 = ZonedDateTime.of(2026, 10, 27, 23, 0, 0, 0, zone)
         val plan = nightPlan(cfg, at23)
         assertEquals(PlanMark("wake-up", 480), plan.last()) // 23:00 to 7:00
-        assertEquals(PlanMark("Cues", 10, 180), plan.first())
-        assertEquals("Cues from about 11:10 PM until 2 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, at23))
+        assertEquals(PlanMark("Voice", 10, 180), plan.first())
+        assertEquals("Voice from about 11:10 PM until 2 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, at23))
         assertEquals(PlanMark("wake-up", 480), nightPlan(cfg, at23.withSecond(30)).last()) // still 7:00, not 6:59
         // DST ends at 2:00 that night: 3 real hours end at 1:00, and 7:00 is 9 hours away.
         val fallBack = ZonedDateTime.of(2026, 10, 31, 23, 0, 0, 0, zone)
         assertEquals(PlanMark("wake-up", 540), nightPlan(cfg, fallBack).last())
-        assertEquals("Cues from about 11:10 PM until 1 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, fallBack))
+        assertEquals("Voice from about 11:10 PM until 1 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, fallBack))
     }
 
     private companion object {

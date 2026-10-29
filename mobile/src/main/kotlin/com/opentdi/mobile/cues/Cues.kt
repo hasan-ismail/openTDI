@@ -106,9 +106,9 @@ fun cueFingerprint(config: SessionConfig, voice: String): String {
 /** Why [set] cannot play for [config], as a message for the user; null when it was prepared for exactly this. */
 fun cueSetProblem(set: CueSet?, config: SessionConfig): String? = when {
     set == null -> NO_CUES
-    set.theme != config.theme -> "The cues are for \"${set.theme}\". Tap Prepare cues for \"${config.theme}\"."
+    set.theme != config.theme -> "The voice was made for \"${set.theme}\". Tap Get the voice ready."
     set.fingerprint != cueFingerprint(config, set.voice) ->
-        "The cue words, voice, speaking speed, pause or fade-in have changed. Tap Prepare cues."
+        "Your changes need the voice made again. Tap Get the voice ready."
     else -> null
 }
 
@@ -152,7 +152,7 @@ private const val RENDER_CACHE = "rendered.json"
 private const val RENDER_VERSION = 1 // bump when trimming, joining or normalising changes, so every WAV renders anew
 private const val INIT_TIMEOUT_MS = 15_000L
 private const val SYNTHESIS_TIMEOUT_MS = 60_000L
-private const val NO_CUES = "No cues are prepared yet. Tap Prepare cues."
+private const val NO_CUES = "The voice isn't ready yet. Tap Get the voice ready."
 private const val NO_OFFLINE_VOICE = "No offline English text-to-speech voice is installed. Download one in the " +
     "phone's text-to-speech settings. OpenTDI never uses a voice that needs the network."
 private val PHRASE_BREAK = Regex("""(?<=[.?!;:,])\s+|\n""")
@@ -166,9 +166,9 @@ private fun guideFile(context: Context, clip: GuideClip) =
 fun loadGuideClip(context: Context, clip: GuideClip): WavAudio = try {
     WavIo.read(guideFile(context, clip).readBytes())
 } catch (e: IOException) {
-    throw CueException("The guide's ${clip.file} clip is missing. Tap Prepare cues.")
+    throw CueException("Part of the sleep guide is missing. Tap Get the voice ready.")
 } catch (e: IllegalArgumentException) {
-    throw CueException("The guide's ${clip.file} clip is damaged. Tap Prepare cues.")
+    throw CueException("Part of the sleep guide is damaged. Tap Get the voice ready.")
 }
 
 /** The manifest of the last complete rendering, or null. */
@@ -193,9 +193,9 @@ fun loadPreparedCues(context: Context, config: SessionConfig): PreparedCues {
             audio[cue] = WavIo.read(bytes)
             sha256[cue] = sha256Hex(bytes)
         } catch (e: IOException) {
-            throw CueException("The ${cue.name} cue file is missing. Tap Prepare cues.")
+            throw CueException("A voice file is missing. Tap Get the voice ready.")
         } catch (e: IllegalArgumentException) {
-            throw CueException("The ${cue.name} cue file is damaged. Tap Prepare cues.")
+            throw CueException("A voice file is damaged. Tap Get the voice ready.")
         }
     }
     return PreparedCues(set, audio, sha256)
@@ -223,7 +223,7 @@ suspend fun renderCues(
             loadNeuralTts(context)
         } catch (e: CueException) {
             Log.w(TAG_AUDIO, logLine("NEURAL_TTS_UNAVAILABLE", "reason" to e.message))
-            onFallback("${e.message} The cues use the phone's own voice instead.")
+            onFallback("${e.message} The phone's own voice is used instead.")
             null
         }
         if (tts != null) {
@@ -237,7 +237,7 @@ suspend fun renderCues(
                 // A native error arrives as a RuntimeException; a storage failure would stop the system voice too.
                 if (e is CancellationException || e is IOException) throw e
                 Log.w(TAG_AUDIO, logLine("NEURAL_TTS_FAILED", "reason" to e.message))
-                onFallback("The natural voice could not prepare the cues. The cues use the phone's own voice instead.")
+                onFallback("The natural voice didn't work, so the phone's own voice is used instead.")
             } finally {
                 tts.release() // directly: a cancelled coroutine would skip a withContext here
             }
@@ -345,9 +345,10 @@ private suspend fun storeCues(
             if (samples.isEmpty()) throw CueException("Text-to-speech rendered silence for \"$words\".")
             format to samples
         }
-        val format = phrases.firstOrNull()?.first ?: throw CueException("The $name cue has no words to say.")
+        val format = phrases.firstOrNull()?.first
+            ?: throw CueException("One of the voice's lines has no words to say. Change it in Settings.")
         if (phrases.any { it.first.sampleRate != format.sampleRate }) {
-            throw CueException("Text-to-speech changed its sample rate within the $name cue.")
+            throw CueException("Text-to-speech changed its sample rate within one line. Tap Get the voice ready again.")
         }
         val joined = joinWithPauses(phrases.map { it.second }, format.sampleRate, config.audio.phrasePauseMs, leadMs)
         return format to joined
@@ -376,7 +377,7 @@ private suspend fun storeCues(
         if (ownSha != null) { // the user's own recording, trimmed and led in like speech (OwnVoice.kt)
             val own = withContext(Dispatchers.IO) { loadOwnVoice(context, cue, ownSha) }
             val samples = trimSilence(own.samples)
-            if (samples.isEmpty()) throw CueException("Your recording for \"${cue.name}\" is silent. Record it again.")
+            if (samples.isEmpty()) throw CueException("One of your own recordings is silent. Record it again.")
             val padded = joinWithPauses(listOf(samples), own.sampleRate, config.audio.phrasePauseMs, leadMs)
             withContext(Dispatchers.IO) { storeCue(cueFile(context, cue), padded, own.sampleRate) }
             remember(cue.name, null) // the WAV is the recording now, not a rendering

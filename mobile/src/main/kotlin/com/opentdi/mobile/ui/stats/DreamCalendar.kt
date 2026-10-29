@@ -87,20 +87,20 @@ internal fun DreamCalendar(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Morning reports", style = MaterialTheme.typography.titleMedium)
+        Text("Morning dream questions", style = MaterialTheme.typography.titleMedium)
         Legend(
             listOf(Outcome.LUCID, Outcome.DREAM, Outcome.WHITE, Outcome.NO_DREAM).map {
                 Key("${it.label} ${counts[it] ?: 0}", OUTCOME_FILL.getValue(it), KeyShape.BAR)
             } + listOf(
                 Key("${Outcome.NO_REPORT.label} ${counts[Outcome.NO_REPORT] ?: 0}", colors.outline, KeyShape.RING),
-                Key("Not recorded", colors.outlineVariant.copy(alpha = 0.45f), KeyShape.BAR),
+                Key("Not tracked", colors.outlineVariant.copy(alpha = 0.45f), KeyShape.BAR),
                 Key("Nightmare", colors.onSurface, KeyShape.DOT),
             ),
         )
         Crossfade(table, animationSpec = tween(250), label = "table") { asTable ->
             if (asTable) {
                 Table(
-                    listOf("Night", "Morning", "Insight", "Control", "Nightmare"),
+                    listOf("Night", "Morning", "Knew", "Steered", "Nightmare"),
                     nights.filter { it.recorded }.map { n ->
                         listOf(
                             dates.short(n.night),
@@ -192,8 +192,8 @@ internal fun DreamCalendar(
 /** A night's morning answers for the tooltip card. */
 private fun morningValues(n: NightRow): List<Pair<String, String>> = listOfNotNull(
     "" to outcome(n).label,
-    n.insight?.let { "insight" to "$it of 5" },
-    n.control?.let { "control" to "$it of 5" },
+    n.insight?.let { "knew you were dreaming" to "$it of 5" },
+    n.control?.let { "could steer it" to "$it of 5" },
     ("" to "Nightmare").takeIf { n.nightmare },
 )
 

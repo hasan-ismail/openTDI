@@ -2,7 +2,6 @@ package com.opentdi.mobile.ui
 
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
-import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -54,8 +54,7 @@ fun WatchSetupCard() {
     }
     val found by installer.found.collectAsState()
     val scope = rememberCoroutineScope()
-    val prefs = remember { context.getSharedPreferences("watch_setup", Context.MODE_PRIVATE) }
-    var pairedHost by remember { mutableStateOf(prefs.getString("host", null)) }
+    var pairedHost by remember { mutableStateOf(installer.pairedHost) }
     var code by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -72,41 +71,39 @@ fun WatchSetupCard() {
         STEPS.forEachIndexed { i, step -> Text("${i + 1}. $step", style = MaterialTheme.typography.bodyMedium) }
         Help(
             when {
-                found.pairing != null -> "Found the watch's pairing screen at ${found.pairing!!.host}."
-                connect != null -> "Found your paired watch at ${connect.host}."
-                else -> "Looking for the watch on the Wi-Fi…"
+                found.pairing != null -> "Found the watch's code screen."
+                connect != null -> "Found your watch."
+                else -> "Looking for the watch… If nothing shows within a minute, check the watch is on the same " +
+                    "Wi-Fi as this phone with Wireless debugging on, and tap the watch screen to keep it awake."
             },
         )
-        OutlinedTextField(
-            value = code,
-            onValueChange = { code = it.filter(Char::isDigit).take(6) },
-            label = { Text("Code shown on the watch") },
-            supportingText = {
-                Text("Type it carefully: on some Galaxy Watches a wrong code briefly restarts the watch's screen.")
-            },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        // One button at a time: Pair until this phone has paired, then Install.
+        if (pairedHost == null) {
+            OutlinedTextField(
+                value = code,
+                onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                label = { Text("The 6 numbers on the watch") },
+                supportingText = { Text("Type them slowly. A wrong code can restart the watch screen for a moment.") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Button(
                 onClick = {
                     val pairing = found.pairing ?: return@Button
                     busy = true
                     message = "Pairing…"
                     scope.launch {
-                        val problem = installer.pair(pairing, code)
-                        if (problem == null) {
-                            pairedHost = pairing.host
-                            prefs.edit().putString("host", pairing.host).apply()
-                        }
+                        val problem = installer.pair(pairing, code) // saves the host itself
+                        if (problem == null) pairedHost = pairing.host
                         message = problem ?: "Paired. Close the code on the watch, then tap Install."
                         busy = false
                     }
                 },
                 enabled = !busy && code.length == 6 && found.pairing != null,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             ) { Text("Pair") }
+        } else {
             Button(
                 onClick = {
                     val target = connect ?: return@Button
@@ -124,13 +121,20 @@ fun WatchSetupCard() {
                     }
                 },
                 enabled = !busy && connect != null,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             ) { Text("Install") }
+            TextButton(
+                onClick = {
+                    pairedHost = null
+                    message = null
+                },
+                enabled = !busy,
+            ) { Text("Pair again") }
         }
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Help(
             "Keep the watch screen awake (tap it) until Installed appears. When it is done you can turn Wireless " +
-                "debugging off. Already paired? Turn Wireless debugging on and tap Install.",
+                "debugging off; turn it on again to install an update.",
         )
     }
 }
@@ -154,7 +158,7 @@ fun SamsungKitCard() {
             message = try {
                 name = SamsungKitTransfer.import(context, uri)
                 SamsungKitTransfer.send(context)?.let { "Kit ready on this phone. $it" }
-                    ?: "Kit ready and sent: the watch uses it from its next recording."
+                    ?: "Kit ready and sent: the watch uses it from the next night."
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 e.message ?: "Could not read that file."
@@ -167,7 +171,7 @@ fun SamsungKitCard() {
             "Adds skin response, skin temperature, blood oxygen and the raw pulse signal on Galaxy Watches. Samsung " +
                 "only lets you download it yourself: sign in at developer.samsung.com > Health > Sensor SDK, " +
                 "accept Samsung's license, download it, then pick the downloaded zip here. Without it the watch " +
-                "uses its basic sensors (heart rate and movement), which is all the cues need.",
+                "uses its basic sensors (heart rate and movement), which is all OpenTDI needs.",
         )
         Text(name?.let { "On this phone: $it" } ?: "No kit added yet.", style = MaterialTheme.typography.bodyMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -180,7 +184,7 @@ fun SamsungKitCard() {
                     message = "Sending to the watch…"
                     scope.launch {
                         message = SamsungKitTransfer.send(context)
-                            ?: "Sent: the watch uses it from its next recording."
+                            ?: "Sent: the watch uses it from the next night."
                         busy = false
                     }
                 },

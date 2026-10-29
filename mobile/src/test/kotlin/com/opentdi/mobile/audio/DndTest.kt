@@ -21,7 +21,7 @@ class DndTest {
     }
 
     @Test
-    fun priority_withoutMedia_mayMute() {
+    fun priority_withoutMedia_mutes() {
         assertEquals(DndEffect.MEDIA_NOT_ALLOWED, dndEffect(priority, 0))
         assertEquals(DndEffect.MEDIA_NOT_ALLOWED, dndEffect(priority, alarmsCategory or calls))
     }
@@ -44,11 +44,12 @@ class DndTest {
     fun messages_areTheSpecTexts() {
         assertEquals(null, DndEffect.PLAYS.message)
         assertEquals(
-            "Do Not Disturb (Total silence) will mute every cue. Turn it off or allow media.",
+            "Do Not Disturb is on total silence, so you would not hear the voice. Turn it off, or allow Media in it.",
             DndEffect.TOTAL_SILENCE.message,
         )
         assertEquals(
-            "Do Not Disturb may mute cues. Allow 'Media sound' in the Do Not Disturb exceptions.",
+            "Do Not Disturb is silencing media, so you would not hear the voice. In Do Not Disturb, allow Media, " +
+                "then come back.",
             DndEffect.MEDIA_NOT_ALLOWED.message,
         )
     }

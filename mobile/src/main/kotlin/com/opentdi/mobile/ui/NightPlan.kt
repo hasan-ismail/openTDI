@@ -31,12 +31,12 @@ fun nightPlan(c: SessionConfig, now: ZonedDateTime): List<PlanMark> {
     )
 }
 
-/** "Cues from about 11:20 PM until 2:10 AM at the latest · early wake 4:30 AM · wake-up 7 AM" for [nightPlan]. */
+/** "Voice from about 11:20 PM until 2:10 AM at the latest · early wake-up 4:30 AM · wake-up 7 AM" for [nightPlan]. */
 fun nightPlanLine(c: SessionConfig, now: ZonedDateTime): String {
     fun at(min: Int) = now.plusMinutes(min.toLong()).let { clock12(it.hour * 60 + it.minute) }
     return nightPlan(c, now).joinToString(" · ") {
         when (it.label) {
-            CUES -> "Cues from about ${at(it.fromMin)} until ${at(it.toMin)} at the latest"
+            CUES -> "Voice from about ${at(it.fromMin)} until ${at(it.toMin)} at the latest"
             else -> "${it.label} ${at(it.fromMin)}"
         }
     }
@@ -73,6 +73,6 @@ fun NightPlanCard(config: SessionConfig, now: ZonedDateTime) {
     }
 }
 
-private const val CUES = "Cues"
-private const val WBTB = "early wake"
+private const val CUES = "Voice"
+private const val WBTB = "early wake-up"
 private const val WAKE = "wake-up"

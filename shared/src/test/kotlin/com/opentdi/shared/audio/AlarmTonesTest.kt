@@ -41,7 +41,7 @@ class AlarmTonesTest {
         fun ms(text: String) = LocalDateTime.parse(text).atZone(zone).toInstant().toEpochMilli()
         val both = AlarmConfig(wakeEnabled = true, wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270)
         assertEquals(
-            "the WBTB alarm at 4:30 AM and the wake-up alarm at 7 AM",
+            "the early wake-up at 4:30 AM and the wake-up alarm at 7 AM",
             alarmsAhead(both, ms("2026-10-29T03:06"), zone),
         )
         assertEquals("the wake-up alarm at 7 AM", alarmsAhead(both, ms("2026-10-29T05:00"), zone)) // WBTB has rung

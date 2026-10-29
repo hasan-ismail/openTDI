@@ -13,6 +13,8 @@ class WakeAlarmsTest {
         assertEquals(start, WakeAlarms.nightStart(27 * hour + 10 * 60_000, start, 27 * hour + 6 * 60_000))
         // The next evening is a new night.
         assertEquals(46 * hour, WakeAlarms.nightStart(46 * hour, start, 31 * hour))
+        // Last night's recording, left running all day and restarted by the phone's Start: a new night all the same.
+        assertEquals(46 * hour, WakeAlarms.nightStart(46 * hour, 22 * hour, 46 * hour - 1000))
         // Nothing saved yet, or a stop before the saved start (a clock change): this recording's own start.
         assertEquals(5 * hour, WakeAlarms.nightStart(5 * hour, null, null))
         assertEquals(5 * hour, WakeAlarms.nightStart(5 * hour, 4 * hour, 3 * hour))

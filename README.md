@@ -1,16 +1,16 @@
 # OpenTDI — Open Targeted Dream Incubation
 
 **A lucid-dreaming companion for your Galaxy Watch and Android phone.** TDI stands for **Targeted Dream Incubation**:
-guiding what a dream is about with timed, spoken cues as you fall asleep.
+guiding what a dream is about with a soft voice, on a timer, as you fall asleep.
 
 As you drift off to sleep, there is a short, dreamy in-between stage where thoughts turn into images. OpenTDI uses
-that moment. Your phone quietly reminds you, *"You are dreaming. You are in control."* It gently asks what you notice,
-then lets you drift back, and repeats this a few times. The aim is simple: to help you **realise you are dreaming**,
-and leave the rest of the dream up to you.
+that moment. A soft voice from your phone or watch says, *"You are dreaming. You are in control."* It gently asks
+what you notice, then lets you drift back, and repeats this a few times. The aim is simple: to help you **realise you
+are dreaming**, and leave the rest of the dream up to you.
 
-OpenTDI is free and open-source. It builds on **Dormio**, a research project from the MIT Media Lab that played spoken
-cues to people as they fell asleep ([Horowitz et al., 2020](https://pmc.ncbi.nlm.nih.gov/articles/PMC7590944/)), and
-on its sensor-free version that uses timed cues only
+OpenTDI is free and open-source. It builds on **Dormio**, a research project from the MIT Media Lab that spoke to
+people as they fell asleep ([Horowitz et al., 2020](https://pmc.ncbi.nlm.nih.gov/articles/PMC7590944/)), and
+on its sensor-free version that speaks on a timer only
 ([Bellaiche, Haar Horowitz et al., 2024](https://doi.org/10.3389/frsle.2024.1258345)).
 
 > **Please read: this is not a medical device.** OpenTDI is wellness and research software. It does not diagnose,
@@ -19,24 +19,29 @@ on its sensor-free version that uses timed cues only
 > if you have ever had a psychotic disorder, narcolepsy, frequent sleep paralysis, sleepwalking or another sleep
 > disorder. OpenTDI is not made by, or endorsed by, MIT or Samsung.
 
-## How a session goes
+## How a night goes
 
 1. **Open OpenTDI on the watch** (it waits for the phone), then **tap Start the night** on the phone. If anything needs
-   fixing first, such as preparing the cues, a short list says what. The watch starts recording and you hear the
-   first reminder: *"You are dreaming. You are in control."* The watch records the whole night and runs your alarms;
-   stop it in the morning from the phone or the watch.
-2. **About 10–15 minutes later**, around when most people start drifting off, the reminder plays again, softly.
-3. **Three minutes after that**, a gentle voice says *"You're falling asleep. You are dreaming now. What do you
-   notice?"* Say whatever is on your mind, or nothing at all.
+   fixing first, such as getting the voice ready, a popup lists just that, each with a button to fix it. The watch
+   starts tracking your sleep and you hear the voice: *"You are dreaming. You are in control."*
+2. **About 10–15 minutes later**, around when most people start drifting off, the voice says it again, softly. If you
+   are still moving around, it waits until the watch shows you lying still.
+3. **Three minutes after that**, a question wakes you lightly: *"You're falling asleep. You are dreaming now. What do
+   you notice?"* Say whatever is on your mind, or nothing at all. Nothing is recorded.
 4. **A minute later:** *"You are dreaming. You are in control. You can fall back asleep now."*
-5. **This repeats up to 4 times**, about 7 minutes apart. The cues then end, with a soft chime if you want one; the
-   watch keeps recording. To try it all in about 5 minutes, tap **Quick test**.
+5. **This round repeats up to 4 times**, about 7 minutes apart. The voice then ends, with a soft goodnight chime if you
+   want one. The watch keeps tracking your sleep and runs your alarms all night.
+6. **In the morning** the wake-up alarm rings on the watch (it is on unless you turn it off). Tap **I'm awake** and the
+   watch asks the dream questions: record your dream, then a few one-tap questions. Then tap **End the night** on the
+   phone or the watch.
 
-The phone speaks slowly, one phrase at a time, and every voice fades in over two seconds so it does not startle you.
-You can change the words, the voice, the speaking speed and all the timings. If your phone is in another room,
-turn on **Play cues on the watch** and the watch's speaker plays them.
+To try the voice in about 5 minutes, tap **Quick test (5 min)**.
 
-While you sleep, the **watch records your body's signals**: heart rate and heartbeat timing, skin response (EDA),
+The voice speaks slowly, one phrase at a time, and fades in over two seconds so it does not startle you. You can
+change the words, the voice and the speaking speed, and, under **More settings**, all the timings. If your phone is in
+another room, turn on **Play the voice on the watch** in Settings, and the watch plays it.
+
+While you sleep, the **watch tracks your body's signals**: heart rate and heartbeat timing, skin response (EDA),
 movement, skin temperature, blood-oxygen spot checks, and the raw pulse signal, which can later show your breathing.
 The phone shows these live.
 
@@ -44,7 +49,7 @@ The phone shows these live.
 
 - A **Samsung Galaxy Watch** with Wear OS (Watch4 and later; only the Watch8 Classic has been tested) and an
   **Android phone** with Android 13 or newer, on the same Wi-Fi.
-- That's all for the cues, the alarms and the dream report: they use the watch's heart rate and movement.
+- That's all for the voice, the alarms and the dream questions: they use the watch's heart rate and movement.
 - **Optional: Samsung's sensor kit**, for skin response, skin temperature, blood oxygen and the raw pulse signal. OpenTDI
   contains no Samsung code: you download the kit yourself from Samsung, under Samsung's own terms, and add it in the
   phone app, which passes it to your watch. Samsung's sensors then also need the watch's developer mode, which Samsung
@@ -64,28 +69,29 @@ the GPL does not allow distributing that combination as one app. Building it for
 
 | | Works now | Coming next |
 |---|---|---|
-| **Cues** | Timed cues (MIT's method) that wait until the watch shows you lying still; from the phone or the watch speaker; lucid-dream wording by default; your own words, or your own recorded voice; a natural voice that runs on the phone | |
-| **Watch** | Records heart rate, heartbeat timing, skin response, movement, skin temperature, blood oxygen and the raw pulse signal; shows it live on the phone | Breathing rate worked out from the pulse signal |
-| **Alarms** | On the watch: a wake-up alarm (five tones, a spoken one with your name, snooze) that logs how long you take to wake up, and a WBTB alarm that guides you through staying up and buzzes when to sleep again | |
-| **Late-night cues** | After WBTB, a soft trained sound while you lie still; an experiment mode that secretly skips some nights so you can see whether it helps you | |
-| **Your answers** | A dream report on the watch after each alarm: record the dream, then a few one-tap questions | Turning the recordings into text, and a dream journal on the phone |
-| **Safety** | Volume cap set by you; warnings when the media volume is off or Do Not Disturb would mute the cues | |
+| **The voice** | A voice on a timer (MIT's method) that waits until the watch shows you lying still; from the phone, or from the watch's speaker or earbuds paired with the watch; lucid-dream words by default; your own words, or your own recorded voice; a natural-sounding voice that runs on the phone | |
+| **Watch** | Tracks your sleep all night: heart rate, heartbeat timing, skin response, movement, skin temperature, blood oxygen and the raw pulse signal; the phone shows them live | Breathing rate worked out from the pulse signal |
+| **Alarms** | On the watch: a wake-up alarm, on by default (five tones, a spoken one with your name, snooze), that logs how long you take to wake up; and an early wake-up (often called WBTB, "wake back to bed") that guides you through staying up and buzzes when to go back to bed | |
+| **Soft sounds** | After the early wake-up, the watch teaches you a soft three-note sound, then plays it quietly once you are asleep again; a test mode secretly skips some nights so Stats can show whether it helps you | |
+| **Your answers** | Dream questions on the watch after each alarm: record your dream, then a few one-tap questions | Showing your recordings as text (the phone already transcribes them offline, see [docs/SETUP.md](docs/SETUP.md) §13), and a dream journal on the phone |
+| **Safety** | The voice never gets louder than the volume you test it at. When the phone plays it, Start stops first if the phone's volume is off, its sound goes to headphones, or Do Not Disturb would mute it | |
 
-Good to know: MIT's own studies used a calm voice and short reminders, like OpenTDI. In their at-home study, timed
-cues alone got the chosen theme into at least one dream report for 73 of 80 people. Whether this setup helps you
+Good to know: MIT's own studies used a calm voice and short lines, like OpenTDI. In their at-home study, a timed
+voice alone got the chosen theme into at least one dream report for 73 of 80 people. Whether this setup helps you
 become **lucid** has not been tested yet. Your own nights are the first test, so tell us how it goes.
 
 ## Your data stays with you
 
 - Everything is stored **on your own phone and watch**, in the app's private storage. OpenTDI has no server, no
   account and no analytics.
-- The phone and the watch talk through Google Play services' Wear Data Layer (cues, commands, the night files and your
-  dream recordings). It normally uses Bluetooth or your Wi-Fi; when neither connects them, Google may relay the data
+- The phone and the watch talk through Google Play services' Wear Data Layer (the voice, commands, the night files and
+  your dream recordings). It normally uses Bluetooth or your Wi-Fi; when neither connects them, Google may relay the data
   through its servers, end-to-end encrypted ([Android's Data Layer overview](https://developer.android.com/training/wearables/data/overview)).
 - Apart from that, the phone app uses the network only to reach your watch on your own Wi-Fi when it installs the
   watch app. The watch app only uses the network for Samsung's own sensor service.
-- Each session is saved as a set of simple spreadsheet (CSV) files. You can look through your sessions and delete any
-  of them in the app (**Sessions**).
+- Each night is saved as a set of simple spreadsheet (CSV) files. **Stats** on the phone shows your nights. To delete
+  nights, turn on **More settings** at the bottom of the phone's Settings and use **Saved nights**; the watch has its
+  own **Saved nights** under **Details**.
 
 ## For developers
 
@@ -99,7 +105,7 @@ You need JDK 17 or newer and the Android SDK (platform 37, build-tools 36). Tell
 ```
 
 On Windows use Git Bash, or `gradlew.bat`. The apps land in `wear/build/outputs/apk/debug/` and
-`mobile/build/outputs/apk/debug/`. Step-by-step setup, installing, permissions and copying session logs off the
+`mobile/build/outputs/apk/debug/`. Step-by-step setup, installing, permissions and copying the night logs off the
 devices are in [docs/SETUP.md](docs/SETUP.md).
 
 **Samsung's sensor kit.** The watch uses Samsung's Health Sensor SDK, which you download yourself from Samsung (free
@@ -136,7 +142,7 @@ on the same network. Menu names are from a Samsung phone and a Galaxy Watch8 Cla
 **Turn on Samsung's sensor developer mode (on the watch)**
 
 Samsung's sensors only talk to apps registered with Samsung, or to any app while **developer mode** is on. Without it
-the watch says "Samsung blocked sensor access (SDK_POLICY_ERROR)".
+the watch says "Samsung's extra sensors are locked for this app" and offers **Use basic sensors**.
 
 1. **Settings > Apps > Health Platform** (newer watches call it **Health Sensor Service**).
 2. Quickly tap the **title** at the top, "Health Platform", about 10 times. Tap the title, not the version number.
@@ -151,14 +157,15 @@ The watch needs Health Platform / Health Sensor Service **1.6.5 or newer**. Sams
 
 | Folder | What is inside |
 |---|---|
-| `shared/` | Code both apps share: data formats, signal processing, the cue timetable, with tests |
+| `shared/` | Code both apps share: data formats, signal processing, the voice's timetable, with tests |
 | `wear/` | The watch app (`wear/libs/` is where Samsung's sensor kit goes) |
 | `mobile/` | The phone app |
 | `samsung-health-stub/` | A stand-in for Samsung's kit, so the project builds without it |
 | `docs/` | The engineering spec, the research it is based on, and the setup guide |
 
-- [docs/ARCHITECTURE_AND_THRESHOLDS.md](docs/ARCHITECTURE_AND_THRESHOLDS.md): the full engineering spec. Every
-  threshold and timing is labelled SOURCED (from the MIT papers or code) or GUESSED (an untested default).
+- [docs/ARCHITECTURE_AND_THRESHOLDS.md](docs/ARCHITECTURE_AND_THRESHOLDS.md): the engineering spec, written before
+  the build; a note at its top says which parts exist. Every threshold and timing is labelled SOURCED (from the MIT
+  papers or code) or GUESSED (an untested default).
 - [docs/references/](docs/references/): research notes, including the first on-device findings
   ([device_audit.md](docs/references/device_audit.md)).
 - [CLAUDE.md](CLAUDE.md): the original project brief; where it and the spec disagree, the spec wins.
@@ -177,4 +184,4 @@ Samsung, under Samsung's own terms, and adds it in the app.
 OpenTDI stands on the Dormio research of Adam Haar Horowitz and colleagues in the Fluid Interfaces group at the MIT
 Media Lab. The public [openSleep](https://github.com/tomasero/openSleep), [dormio](https://github.com/christinatchen/dormio)
 and [Dormio Device Duo Wearable](https://github.com/ThingEngineer/Dormio-Device-Duo-Wearable) projects were studied as
-references; OpenTDI copies no code, cue wording or audio from them. OpenTDI is not affiliated with MIT or Samsung.
+references; OpenTDI copies no code, spoken wording or audio from them. OpenTDI is not affiliated with MIT or Samsung.

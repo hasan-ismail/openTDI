@@ -42,7 +42,7 @@ class NeuralVoiceTest {
 
         val prepared = CueSet("a tree", NEURAL_ENGINE, "af_bella", emptyList(), cueFingerprint(neural, "af_bella"))
         assertNull(cueSetProblem(prepared, neural))
-        assertTrue(cueSetProblem(prepared, emma)!!.startsWith("The cue words, voice,"))
+        assertTrue(cueSetProblem(prepared, emma)!!.startsWith("Your changes need the voice"))
         assertTrue(cueSetProblem(prepared, system) != null)
         // Kokoro gets the speaking speed as it is (1 = normal in both engines), so a speed change still counts.
         val slower = neural.copy(audio = neural.audio.copy(ttsSpeechRate = 0.6f))

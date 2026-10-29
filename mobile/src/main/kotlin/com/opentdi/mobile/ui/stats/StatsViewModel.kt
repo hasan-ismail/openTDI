@@ -23,7 +23,7 @@ import kotlinx.coroutines.withContext
 /** Whether a copy from the watch is running, and how the last one ended. */
 data class Sync(val copying: Boolean = false, val result: SyncResult? = null)
 
-/** The Stats tab's nights, kept while other tabs show; each opening of the tab copies new nights from the watch. */
+/** The Stats tab's nights, kept while other tabs show; each return to the tab copies new nights from the watch. */
 class StatsViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
     private val mutableRows = MutableStateFlow<List<NightRow>?>(null) // null until first read
@@ -46,7 +46,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                 throw e
             } catch (e: Exception) { // a failed copy must not close the app; the status line says why
                 Log.w(TAG_LINK, "Stats copy from the watch failed", e)
-                SyncResult(0, 0, e.message ?: e.javaClass.simpleName)
+                SyncResult(0, 0, "Something went wrong copying from the watch. Try again.")
             }
             mutableSync.value = Sync(result = result)
             load()

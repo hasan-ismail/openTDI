@@ -6,9 +6,11 @@ import android.content.Context
 import android.util.Log
 import com.opentdi.mobile.TAG_SESSION
 import com.opentdi.mobile.logLine
+import com.opentdi.mobile.stats.KEEP_CSV_NIGHTS
 import com.opentdi.shared.csv.CsvFiles
 import com.opentdi.shared.csv.csvLine
 import com.opentdi.shared.csv.readCsv
+import com.opentdi.shared.csv.sessionStartMs
 import com.opentdi.shared.model.StateReason
 import com.opentdi.shared.model.TdiState
 import java.io.File
@@ -18,16 +20,24 @@ import java.io.StringReader
 /** Session directory names are session IDs, `yyyyMMdd'T'HHmmss'Z'-xxxx`, so they sort by start time. */
 private val SESSION_DIR_NAME = Regex("""\d{8}T\d{6}Z-[0-9a-f]{4}""")
 
-/** §12.1 retention: the session directories to delete so the newest [keep] remain; other names are never chosen. */
-fun sessionDirsToDelete(names: Collection<String>, keep: Int = 30): List<String> =
-    names.filter { SESSION_DIR_NAME.matches(it) }.sorted().dropLast(keep)
+/**
+ * §12.1 retention: the session directories to delete so the newest [keep] and those younger than [keepDays] remain;
+ * other names are never chosen. The stats re-read a night's p_transitions.csv until its watch copy is pruned.
+ */
+fun sessionDirsToDelete(
+    names: Collection<String>,
+    nowMs: Long,
+    keep: Int = 30,
+    keepDays: Long = KEEP_CSV_NIGHTS + 1L,
+): List<String> = names.filter { SESSION_DIR_NAME.matches(it) }.sorted().dropLast(keep)
+    .filter { (sessionStartMs(it) ?: 0L) < nowMs - keepDays * 86_400_000L }
 
-/** Deletes all but the newest 30 session directories in filesDir/sessions and nothing else (run at app start). */
-fun deleteOldSessions(filesDir: File) {
+/** Deletes old session directories in filesDir/sessions ([sessionDirsToDelete]) and nothing else (run at app start). */
+fun deleteOldSessions(filesDir: File, nowMs: Long = System.currentTimeMillis()) {
     val root = File(filesDir, SESSIONS_DIR)
     val names = root.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: return
     val running = SessionMonitor.status.value.takeIf { it.running }?.sessionId // sorts oldest after a clock change
-    (sessionDirsToDelete(names) - setOfNotNull(running)).forEach { File(root, it).deleteRecursively() }
+    (sessionDirsToDelete(names, nowMs) - setOfNotNull(running)).forEach { File(root, it).deleteRecursively() }
 }
 
 /**
@@ -66,7 +76,8 @@ fun closeKilledSession(context: Context) {
         return
     }
     Log.w(TAG_SESSION, logLine("SESSION_KILLED", "id" to id, "exit" to "USER_REQUESTED", "exitMs" to exit.timestamp))
-    val message = "The last session was stopped from outside OpenTDI and is logged as aborted."
+    val message = "Last time the voice was stopped from outside OpenTDI, for example by battery saving. " +
+        "Tap Allow when Start asks about battery."
     SessionMonitor.update { if (it.running) it else it.copy(error = message) }
 }
 

@@ -13,6 +13,7 @@ import android.media.AudioManager
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.WatchStatus
 import com.opentdi.shared.model.TdiCommand
 import com.opentdi.shared.model.SessionEndReason
@@ -39,6 +40,7 @@ import com.opentdi.shared.audio.WavAudio
 import com.opentdi.shared.audio.targetGain
 import com.opentdi.mobile.session.SESSIONS_DIR
 import com.opentdi.mobile.session.SessionMonitor
+import com.opentdi.mobile.stats.NightsRepository
 import com.opentdi.shared.csv.CsvFiles
 import com.opentdi.shared.csv.PhoneSessionSummary
 import com.opentdi.shared.csv.deleteSessionDirs
@@ -51,6 +53,7 @@ import com.opentdi.shared.model.SessionConfig
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -78,11 +81,26 @@ data class UiState(
     val batteryManual: Boolean = false, // no battery settings screen opened: show the path instead
 )
 
-const val PREPARING = "Preparing the voice cues…"
+const val PREPARING = "Getting the voice ready…"
 private const val GUIDE_NOT_SENT =
-    "The watch did not get the guided back-to-sleep. Connect it, then tap Prepare cues again."
+    "The watch didn't get the sleep guide. Keep it near the phone and tap Get the voice ready again."
+private const val ALARMS_NOT_SENT =
+    "The watch didn't get the new alarm settings. Keep it near the phone and change them again."
+private const val WATCH_NO_ANSWER = "The watch didn't answer. End the night on the watch itself."
+private const val WATCH_NOT_STOPPED = "The watch didn't stop. End the night on the watch itself."
 
-/** One row of the Sessions screen: a filesDir/sessions directory (§12.1) and its p_transitions.csv summary. */
+/** Why Test the voice did not play, in plain words, from the [last] audio event it logged. */
+internal fun testFailure(last: AudioEvent?): String = when (last?.detail ?: last?.event) {
+    "dnd_muted" -> "Do Not Disturb is silencing it. In Do Not Disturb, allow Media."
+    "stream_device_not_speaker" -> "The phone's sound is going to headphones or a speaker. Disconnect them."
+    "VOLUME_ZERO" -> "The phone's volume is off. Turn it up."
+    "watch_media_volume_off" -> "The watch's volume is off. Turn it up on the watch."
+    "watch_media_not_on_speaker" -> "The watch's sound is going to earbuds. Disconnect them, or choose Earbuds in Settings."
+    "watch_unreachable" -> "The watch didn't answer. Open OpenTDI on the watch and keep it near the phone."
+    else -> "The voice didn't play. Try again."
+}
+
+/** One row of Settings' Saved nights: a filesDir/sessions directory (§12.1) and its p_transitions.csv summary. */
 data class SessionItem(val id: String, val startMs: Long, val bytes: Long, val summary: PhoneSessionSummary?)
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -116,20 +134,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val dndOff: Flow<Boolean> =
         dndNow.map { it.first == NotificationManager.INTERRUPTION_FILTER_ALL }.distinctUntilChanged()
 
+    /** Media goes to headphones or another speaker, not the phone's own: the phone route's voice would not play. */
+    val speakerOff: Flow<Boolean> = flow {
+        val player = CuePlayer(app)
+        while (true) {
+            emit(!player.streamOnSpeaker())
+            delay(1000)
+        }
+    }.distinctUntilChanged()
+
     /** The watch app's state and battery, asked every 5 s while the screen collects it; null when it does not answer. */
     val watchStatus: Flow<WatchStatus?> = flow {
         while (true) {
-            emit(watchRequest(app, TdiCommand.StatusRequest(DeviceRole.PHONE)))
+            val status = watchRequest(app, TdiCommand.StatusRequest(DeviceRole.PHONE))
+            if (status?.state == WatchState.IDLE) clearWatchStopError() // ended on the watch itself
+            emit(status)
             delay(5000)
         }
     }.distinctUntilChanged()
 
-    /** Ends the watch's night recording, which goes on after the cues end. */
+    /** Ends the watch's night, which goes on after the voice ends; says so when the watch did not stop. */
     fun stopWatch() {
         viewModelScope.launch {
             val status = watchRequest(app, TdiCommand.AbortSession("watch", DeviceRole.PHONE, SessionEndReason.USER))
             Log.i(TAG_SESSION, logLine("WATCH_STOP", "state" to (status?.state ?: "NO_ANSWER")))
+            when (status?.state) {
+                WatchState.IDLE -> clearWatchStopError()
+                null -> SessionMonitor.update { it.copy(error = WATCH_NO_ANSWER) }
+                else -> SessionMonitor.update { it.copy(error = WATCH_NOT_STOPPED) }
+            }
         }
+    }
+
+    private fun clearWatchStopError() = SessionMonitor.update {
+        if (it.error == WATCH_NO_ANSWER || it.error == WATCH_NOT_STOPPED) it.copy(error = null) else it
     }
 
     private val stopRecording = AtomicBoolean(false)
@@ -180,7 +218,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (voice == null || !CuePlayer(app).storeOnWatch(voice)) {
                     mutableUi.update {
-                        it.copy(cueMessage = "Tap Prepare cues first, with the watch connected, for the spoken wake-up.")
+                        it.copy(
+                            cueMessage = "Tap Get the voice ready first, with the watch connected, for the spoken wake-up.",
+                        )
                     }
                     return@launch
                 }
@@ -206,11 +246,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mutableOnboarded.value = false
     }
 
-    /** Applies and saves a settings change. */
+    private var watchSync: Job? = null
+
+    /** Applies and saves a settings change; alarm and watch-output changes also go to the watch, even mid-night. */
     fun edit(transform: (SessionConfig) -> SessionConfig) {
-        val next = transform(ui.value.config).copy(revision = System.currentTimeMillis())
+        val old = ui.value.config
+        val next = transform(old).copy(revision = System.currentTimeMillis())
         mutableUi.update { it.copy(config = next) }
         saveConfig(app, next)
+        if (next.alarms == old.alarms && next.audio.watchOutput == old.audio.watchOutput) return
+        // A slider drag sends one request with its last value, so an older request never arrives last.
+        watchSync?.cancel()
+        watchSync = viewModelScope.launch {
+            delay(800)
+            val sent = watchRequest(app, TdiCommand.ConfigSync(null, next)) != null
+            mutableUi.update {
+                when {
+                    !sent -> it.copy(cueMessage = ALARMS_NOT_SENT)
+                    it.cueMessage == ALARMS_NOT_SENT -> it.copy(cueMessage = null)
+                    else -> it
+                }
+            }
+        }
     }
 
     fun showBattery(unrestricted: Boolean) = mutableUi.update { it.copy(batteryUnrestricted = unrestricted) }
@@ -237,7 +294,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val status = SessionMonitor.status.value
             val count = withContext(Dispatchers.IO) {
-                deleteSessionDirs(sessionsRoot(), ids, runningId = status.sessionId.takeIf { status.running })
+                val running = status.sessionId.takeIf { status.running }
+                deleteSessionDirs(sessionsRoot(), ids, runningId = running)
+                    // Only once the folders are gone, or Stats would read them back into its cache.
+                    .also { NightsRepository.forgetPhoneSessions(app, ids - setOfNotNull(running)) }
             }
             Log.i(TAG_SESSION, logLine("SESSIONS_DELETED", "count" to count))
             loadSessions()
@@ -261,17 +321,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Transcriber.withoutTranscription {
                     renderCues(app, config, { fallback = it }) { done, total ->
                         // The guide's clips are long: the first Prepare with the natural voice takes a few minutes.
-                        status("Preparing the voice cues: $done of $total done…")
+                        status("Getting the voice ready: $done of $total…")
                     }
                 }
                 val guideMissed = guideOn(config) && !sendGuide(config) { sent, total ->
-                    status("Sending the guided back-to-sleep to the watch: $sent of $total…")
+                    status("Sending the sleep guide to the watch: $sent of $total…")
                 }
                 listOfNotNull(fallback, GUIDE_NOT_SENT.takeIf { guideMissed }).joinToString(" ").ifEmpty { null }
             } catch (e: CueException) {
                 e.message
             } catch (e: IOException) {
-                "Could not store the cues: ${e.message}"
+                Log.w(TAG_AUDIO, logLine("CUES_NOT_STORED", "error" to e.message))
+                "The voice couldn't be saved. Free some space on the phone and try again."
             }
             mutableUi.update { it.copy(preparing = false, cues = loadCueSet(app), cueMessage = error) }
         }
@@ -321,7 +382,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     null
                 } else {
-                    "The test cue did not play: ${last?.event} ${last?.detail.orEmpty()}".trim()
+                    testFailure(last)
                 }
             } catch (e: CueException) {
                 e.message

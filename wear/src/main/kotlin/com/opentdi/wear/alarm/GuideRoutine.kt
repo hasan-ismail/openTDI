@@ -71,8 +71,8 @@ private const val MIN_PAUSE_MS = 1_000L // one tick: two sounds never overlap
 
 /**
  * Plays [steps] one after another on the alarms' 1 s tick, each when the one before has ended, and logs w_alarm.csv
- * rows: GUIDE_START, GUIDE_STEP for each clip or cue (its index), then GUIDE_END, or GUIDE_STOPPED after a tap or a
- * bezel turn ([stop]). [done] gets that end or stop time once: the late cues arm then, so lying still through the guide
+ * rows: GUIDE_START, GUIDE_STEP for each clip or cue (its index), then GUIDE_END, or GUIDE_STOPPED after a long press or
+ * the back key ([stop]). [done] gets that end or stop time once: the late cues arm then, so lying still through the guide
  * is not taken as falling back asleep.
  */
 internal class GuideRoutine(
@@ -106,7 +106,7 @@ internal class GuideRoutine(
         if (nowMs - startMs >= startsMs.last()) finish(nowMs, "GUIDE_END", stillness, hr, null)
     }
 
-    /** A tap or a bezel turn: the sound stops at once. */
+    /** A long press or the back key: the sound stops at once. */
     fun stop(nowMs: Long, stillness: Float?, hr: Float?) {
         if (over) return
         quiet()

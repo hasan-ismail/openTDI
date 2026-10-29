@@ -18,7 +18,7 @@ private const val MAX_DETACHED_S = 2 // GUESSED: ... and is off the wrist in few
 private const val SIB_MAX_DEG = 5.0 // SOURCED [1]: an arm angle that changes by no more than 5° ...
 private const val SIB_MIN_EPOCHS = 5 * EPOCHS_PER_MIN // SOURCED [1]: ... for 5 min is a sustained inactivity bout
 // GUESSED (stillness v1, never validated against PSG): moving below the MIT_STANDARD still second, whatever the
-// night's setting; 3 of 5 seconds moving is a major movement as in §8.10, but unlike StillnessGate and LateCues a
+// night's setting; 3 of 5 seconds moving is a major movement as in §8.10; as in StillnessGate but unlike LateCues, a
 // second without data is not moving.
 private const val MOVING_BELOW = 0.8f
 private const val HDCZA_HALF_EPOCHS = 30 // SOURCED [2]: a centred 5-min rolling median ...

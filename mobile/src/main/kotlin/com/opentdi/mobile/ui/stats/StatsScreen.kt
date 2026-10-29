@@ -28,6 +28,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opentdi.mobile.stats.NightRow
 import com.opentdi.mobile.ui.Help
@@ -68,9 +70,13 @@ fun StatsScreen(stats: StatsViewModel) {
     val context = LocalContext.current
     val rows by stats.rows.collectAsStateWithLifecycle()
     val sync by stats.sync.collectAsStateWithLifecycle()
-    LaunchedEffect(stats) { stats.open() }
     val zone = remember { ZoneId.systemDefault() }
-    val today = remember { nightDate(System.currentTimeMillis(), zone) }
+    var today by remember { mutableStateOf(nightDate(System.currentTimeMillis(), zone)) }
+    LifecycleResumeEffect(stats) {
+        today = nightDate(System.currentTimeMillis(), zone) // a screen kept open past noon moves to the new night
+        stats.open() // every return to the app copies from the watch, not only a tab switch
+        onPauseOrDispose {}
+    }
     val debuggable = remember { context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 }
     var sample by rememberSaveable { mutableStateOf(false) }
     val data = if (sample) remember(today) { sampleNights(today, zone) } else rows
@@ -124,6 +130,7 @@ private fun Overview(
                 style = MaterialTheme.typography.bodySmall,
                 color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (failed) TextButton(onClick = { stats.open() }) { Text("Try again") }
         }
         if (sample) {
             Section(null) {
@@ -136,13 +143,13 @@ private fun Overview(
             data.isEmpty() -> Section("Your nights will show here") {
                 Text(
                     "After your first night with the watch, this tab charts your estimated sleep, alarms and " +
-                        "morning reports over weeks and months.",
+                        "dream questions over weeks and months.",
                 )
                 Help(
                     "Wear the watch to bed with OpenTDI open on it. In the morning, open this tab: the phone copies " +
                         "the night from the watch.",
                 )
-                Help("The dream charts start with your first morning report on the watch.")
+                Help("The dream charts start once you answer the dream questions on the watch.")
             }
             else -> {
                 val from = rangeStart(range, today, data)
@@ -231,21 +238,21 @@ private fun Figures(nights: List<NightRow>, days: Int) {
             if (sleep.isEmpty()) "No estimate yet" else "Average of ${plural(sleep.size, "night")}",
             Modifier.weight(1f),
         )
-        Tile("Nights recorded", "${nights.count { it.recorded }}", "Of $days in this range", Modifier.weight(1f))
+        Tile("Nights tracked", "${nights.count { it.recorded }}", "Of $days in this range", Modifier.weight(1f))
     }
     Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Tile(
             "Dream recall",
             if (mornings == 0) "—" else "${(100f * dreams / mornings).roundToInt()}%",
-            if (mornings == 0) "After your first morning report" else
+            if (mornings == 0) "After your first dream questions" else
                 "$dreams of ${plural(mornings, "morning")} remembered a dream",
             Modifier.weight(1f),
         )
         Tile(
             "Lucid moments",
             if (rated == 0) "—" else "$lucidMornings",
-            if (rated == 0) "After your first morning report" else
-                "Of ${plural(rated, "reported morning")} (insight $LUCID_INSIGHT or more)",
+            if (rated == 0) "After your first dream questions" else
+                "Of ${plural(rated, "reported morning")} (knew you were dreaming: $LUCID_INSIGHT of 5 or more)",
             Modifier.weight(1f),
         )
     }
@@ -283,7 +290,7 @@ private fun SleepSection(
         Help("Estimated from movement and heart rate on the watch.")
         val mins = nights.mapNotNull { it.sleepMin }
         if (mins.isEmpty()) {
-            Help("Estimated sleep shows here once the watch has recorded a whole night.")
+            Help("Estimated sleep shows here once the watch has tracked your sleep for a whole night.")
             return@Section
         }
         val reached = mins.count { it >= SLEEP_GUIDE_H * 60 }
@@ -310,7 +317,7 @@ private fun SleepSection(
                 "Usually asleep around ${clockLabel(starts.first)} and up around ${clockLabel(ends.first)}, estimated.",
             bins = bins,
             axis = YAxis(ticks, { clockLabel(it.roundToInt()) }, down = true),
-            columns = listOf("Asleep (est.)", "Up (est.)", "Awake at WBTB"),
+            columns = listOf("Asleep (est.)", "Up (est.)", "Awake at the early wake-up"),
             cells = { i ->
                 windows[i]?.let { w ->
                     val awake = w.awake?.let { "${clockLabel(it.first)}–${clockLabel(it.last)}" } ?: "—"
@@ -323,7 +330,8 @@ private fun SleepSection(
                 Key("Asleep (estimated)", SERIES_1, KeyShape.BAR),
                 Key("Alarm", MaterialTheme.colorScheme.onSurface, KeyShape.LINE),
             ),
-            note = "Evening at the top. A gap is the time awake at WBTB. Weeks and months show average times.",
+            note = "Evening at the top. A gap is the time awake at the early wake-up. Weeks and months show average " +
+                "times.",
             height = 220.dp,
         ) { p, ink, selected -> drawWindows(p, ink, windows, selected, reveal.value) }
         Text("Regular times", style = MaterialTheme.typography.titleMedium)
@@ -353,24 +361,23 @@ private fun DreamsSection(
 ) {
     Section("Dreams") {
         if (nights.none { it.reports.isNotEmpty() }) {
-            Help("Your morning reports on the watch show here: answer them after the wake-up alarm.")
+            Help("Your answers to the dream questions on the watch show here: answer them after the wake-up alarm.")
         }
         DreamCalendar(nights, from, today, firstDay, dates, onOpen, reveal)
         if (nights.any { it.insight != null || it.control != null }) {
             SeriesChart(
-                "Insight and control", bins,
+                "Knew you were dreaming / could steer it", bins,
                 listOf(
-                    Series("Insight", SERIES_1) { it.insight?.toFloat() },
-                    Series("Control", SERIES_2) { it.control?.toFloat() },
+                    Series("Knew", SERIES_1) { it.insight?.toFloat() },
+                    Series("Steered", SERIES_2) { it.control?.toFloat() },
                 ),
                 { "${num(it)} of 5" }, "", dates, onOpen, reveal,
-                takeaway = takeaway("Insight", nights.mapNotNull { it.insight?.toFloat() }) { "${num(it)} of 5" } +
-                    " " + takeaway("Control", nights.mapNotNull { it.control?.toFloat() }) { "${num(it)} of 5" },
+                takeaway = takeaway("Knew", nights.mapNotNull { it.insight?.toFloat() }) { "${num(it)} of 5" } +
+                    " " + takeaway("Steered", nights.mapNotNull { it.control?.toFloat() }) { "${num(it)} of 5" },
                 lines = true,
                 fixed = 0f..5f,
                 minStep = 1f,
-                note = "Knew you were dreaming (insight) and could steer it (control), 0 to 5. A lucid moment " +
-                    "is insight $LUCID_INSIGHT or more.",
+                note = "0 to 5, from your answers on the watch. A lucid moment is $LUCID_INSIGHT or more on Knew.",
             )
         }
     }
@@ -388,18 +395,18 @@ private fun PracticeSection(
     Section("Practice") {
         val wbtb = nights.mapNotNull { it.watch?.wbtb }
         if (wbtb.isEmpty()) {
-            Help("WBTB nights show here once the early wake (WBTB) alarm is on in Settings.")
+            Help("Early wake-up nights show here once it is on in Settings.")
             return@Section
         }
         val rang = wbtb.count { it.ringAtMs != null }
         val skipped = wbtb.count { it.skipped != null }
         Text(
-            "Early wake (WBTB) on ${plural(rang, "night")}" + if (skipped > 0) ", skipped on $skipped" else "",
+            "Early wake-up on ${plural(rang, "night")}" + if (skipped > 0) ", skipped on $skipped" else "",
             style = MaterialTheme.typography.bodyMedium,
         )
         if (wbtb.any { it.reOnsetLatencyMin != null }) {
             SeriesChart(
-                "Minutes to fall back asleep after WBTB", bins,
+                "Minutes to fall back asleep after the early wake-up", bins,
                 listOf(Series("Estimated", SERIES_1) { it.watch?.wbtb?.reOnsetLatencyMin?.toFloat() }),
                 { "${it.roundToInt()} min" }, "", dates, onOpen, reveal,
                 note = "Estimated: the watch counts your first 10 still minutes after the back-to-bed buzz as sleep.",
@@ -407,29 +414,30 @@ private fun PracticeSection(
         }
         if (nights.any { it.watch?.lateCues != null && armShown(it, today) }) {
             SeriesChart(
-                "Late cues played", bins,
+                "Soft sounds played", bins,
                 listOf(
-                    Series("Cues", SERIES_1) { n ->
+                    Series("Sounds", SERIES_1) { n ->
                         n.watch?.lateCues?.takeIf { armShown(n, today) }?.cuesPlayed?.toFloat()
                     },
                 ),
                 ::num, "", dates, onOpen, reveal,
                 minStep = 1f,
-                note = "Soft cues after WBTB, once you were still again.",
+                note = "Soft sounds after the early wake-up, once you were still again.",
             )
         }
         if (nights.any { it.watch?.lateCues?.mode == "EXPERIMENT" }) {
             val e = experiment(nights, today)
-            Text("Cue experiment", style = MaterialTheme.typography.titleMedium)
+            Text("Do the soft sounds help?", style = MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Figure("Cue nights", armValue(e.cueLucid, e.pairs), "with a lucid moment", Modifier.weight(1f))
-                Figure("No-cue nights", armValue(e.noCueLucid, e.pairs), "with a lucid moment", Modifier.weight(1f))
+                Figure("With sounds", armValue(e.cueLucid, e.pairs), "nights with a lucid moment", Modifier.weight(1f))
+                Figure("Without", armValue(e.noCueLucid, e.pairs), "nights with a lucid moment", Modifier.weight(1f))
             }
             Text(verdict(e), style = MaterialTheme.typography.bodyMedium)
             Help(
-                "Each pair is one cue and one no-cue night, picked at random by the watch. A night counts once its " +
-                    "morning report rates \"Knew you were dreaming?\"; a lucid moment is $LUCID_INSIGHT or more." +
-                    if (e.waiting > 0) " ${plural(e.waiting, "night")} waiting for its pair or report." else "",
+                "Each pair is one night with soft sounds and one without, picked at random by the watch. A night " +
+                    "counts once its morning dream questions say whether you remember a dream and, if you do, " +
+                    "answer \"Did you know you were dreaming?\"; a lucid moment is $LUCID_INSIGHT or more." +
+                    if (e.waiting > 0) " ${plural(e.waiting, "night")} waiting for its pair or answers." else "",
             )
         }
     }

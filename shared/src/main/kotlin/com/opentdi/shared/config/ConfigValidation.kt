@@ -153,27 +153,6 @@ fun SessionConfig.validate(): List<String> {
 }
 
 /**
- * Non-fatal issues. USER_GAIN_CLAMPED: userGain above the route's cap is clamped at playback (§7.7 step 3).
- * WAKE_SOON_AFTER_WBTB: [wakeTooSoonAfterWbtb].
- */
-fun SessionConfig.warnings(): List<String> = buildList {
-    val cap = audio.routeCapGain[audio.route]
-    if (cap != null && audio.userGain > cap) {
-        add(
-            "USER_GAIN_CLAMPED: audio.userGain = ${audio.userGain} exceeds audio.routeCapGain.${audio.route} = $cap; " +
-                "cues play at $cap",
-        )
-    }
-    if (alarms.wakeTooSoonAfterWbtb()) {
-        add(
-            "WAKE_SOON_AFTER_WBTB: alarms.wakeAtMin = ${alarms.wakeAtMin} is less than " +
-                "$MIN_WAKE_AFTER_BACK_TO_BED_MIN min after alarms.wbtbAtMin = ${alarms.wbtbAtMin} + " +
-                "alarms.wbtbAwakeMin = ${alarms.wbtbAwakeMin}",
-        )
-    }
-}
-
-/**
  * The least time from going back to bed after WBTB (wbtbAtMin + wbtbAwakeMin) to the wake-up (owner, 2026-10-28: "do
  * earlier wbtb"). GUESSED from sleep_and_dreams.md: after a WBTB break REM came back about 75 min after going back to
  * bed (31.5 min to fall asleep + 42.1 min, §1 [12]), and late-night REM episodes run up to 30–40 min (§1 [4]).

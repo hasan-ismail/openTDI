@@ -29,6 +29,9 @@ import com.opentdi.mobile.link.WatchTelemetry
 import com.opentdi.shared.model.BiosignalPacket
 import com.opentdi.shared.model.SensorStatus
 import com.opentdi.shared.model.TelemetryFrame
+import com.opentdi.shared.time.clock12
+import java.time.Instant
+import java.time.ZoneId
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -98,12 +101,8 @@ private fun StreamStatus(receivedAtMs: Long?, status: SensorStatus?) {
     val ageMs = receivedAtMs?.let { (now - it).coerceAtLeast(0) }
     Section(null) {
         if (ageMs == null || ageMs > STALE_MS) {
-            Text(
-                "No live data from the watch",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.tertiary,
-            )
-            Help("It starts when you tap Start the night, or Start recording on the watch.")
+            Text("The watch isn't tracking right now", style = MaterialTheme.typography.titleLarge)
+            Help("It starts when you tap Start the night.")
         } else {
             Text(sensorWords(status), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
         }
@@ -130,12 +129,10 @@ private fun Tile(label: String, value: String, unit: String, modifier: Modifier)
 private fun sensorWords(status: SensorStatus?) = when (status) {
     null -> "Waiting for the watch"
     SensorStatus.CONNECTED_SAMSUNG -> "Samsung sensors connected"
-    SensorStatus.FALLBACK_ANDROID_SENSORS -> "Basic watch sensors: heart rate and motion, no EDA"
+    SensorStatus.FALLBACK_ANDROID_SENSORS, SensorStatus.AAR_NOT_BUNDLED -> "Basic watch sensors: heart rate and movement"
     SensorStatus.SIMULATION -> "Simulation — not real sensor data"
-    SensorStatus.AAR_NOT_BUNDLED -> "This watch build has no Samsung sensor SDK: basic sensors only"
-    SensorStatus.HSS_NOT_INSTALLED -> "Health Sensor Service is missing on the watch: see the watch"
-    SensorStatus.HSS_TOO_OLD -> "Health Sensor Service on the watch is too old: see the watch"
-    SensorStatus.SDK_POLICY_ERROR -> "Samsung blocked sensor access: see the watch"
+    SensorStatus.HSS_NOT_INSTALLED, SensorStatus.HSS_TOO_OLD -> "Samsung's Health Platform needs attention: see the watch"
+    SensorStatus.SDK_POLICY_ERROR -> "Samsung's extra sensors are locked: the watch uses its basic ones"
     SensorStatus.PERMISSION_MISSING -> "The watch app needs a permission: see the watch"
     SensorStatus.TRACKER_UNSUPPORTED -> "A sensor is not supported on this watch"
     SensorStatus.CONNECTION_FAILED -> "The watch cannot reach its sensors yet: retrying"
@@ -171,8 +168,10 @@ private fun SparkRow(
 
 private fun format(pattern: String, value: Float?) = value?.let { String.format(Locale.ROOT, pattern, it) } ?: "—"
 
-// %tR: the local 24-hour time of an epoch-ms timestamp (the watch clock).
-private fun time(epochMs: Long?) = epochMs?.let { String.format(Locale.ROOT, "%tR", it) } ?: "—"
+private fun time(epochMs: Long?) = epochMs?.let {
+    val t = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())
+    clock12(t.hour * 60 + t.minute)
+} ?: "—"
 
 /** A sparkline in unit coordinates: [lines] of (x, y) points, x and y in 0..1 (the newest at x = 1, y up). */
 class Spark(val lines: List<List<Pair<Float, Float>>>, val range: ClosedFloatingPointRange<Float>?)

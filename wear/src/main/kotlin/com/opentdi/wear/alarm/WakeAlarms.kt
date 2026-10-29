@@ -32,7 +32,7 @@ import java.util.Locale
  */
 class WakeAlarms(
     private val context: Context,
-    private val dir: File,
+    var dir: File, // the session folder; moves on when the sensors restart mid-night
     startMs: Long,
     private var config: AlarmConfig,
     private val recordingStartMs: Long = startMs,
@@ -58,7 +58,7 @@ class WakeAlarms(
     }
 
     /**
-     * New settings from a Start session during the recording: the night's state (a pending snooze, the back-to-sleep
+     * New settings from the phone during the recording: the night's state (a pending snooze, the back-to-sleep
      * buzz, armed cues and tonight's experiment coin) is kept; only an alarm whose time or switch changed is moved.
      */
     fun update(next: AlarmConfig, nowMs: Long) {
@@ -107,7 +107,14 @@ class WakeAlarms(
             }
             val rise = (nowMs - r.rampFromMs) / (config.rampS * 1000f)
             player.setVolume(if (config.rampS == 0) 1f else (0.05f + 0.95f * rise).coerceAtMost(1f))
-            if (elapsed >= config.maxRingMin * 60_000L) stop(nowMs, stillness, hr, "TIMED_OUT")
+            if (elapsed >= config.maxRingMin * 60_000L) {
+                // Slept through it: the wake-up rings again a snooze later while snoozes are left, so no one oversleeps.
+                if (r.kind == "WAKE" && snoozes < config.maxSnoozes) {
+                    snooze(nowMs, stillness, hr, event = "RANG_OUT") // not SNOOZE: Stats count that as answered
+                } else {
+                    stop(nowMs, stillness, hr, "TIMED_OUT")
+                }
+            }
             return
         }
         backToSleepAt?.let {
@@ -143,15 +150,18 @@ class WakeAlarms(
         }
     }
 
-    /** Snooze (wake-up alarm only, at most maxSnoozes): it rings again snoozeMin later; the wait counts as waking. */
-    fun snooze(nowMs: Long, stillness: Float?, hr: Float?) {
+    /**
+     * Snooze (wake-up alarm only, at most maxSnoozes): it rings again snoozeMin later; the wait counts as waking.
+     * [event] RANG_OUT is the same, done by the ring timing out.
+     */
+    fun snooze(nowMs: Long, stillness: Float?, hr: Float?, event: String = "SNOOZE") {
         val r = ringing ?: return
         if (r.kind != "WAKE" || snoozes >= config.maxSnoozes) return
         snoozes++
         ringing = null
         player.stop()
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
-        log(nowMs, r.kind, "SNOOZE", stillness, hr, "after_ms=${nowMs - r.startMs};snooze=$snoozes")
+        log(nowMs, r.kind, event, stillness, hr, "after_ms=${nowMs - r.startMs};snooze=$snoozes")
         wakeAt = nowMs + config.snoozeMin * 60_000L
         firstRingAt = firstRingAt ?: r.startMs
         SensingStateHolder.update { it.copy(alarmRinging = null, snoozesLeft = 0) }
@@ -166,13 +176,10 @@ class WakeAlarms(
         val moved = r.movedAtMs?.let { it - r.startMs }
         log(nowMs, r.kind, how, stillness, hr, "after_ms=${nowMs - r.startMs};first_movement_ms=${moved ?: ""}")
         val total = nowMs - (firstRingAt ?: r.startMs) // snoozes count as part of waking up
-        val summary = if (r.kind == "WAKE") {
-            "Before you move: pinch your nose and try to breathe through it; if you can, you are dreaming. " +
-                "Then, eyes closed, replay your dream. You moved after " +
-                "${clock(moved)} and stopped the alarm after ${clock(total)}" +
-                (if (snoozes > 0) " ($snoozes snoozes)." else ".")
-        } else {
-            null
+        val summary = when {
+            r.kind != "WAKE" -> null
+            how == "STOPPED" -> "Woke up in ${clock(total)}" + (if (snoozes > 0) " ($snoozes snoozes)." else ".")
+            else -> "The wake-up alarm stopped by itself after ${clock(total)}."
         }
         // With the guide the cue is trained in bed instead, not now while the sleeper is groggy.
         val trains = r.kind == "WBTB" && how == "STOPPED" && lateCues != null && !guideReady()
@@ -190,7 +197,8 @@ class WakeAlarms(
                 wbtbBackToSleepAtMs = backToSleepAt,
                 lateCuesTraining = trains,
                 lastWakeText = summary ?: it.lastWakeText,
-                reportAfter = if (how == "STOPPED") r.kind else it.reportAfter,
+                // A morning that rang out still gets its dream questions; a WBTB slept through does not.
+                reportAfter = if (how == "STOPPED" || r.kind == "WAKE") r.kind else it.reportAfter,
             )
         }
     }
@@ -213,7 +221,7 @@ class WakeAlarms(
         guide?.start(nowMs, stillness, hr)
     }
 
-    /** Any tap or bezel turn while the guide plays. */
+    /** A long press or the back key while the guide plays. */
     fun stopGuide(nowMs: Long, stillness: Float?, hr: Float?) {
         guide?.stop(nowMs, stillness, hr)
     }
@@ -277,7 +285,7 @@ class WakeAlarms(
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_ongoing)
-            .setContentTitle(if (kind == "WAKE") "Good morning" else "Early wake")
+            .setContentTitle(if (kind == "WAKE") "Good morning" else "Early wake-up")
             .setContentText("Tap I'm awake to stop the alarm.")
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -321,16 +329,21 @@ class WakeAlarms(
         private const val KEY_STOPPED = "stopped"
         private const val SAME_NIGHT_GAP_MS = 2 * 3_600_000L // GUESSED: a restart within 2 h is the same night
 
+        /** GUESSED: a recording this old when the phone starts the night is last night's, left running. */
+        const val NEW_NIGHT_MS = 12 * 3_600_000L
+
         /** m:ss, or "—" when it never happened. */
         fun clock(ms: Long?): String = ms?.let { String.format(Locale.ROOT, "%d:%02d", it / 60_000, it / 1000 % 60) } ?: "—"
 
         /**
          * When tonight's sleep began, for the WBTB's "too early" check: the start of a recording, or the night's earlier
          * one ([lastStartMs]) when it stopped ([lastStopMs]) less than [SAME_NIGHT_GAP_MS] before this one began. A
-         * night ended at 3 AM and started again at 3:10 still had its 23:00 start.
+         * night ended at 3 AM and started again at 3:10 still had its 23:00 start; one begun [NEW_NIGHT_MS] or more
+         * earlier is last night's, even when it was stopped just now.
          */
         internal fun nightStart(recordingStartMs: Long, lastStartMs: Long?, lastStopMs: Long?): Long =
             if (lastStartMs != null && lastStopMs != null && lastStartMs <= lastStopMs &&
+                recordingStartMs - lastStartMs < NEW_NIGHT_MS &&
                 recordingStartMs - lastStopMs in 0 until SAME_NIGHT_GAP_MS
             ) {
                 lastStartMs
@@ -347,7 +360,7 @@ class WakeAlarms(
             return start
         }
 
-        /** The alarms the phone sent with its last Start session; the defaults (both off) before any. */
+        /** The alarms the phone sent last (Start the night or an alarm change); the defaults before any. */
         fun loadConfigJson(context: Context): String? =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CONFIG, null)
 

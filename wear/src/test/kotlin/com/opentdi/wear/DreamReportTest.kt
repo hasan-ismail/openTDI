@@ -7,6 +7,8 @@ import com.opentdi.shared.csv.readCsv
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -46,15 +48,46 @@ class DreamReportTest {
     fun shownQuestions_askTheNewOnesOnlyWhenTheyApply() {
         val noDream = listOf(0, 6, 7, 8, 9) // recall, a cue woke you, refreshed, sleep paralysis, unusual night
         val dream = (0..9).toList()
-        assertEquals(noDream, shownQuestions(emptyMap(), guided = false, signs = false))
-        assertEquals(noDream, shownQuestions(mapOf(0 to "WHITE"), guided = false, signs = false)) // no content to judge
-        assertEquals(dream + ODD, shownQuestions(mapOf(0 to "YES"), guided = false, signs = false))
-        assertEquals(noDream + GUIDE_SLEEP, shownQuestions(emptyMap(), guided = true, signs = false))
-        assertEquals(noDream, shownQuestions(mapOf(0 to "NO"), guided = false, signs = true)) // no dream, no sign in it
+        assertEquals(noDream, shownQuestions(emptyMap(), guided = false, signs = false, after = "WAKE"))
+        // no content to judge
+        assertEquals(noDream, shownQuestions(mapOf(0 to "WHITE"), guided = false, signs = false, after = "WAKE"))
+        assertEquals(dream + ODD, shownQuestions(mapOf(0 to "YES"), guided = false, signs = false, after = "WAKE"))
+        assertEquals(noDream + GUIDE_SLEEP, shownQuestions(emptyMap(), guided = true, signs = false, after = "WAKE"))
+        // no dream, no sign in it
+        assertEquals(noDream, shownQuestions(mapOf(0 to "NO"), guided = false, signs = true, after = "WAKE"))
         assertEquals(
             dream + listOf(GUIDE_SLEEP, ODD, SIGN_SEEN),
-            shownQuestions(mapOf(0 to "YES"), guided = true, signs = true),
+            shownQuestions(mapOf(0 to "YES"), guided = true, signs = true, after = "WAKE"),
         )
+        // At the early wake-up, not how refreshed or how unusual the night was: it isn't over yet.
+        assertEquals(
+            listOf(0, 6, 8, GUIDE_SLEEP),
+            shownQuestions(emptyMap(), guided = true, signs = false, after = "WBTB"),
+        )
+        assertEquals(
+            dream - listOf(REFRESHED, UNUSUAL_NIGHT) + ODD,
+            shownQuestions(mapOf(0 to "YES"), guided = false, signs = false, after = "WBTB"),
+        )
+    }
+
+    @Test
+    fun reportDraft_goesOnUntilSaved_andIsWrittenOnceWhenANewReportOrTheNightEndsIt() {
+        ReportDraft.flush() // left by another test
+        val night = tmp.newFolder("night")
+        val wbtb = ReportDraft.open("WBTB", night, signs = false)
+        assertSame(wbtb, ReportDraft.open("WBTB", night, signs = false)) // left, then opened again
+        wbtb.answers[0] = "NO"
+        val wake = ReportDraft.open("WAKE", night, signs = false) // the WBTB one is written as it stands
+        assertNotSame(wbtb, wake)
+        wake.answers[0] = "YES"
+        assertTrue(wake.write())
+        assertFalse(wake.write()) // one row per report
+        val next = ReportDraft.open("WAKE", night, signs = false) // a saved report is not reopened
+        assertNotSame(wake, next)
+        assertFalse(ReportDraft.flush()) // nothing said or answered: no row
+        val rows = File(night, CsvFiles.W_MORNING.name).reader().use(::readCsv)
+        val after = rows[0].indexOf("after")
+        assertEquals(listOf("WBTB", "WAKE"), rows.drop(1).map { it[after] })
     }
 
     @Test

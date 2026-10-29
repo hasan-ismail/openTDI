@@ -10,7 +10,7 @@ import com.opentdi.shared.model.WatchState
 import java.util.Locale
 
 /** Only the falling-asleep cue loops are over, not the night: "Session complete" read as the watch's end too. */
-const val CUES_DONE = "Cues done for tonight"
+const val CUES_DONE = "Voice done for tonight"
 const val QUICK_TEST_DONE = "Quick test done"
 
 /** The Tonight card's big line and the cycle line under it, for [status] at [nowMs] (elapsedRealtime). */
@@ -29,18 +29,18 @@ fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean): Pair<String
             TdiState.AWAKE_INCUBATING -> if (status.nextEventAtRealtimeMs?.let { it <= nowMs } == true) {
                 "Waiting until you're still"
             } else {
-                countdown(if (status.completedCycles == 0) "Waiting — first cue" else "Back to sleep — next cue", left)
+                countdown(if (status.completedCycles == 0) "First voice" else "Next round", left)
             }
-            TdiState.HYPNAGOGIA_DETECTED -> countdown("Drifting off — next cue", left)
-            TdiState.WAKING_USER, TdiState.RE_INCUBATING -> "Cue playing"
-            TdiState.RECORDING_DREAM -> left?.let { "Listening for your answer — $it left" } ?: "Listening for your answer"
+            TdiState.HYPNAGOGIA_DETECTED -> countdown("Question", left)
+            TdiState.WAKING_USER, TdiState.RE_INCUBATING -> "Speaking…"
+            TdiState.RECORDING_DREAM -> left?.let { "Say what's on your mind — $it left" } ?: "Say what's on your mind"
             TdiState.PAUSED -> "Paused"
             TdiState.SESSION_COMPLETE -> if (status.quickTest) QUICK_TEST_DONE else CUES_DONE
         }
     }
     val n = currentCycle(status)
     val shown = status.running && status.state != TdiState.SESSION_COMPLETE && n in 1..status.maxCycles
-    return headline to if (shown) "Cycle $n of ${status.maxCycles}" else null
+    return headline to if (shown) "Round $n of ${status.maxCycles}" else null
 }
 
 /** The cycle the session is in or waiting for; between cycles the scheduler still reports the last one's number. */
@@ -86,38 +86,23 @@ enum class TimingPreset(
 
 fun presetOf(config: SessionConfig): TimingPreset? = TimingPreset.entries.firstOrNull { it.applyTo(config) == config }
 
-/** The timing of [config] in one plain sentence. */
-fun timingSummary(config: SessionConfig): String {
-    val t = config.timed
-    val first = if (t.firstSleepMinMin == t.firstSleepMaxMin) "${t.firstSleepMinMin} min" else
-        "${t.firstSleepMinMin}–${t.firstSleepMaxMin} min"
-    val loops = if (config.maxCycles == 1) "1 loop" else "${config.maxCycles} loops"
-    val timing = "$loops of ${span(config.countdownS)} drifting off, ${span(t.phase1ReportWindowS)} to answer and " +
-        "${span(t.betweenSleepS)} back to sleep"
-    return if (t.waitForStillness) {
-        "First cue after at least $first and ${span(t.stillForS)} of lying still, then $timing. Moving restarts the wait."
-    } else {
-        "First cue after $first, then $timing."
-    }
-}
-
 /** "What to expect" in plain words, with the cue words and timing the session will really use. */
 fun whatToExpect(config: SessionConfig): String {
     val still = if (config.timed.waitForStillness) " If you move around, it waits until you're still again." else ""
     return "Lie down and let your mind wander. When it's time, a soft voice says \"" +
         cueText(PromptCue.INITIAL_INCUBATION, config) + "\" Let the words drift into your thoughts; you don't need " +
         "to wake up. About ${span(config.countdownS)} later it asks \"" + cueText(PromptCue.WAKE_PROMPT, config) +
-        "\" Say out loud, in a few words, what was going through your mind. Then it tells you that you can fall " +
-        "back asleep.$still"
+        "\" Say out loud, in a few words, what was going through your mind. Nothing is recorded: saying it keeps you " +
+        "aware. Then it tells you that you can fall back asleep.$still"
 }
 
-private fun span(s: Int) = when {
+internal fun span(s: Int) = when {
     s < 60 -> "$s s"
     s % 60 == 0 -> "${s / 60} min"
     else -> "${s / 60} min ${s % 60} s"
 }
 
-enum class Check { TIMING, VOLUME, DND, BATTERY, CUES, TEST_CUE, WATCH, WATCH_BATTERY }
+enum class Check { TIMING, VOLUME, SPEAKER, DND, BATTERY, CUES, TEST_CUE, WATCH, WATCH_BATTERY }
 
 /**
  * Test timing: the first cue would come before anyone could be asleep. The owner's first two nights both ran on
@@ -127,15 +112,16 @@ fun testTiming(config: SessionConfig) = config.timed.firstSleepMaxMin < REAL_FIR
 
 private const val REAL_FIRST_CUE_MIN = 5 // GUESSED: Lucid night waits 10–15 min, Quick test 1
 
-/** One pre-flight line: [ok], or a problem said in [text]; a [blocking] problem keeps Start off. */
+/** One check: [text] says the problem and shows only when not [ok]; a [blocking] problem keeps Start off. */
 data class CheckItem(val check: Check, val ok: Boolean, val text: String, val blocking: Boolean = false)
 
 /**
- * The Tonight checklist. Total silence blocks Start (§7.7) so the red line explains why; the DND state is polled
- * every second while the screen is visible, and Start checks it again when tapped. When the watch plays the cues
- * ([onWatch]) the phone's volume and DND do not matter, and the watch must be waiting or recording (its health service
- * keeps the watch app running all night) and have played a test cue since the app started ([tested]). [watch] is null
- * when the watch does not answer.
+ * The checks Start runs; Start's popup lists the ones that fail. On the phone route a Do Not Disturb that mutes media
+ * blocks Start (§7.7), since the player then skips every cue; the DND state is polled every second while the screen
+ * is visible. When the watch plays the cues ([onWatch]) the phone's volume and DND do not matter, and the watch must
+ * be waiting or recording (its health service keeps the watch app running all night) and have played a test cue since
+ * the app started ([tested]). [watch] is null when the watch does not answer. While a real night is [running], a
+ * watch still waiting was never started, so it tracks nothing and rings no alarm.
  */
 fun checklist(
     volumeOff: Boolean,
@@ -149,6 +135,8 @@ fun checklist(
     alarmsOn: Boolean = false, // a wake-up or WBTB alarm, which rings on the watch
     firstCueMin: Int? = null, // set when the timing is test timing ([testTiming])
     dndOff: Boolean = false, // Do Not Disturb is off, so notifications can wake the sleeper
+    speakerOff: Boolean = false, // the phone's media output is not its own speaker (earbuds, headphones)
+    running: Boolean = false, // a real night's voice is running (not a Quick test)
 ): List<CheckItem> = buildList {
     if (firstCueMin != null) {
         val wait = if (firstCueMin == 1) "1 minute" else "$firstCueMin minutes"
@@ -156,80 +144,92 @@ fun checklist(
             CheckItem(
                 Check.TIMING,
                 false,
-                "This is test timing: the first cue comes after $wait and the cues end soon after. Use Lucid " +
-                    "night for a real night.",
+                "Your timing is set for a test: the first voice would come after $wait. Use night timing for a " +
+                    "real night.",
                 blocking = true,
             ),
         )
     }
     val needed = onWatch || alarmsOn
     val why = when {
-        onWatch -> " It plays tonight's cues."
+        onWatch -> " It plays tonight's voice."
         alarmsOn -> " Your alarms ring on the watch."
-        else -> " Optional: the phone plays the cues."
+        else -> " You can start without it: the phone plays the voice."
     }
     if (!onWatch) {
         add(
-            CheckItem(
-                Check.VOLUME,
-                !volumeOff,
-                if (volumeOff) "Phone volume is off, so you would not hear the cues." else "Phone volume is on",
-                blocking = true,
-            ),
+            CheckItem(Check.VOLUME, !volumeOff, "Phone volume is off, so you would not hear the voice.", blocking = true),
         )
+        // The service refuses to start then, and mid-night the player skips every cue (stream_device_not_speaker).
+        if (speakerOff) {
+            add(
+                CheckItem(
+                    Check.SPEAKER,
+                    false,
+                    "The phone's sound is going to headphones or a speaker, so you wouldn't hear the voice. " +
+                        "Disconnect them, or turn on Play the voice on the watch in Settings.",
+                    blocking = true,
+                ),
+            )
+        }
     }
     // On either route: the phone's own Do Not Disturb settings matter to its speaker only, but its notifications (and
     // the watch's, which follows the phone's Do Not Disturb when synced) can wake anyone.
     add(
         when {
-            !onWatch && dnd != DndEffect.PLAYS ->
-                CheckItem(Check.DND, false, dnd.message.orEmpty(), blocking = dnd == DndEffect.TOTAL_SILENCE)
+            !onWatch && dnd != DndEffect.PLAYS -> CheckItem(Check.DND, false, dnd.message.orEmpty(), blocking = true)
             dndOff -> CheckItem(
                 Check.DND,
                 false,
-                "Turn on Do Not Disturb so notifications don't wake you. Cues and alarms still play.",
+                "Turn on Do Not Disturb so notifications don't wake you. " +
+                    if (onWatch) "The watch still plays the voice and the alarms." else
+                        "Allow Media in it so the voice still plays.",
             )
-            else -> CheckItem(Check.DND, true, if (onWatch) "Do Not Disturb is on" else "Do Not Disturb lets cues play")
+            else -> CheckItem(Check.DND, true, "")
         },
     )
     add(
-        CheckItem(
-            Check.BATTERY,
-            batteryUnrestricted,
-            if (batteryUnrestricted) "Android will let the session run all night" else
-                "Allow unrestricted battery so Android doesn't stop the session while you sleep.",
-        ),
+        CheckItem(Check.BATTERY, batteryUnrestricted, "Let OpenTDI run all night: tap Allow, then choose Unrestricted."),
     )
-    add(CheckItem(Check.CUES, cueProblem == null, cueProblem ?: "Voice cues are ready", blocking = true))
+    add(CheckItem(Check.CUES, cueProblem == null, cueProblem.orEmpty(), blocking = true))
     add(
-        when {
-            !onWatch -> CheckItem(
+        if (onWatch) {
+            CheckItem(
                 Check.TEST_CUE,
                 tested,
-                if (tested) "Test cue played at bedtime volume" else
-                    "Play a test cue at the volume you'll sleep with. Cues never get louder than that.",
-            )
-            tested -> CheckItem(Check.TEST_CUE, true, "Test cue played on the watch", blocking = true)
-            else -> CheckItem(
-                Check.TEST_CUE,
-                false,
-                "Play a test cue on the watch at the volume you'll sleep with. Cues never get louder than that.",
+                "Test the voice on the watch at the volume you'll sleep with. It never gets louder than that.",
                 blocking = true,
+            )
+        } else {
+            CheckItem(
+                Check.TEST_CUE,
+                tested,
+                "Test the voice at the volume you'll sleep with. It never gets louder than that.",
             )
         },
     )
     add(
         when (watch) {
-            WatchState.RECORDING -> CheckItem(Check.WATCH, true, "Watch is recording", blocking = needed)
-            WatchState.WAITING ->
-                CheckItem(Check.WATCH, true, "Watch is ready: Start the night starts it too", blocking = needed)
+            WatchState.RECORDING -> CheckItem(Check.WATCH, true, "", blocking = needed)
+            WatchState.WAITING -> CheckItem(
+                Check.WATCH,
+                !running,
+                "The watch isn't tracking your sleep yet. Keep it near the phone with OpenTDI open." +
+                    why.takeIf { needed }.orEmpty(),
+                blocking = needed,
+            )
             WatchState.IDLE -> CheckItem(
                 Check.WATCH,
                 false,
-                "Open OpenTDI on your watch so it records with the session.$why",
+                "Open OpenTDI on the watch: press the Home button, then tap OpenTDI.$why",
                 blocking = needed,
             )
-            null -> CheckItem(Check.WATCH, false, "Can't reach the watch. Open OpenTDI on it.$why", blocking = needed)
+            null -> CheckItem(
+                Check.WATCH,
+                false,
+                "Can't reach the watch. Open OpenTDI on it. Not installed yet? Use the Watch tab.$why",
+                blocking = needed,
+            )
         },
     )
     if (watchBatteryPct != null) {
@@ -237,11 +237,21 @@ fun checklist(
             CheckItem(
                 Check.WATCH_BATTERY,
                 watchBatteryPct >= NIGHT_BATTERY_PCT,
-                if (watchBatteryPct >= NIGHT_BATTERY_PCT) "Watch battery is at $watchBatteryPct%" else
-                    "Watch battery is at $watchBatteryPct%. A night of recording takes about 70%, so charge it first.",
+                "Watch battery is at $watchBatteryPct%. A night of tracking takes about 70%, so charge it first.",
             ),
         )
     }
+}
+
+/**
+ * A check a Quick test ignores: it runs on its own timing and starts no watch tracking or alarms, so the watch matters
+ * only when it plays the voice, and then only if out of reach (its speaker service runs with the app closed).
+ */
+fun quickTestSkips(item: CheckItem, onWatch: Boolean, watch: WatchState?) = when (item.check) {
+    Check.TIMING, Check.WATCH_BATTERY -> true
+    Check.WATCH -> !onWatch || watch != null
+    Check.DND -> !item.blocking // a daytime test needs no Do Not Disturb, unless it would mute the voice
+    else -> false
 }
 
 // MEASURED: night 1 (2026-10-27) used about 7.5% an hour, so 9 h takes about 70%; 80 leaves a margin. Lower, Start asks

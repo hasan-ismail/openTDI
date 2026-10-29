@@ -65,60 +65,56 @@ class SensingRulesTest {
     }
 
     @Test
-    fun statusTexts_areTheSpecTexts() {
+    fun statusTexts_areInPlainWords() {
         assertEquals(
-            "No Samsung sensor kit yet: add it in the phone app (Watch tab). Basic watch sensors for now.",
+            "Basic watch sensors: heart rate and movement. Samsung's extra sensors can be added on the phone's Watch tab.",
             statusText(SensorStatus.AAR_NOT_BUNDLED),
         )
+        assertEquals("Samsung's Health Platform needs an update. Tap to update it.", statusText(SensorStatus.HSS_TOO_OLD))
         assertEquals(
-            "Health Sensor Service (Health Platform) is too old for OpenTDI (needs 1.6.5 or newer). Tap to update it.",
-            statusText(SensorStatus.HSS_TOO_OLD),
-        )
-        assertEquals(
-            "Samsung sensors connected: heart rate, IBI, EDA, motion.",
+            "Samsung sensors: heart rate, heartbeat timing, skin response and movement.",
             statusText(SensorStatus.CONNECTED_SAMSUNG),
         )
         assertEquals(
-            "Samsung sensors connected: heart rate, IBI, motion.",
+            "Samsung sensors: heart rate, heartbeat timing and movement.",
             statusText(SensorStatus.CONNECTED_SAMSUNG, edaAvailable = false),
         )
         assertEquals(
-            "This watch does not support EDA. Detection continues without it.",
+            "This watch can't measure skin response. Everything else works.",
             statusText(SensorStatus.TRACKER_UNSUPPORTED, unsupported = Tracker.EDA),
         )
         assertEquals(
-            "This watch does not support heart rate through Samsung's SDK. Using basic watch sensors.",
+            "Samsung's heart rate isn't available here: using the watch's basic sensors.",
             statusText(SensorStatus.TRACKER_UNSUPPORTED, unsupported = Tracker.HR),
         )
         assertEquals(
-            "This watch does not support motion through Samsung's SDK. Using basic watch sensors.",
+            "Samsung's motion sensor isn't available here: using the watch's basic sensors.",
             statusText(SensorStatus.TRACKER_UNSUPPORTED, unsupported = Tracker.ACCEL),
         )
-        assertEquals(
-            "Cannot reach Health Sensor Service: connection ended. Retrying.",
-            statusText(SensorStatus.CONNECTION_FAILED, message = "connection ended"),
-        )
+        // The raw message stays in Logcat.
+        assertEquals("Sensors reconnecting…", statusText(SensorStatus.CONNECTION_FAILED, message = "connection ended"))
         SensorStatus.entries.forEach { assertTrue(it.name, statusText(it).isNotBlank()) }
     }
 
     @Test
     fun runtimePermissions_followTheApiLevel() {
         val activity = "android.permission.ACTIVITY_RECOGNITION"
+        val mic = "android.permission.RECORD_AUDIO" // asked at setup, not first at the morning's dream report
         val notifications = "android.permission.POST_NOTIFICATIONS"
         assertEquals(
             listOf(
-                "android.permission.health.READ_HEART_RATE", READ_ADDITIONAL_HEALTH_DATA, activity,
+                "android.permission.health.READ_HEART_RATE", READ_ADDITIONAL_HEALTH_DATA, activity, mic,
                 "android.permission.health.READ_SKIN_TEMPERATURE", "android.permission.health.READ_OXYGEN_SATURATION",
                 notifications,
             ),
             runtimePermissions(36),
         )
         assertEquals(
-            listOf("android.permission.BODY_SENSORS", READ_ADDITIONAL_HEALTH_DATA, activity, notifications),
+            listOf("android.permission.BODY_SENSORS", READ_ADDITIONAL_HEALTH_DATA, activity, mic, notifications),
             runtimePermissions(35),
         )
         assertEquals(
-            listOf("android.permission.BODY_SENSORS", READ_ADDITIONAL_HEALTH_DATA, activity),
+            listOf("android.permission.BODY_SENSORS", READ_ADDITIONAL_HEALTH_DATA, activity, mic),
             runtimePermissions(30),
         )
     }

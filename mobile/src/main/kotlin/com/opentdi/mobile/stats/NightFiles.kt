@@ -46,9 +46,6 @@ internal data class PhoneSession(
     val endMs: Long,
     val loops: Int,
     val cues: Int,
-    /** The routine.* rows NapSessionService logs in p_config.csv at Start: ticked and listed; null when none. */
-    val routineDone: Int? = null,
-    val routineTotal: Int? = null,
     val files: Map<String, Long> = emptyMap(),
 )
 
@@ -65,8 +62,8 @@ private val AUDIO_EVENT = CsvFiles.P_AUDIO.columns.indexOf("event")
 
 /**
  * A phone session from its CSV texts, headers included: the first to the last p_transitions.csv row, loops completed as
- * the Sessions screen counts them, cues that began to play (p_audio.csv CUE_START) and the routine.* rows of
- * p_config.csv. Null when p_transitions.csv has no complete row, and for a Quick test, which is no night.
+ * the Sessions screen counts them and cues that began to play (p_audio.csv CUE_START). Null when p_transitions.csv has
+ * no complete row, and for a Quick test, which is no night.
  */
 internal fun phoneSession(id: String, transitions: String, audio: String, config: String): PhoneSession? {
     if (config.lineSequence().any { it == "${NapSessionService.QUICK_TEST_ROW},1" }) return null
@@ -74,19 +71,15 @@ internal fun phoneSession(id: String, transitions: String, audio: String, config
     val summary = phoneSessionSummary(rows)
     val durationMs = summary.durationMs ?: return null
     val startMs = rows.drop(1).firstNotNullOf { it.substringBefore(',').toLongOrNull() }
-    val routine = config.lineSequence().filter { it.startsWith("routine.") }.map { it.substringAfter(',') }.toList()
     return PhoneSession(
         id, startMs, startMs + durationMs, summary.completedCycles,
         cues = audio.lineSequence().count { it.split(',').getOrNull(AUDIO_EVENT) == "CUE_START" },
-        routineDone = routine.count { it == "1" }.takeIf { routine.isNotEmpty() },
-        routineTotal = routine.size.takeIf { it > 0 },
     )
 }
 
 /**
  * One row per night (noon to noon) with a summary, a phone session or a recording, newest first. Of several watch
- * copies in one night (a restart), the longest recording's summary shows; the routine is the night's last logged
- * checklist, null when nothing on it was ticked.
+ * copies in one night (a restart), the longest recording's sleep estimate shows, with every copy's reports and alarms.
  */
 internal fun joinNights(watch: List<WatchNight>, phone: List<PhoneSession>, zone: ZoneId): List<NightRow> {
     val watchByNight = watch.groupBy { it.night }
@@ -94,15 +87,21 @@ internal fun joinNights(watch: List<WatchNight>, phone: List<PhoneSession>, zone
     return (watchByNight.keys + phoneByNight.keys).sortedDescending().mapNotNull { night ->
         val copies = watchByNight[night].orEmpty()
         val sessions = phoneByNight[night].orEmpty()
-        val summary = copies.mapNotNull { it.summary }.maxByOrNull { it.recordEndMs - it.recordStartMs }
-        val recordings = copies.flatMap { it.recordings }.sortedBy { fromNoon(it.name) }
-        val phoneNight = sessions.takeIf { it.isNotEmpty() }?.let { s ->
-            PhoneNight(
-                s.map { it.id }, s.first().startMs, s.maxOf { it.endMs }, s.sumOf { it.loops }, s.sumOf { it.cues },
+        val parts = copies.mapNotNull { it.summary }
+        // A restart writes the later alarms and reports to a new folder, so they come from every part.
+        val summary = parts.maxByOrNull { it.recordEndMs - it.recordStartMs }?.let { s ->
+            s.copy(
+                reports = parts.flatMap { it.reports }.sortedBy { it.atMs },
+                wake = s.wake ?: parts.mapNotNull { it.wake }.minByOrNull { it.ringAtMs },
+                wbtb = s.wbtb ?: parts.firstNotNullOfOrNull { it.wbtb },
+                lateCues = s.lateCues ?: parts.firstNotNullOfOrNull { it.lateCues },
             )
         }
-        val routine = sessions.lastOrNull { it.routineTotal != null }?.takeIf { (it.routineDone ?: 0) > 0 }
-        NightRow(night, summary, phoneNight, routine?.routineDone, routine?.routineTotal, recordings)
+        val recordings = copies.flatMap { it.recordings }.sortedBy { fromNoon(it.name) }
+        val phoneNight = sessions.takeIf { it.isNotEmpty() }?.let { s ->
+            PhoneNight(s.first().startMs, s.maxOf { it.endMs }, s.sumOf { it.loops }, s.sumOf { it.cues })
+        }
+        NightRow(night, summary, phoneNight, recordings)
             .takeIf { summary != null || phoneNight != null || recordings.isNotEmpty() }
     }
 }

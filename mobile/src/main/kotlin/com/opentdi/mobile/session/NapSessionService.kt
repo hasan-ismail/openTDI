@@ -15,10 +15,16 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.wearable.MessageClient
+import com.google.android.gms.wearable.Wearable
+import com.opentdi.shared.model.DataLayerPaths
+import com.opentdi.shared.model.OpenTdiJson
 import com.opentdi.shared.model.TdiCommand
 import com.opentdi.shared.model.DeviceRole
+import com.opentdi.shared.model.WatchState
 import com.opentdi.mobile.link.watchRequest
 import com.opentdi.mobile.MainActivity
 import com.opentdi.mobile.R
@@ -75,10 +81,25 @@ import kotlinx.coroutines.launch
 class NapSessionService : LifecycleService() {
     private var session: Session? = null
 
+    /** End the night on the watch stops the voice too; a Quick test never started the watch, so it plays on. */
+    private val watchCommands = MessageClient.OnMessageReceivedListener { event ->
+        val command = try {
+            OpenTdiJson.decodeFromString(TdiCommand.serializer(), event.data.decodeToString())
+        } catch (e: IllegalArgumentException) { // SerializationException: another app version
+            return@OnMessageReceivedListener
+        }
+        val running = session
+        if (command is TdiCommand.AbortSession && running != null && !running.quickTest) {
+            Log.i(TAG_SESSION, logLine("WATCH_ENDED_NIGHT"))
+            running.stop()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         // The UI's listener stops with the screen; this one keeps the watch stream arriving for the whole session.
         lifecycle.addObserver(WatchStreamListener(applicationContext))
+        Wearable.getMessageClient(this).addListener(watchCommands, COMMAND_URI, MessageClient.FILTER_LITERAL)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -93,6 +114,7 @@ class NapSessionService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        Wearable.getMessageClient(this).removeListener(watchCommands)
         session?.let {
             it.release()
             SessionMonitor.update { status -> status.copy(running = false, nextEventAtRealtimeMs = null) }
@@ -104,12 +126,17 @@ class NapSessionService : LifecycleService() {
     private fun open(quickTest: Boolean): Session? {
         val config = loadConfig(this).let { if (quickTest) TimingPreset.QUICK_TEST.applyTo(it) else it }
         val invalid = config.validate().firstOrNull()
-        if (invalid != null) return refuse("Invalid settings: $invalid")
+        if (invalid != null) {
+            Log.w(TAG_SESSION, logLine("INVALID_SETTING", "error" to invalid))
+            return refuse(
+                "Some settings don't fit together. Open Settings > More settings and tap Reset all of these to normal.",
+            )
+        }
         // The volume guard reads the media index of the current media device, which must be the cue's speaker.
         if (config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER && !CuePlayer(this).streamOnSpeaker()) {
             return refuse(
-                "Media audio is on another device (Bluetooth or wired). " +
-                    "Disconnect it so the cues play on the phone speaker.",
+                "The phone's sound is going to headphones or a speaker. " +
+                    "Disconnect them, or turn on Play the voice on the watch in Settings.",
             )
         }
         val cues = try {
@@ -120,7 +147,8 @@ class NapSessionService : LifecycleService() {
         val session = try {
             Session(config, cues, quickTest)
         } catch (e: IOException) { // the session folder or its CSVs could not be created
-            return refuse("Could not create the session files: ${e.message}")
+            Log.w(TAG_SESSION, logLine("SESSION_FILES_FAILED", "error" to e.message))
+            return refuse("OpenTDI couldn't save tonight's files. Free some space on the phone and try again.")
         }
         return session.also { it.begin() }
     }
@@ -135,7 +163,7 @@ class NapSessionService : LifecycleService() {
 
     private fun notification(): Notification {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Nap session", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(CHANNEL_ID, "Bedtime voice", NotificationManager.IMPORTANCE_LOW),
         )
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
@@ -145,16 +173,16 @@ class NapSessionService : LifecycleService() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_moon)
-            .setContentTitle("OpenTDI session running")
+            .setContentTitle("OpenTDI: the voice is on")
             .setContentText(
                 if (loadConfig(this).audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER) {
-                    "Timed cues on the watch speaker"
+                    "Playing on the watch."
                 } else {
-                    "Timed cues on the nightstand speaker"
+                    "Playing on the phone speaker."
                 },
             )
             .setContentIntent(open)
-            .addAction(0, "Stop", stop)
+            .addAction(0, "Stop the voice", stop)
             .setOngoing(true)
             .setSilent(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -165,7 +193,7 @@ class NapSessionService : LifecycleService() {
     private inner class Session(
         private val config: SessionConfig,
         private val cues: PreparedCues,
-        private val quickTest: Boolean,
+        val quickTest: Boolean,
     ) {
         private val id = newSessionId(System.currentTimeMillis(), Random.Default)
         private val gate = if (config.timed.waitForStillness) StillnessGate(config) else null
@@ -182,13 +210,18 @@ class NapSessionService : LifecycleService() {
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "OpenTDI:session")
         private val player = CuePlayer(this@NapSessionService)
         private val endCue = cues.audio.getValue(PromptCue.SESSION_END).let { speech ->
-            WavAudio(renderEndChime(speech.sampleRate, config.audio.endChimeCount) + speech.samples, speech.sampleRate)
+            // A Quick test is not the night: "last cue for tonight" made it sound like the night had started.
+            val words = if (quickTest) FloatArray(0) else speech.samples
+            WavAudio(renderEndChime(speech.sampleRate, config.audio.endChimeCount) + words, speech.sampleRate)
         }
         private var tickJob: Job? = null
         private var flushJob: Job? = null
         private var gateJob: Job? = null
         private var cueJob: Job? = null
         private var ending = false
+        private val watchMissing = "The watch isn't tracking your sleep" +
+            (if (config.alarms.wakeEnabled || config.alarms.wbtbEnabled) ", so your alarms won't ring" else "") +
+            ". Open OpenTDI on the watch and keep it near the phone."
 
         fun begin() {
             wakeLock.acquire((config.sessionMaxMin + 10) * 60_000L) // §14.4
@@ -198,16 +231,33 @@ class NapSessionService : LifecycleService() {
             // The waiting watch starts recording too (owner, 2026-10-28), but not for a Quick test: that would start
             // the night's recording and alarms hours early, often in the evening.
             if (!quickTest) lifecycleScope.launch {
-                val watch = watchRequest(
-                    this@NapSessionService,
-                    TdiCommand.StartSession(id, config, DeviceRole.PHONE, System.currentTimeMillis()),
-                )
-                sessionEvent(logLine("WATCH_START", "state" to (watch?.state ?: "NO_ANSWER")))
+                val start = TdiCommand.StartSession(id, config, DeviceRole.PHONE, System.currentTimeMillis())
                 val alarms = config.alarms
                 val spoken = (alarms.wakeEnabled && alarms.wakeTone == AlarmTone.SPOKEN) ||
                     (alarms.wbtbEnabled && alarms.wbtbTone == AlarmTone.SPOKEN)
-                cues.audio[PromptCue.MORNING_WAKE]?.takeIf { spoken }?.let { voice ->
-                    sessionEvent(logLine("WAKE_VOICE_SENT", "stored" to player.storeOnWatch(voice)))
+                var voice = cues.audio[PromptCue.MORNING_WAKE]?.takeIf { spoken }
+                var last: String? = null
+                var misses = 0
+                // A lost answer, a watch opened after Start or a restarted watch leaves it waiting: no tracking, no
+                // alarms. So Start repeats all session; a tracking watch only saves the same alarms again.
+                while (isActive && !ending) {
+                    val state = watchRequest(this@NapSessionService, start)?.state
+                    val shown = state?.name ?: "NO_ANSWER"
+                    if (shown != last) sessionEvent(logLine("WATCH_START", "state" to shown)) // changes only
+                    last = shown
+                    misses = if (state == WatchState.RECORDING) 0 else misses + 1
+                    SessionMonitor.update {
+                        when {
+                            misses >= WATCH_MISSES -> it.copy(error = watchMissing)
+                            it.error == watchMissing -> it.copy(error = null)
+                            else -> it
+                        }
+                    }
+                    if (state != null && voice != null) {
+                        sessionEvent(logLine("WAKE_VOICE_SENT", "stored" to player.storeOnWatch(voice)))
+                        voice = null
+                    }
+                    delay(WATCH_RETRY_MS)
                 }
             }
             lifecycleScope.launch(Dispatchers.IO) { log.writeConfig(configRows()) }
@@ -389,6 +439,9 @@ class NapSessionService : LifecycleService() {
         private const val CHANNEL_ID = "session"
         private const val TICK_MS = 250L
         private const val FLUSH_MS = 5000L // §12.1
+        private const val WATCH_RETRY_MS = 20_000L
+        private const val WATCH_MISSES = 3 // Start requests without a tracking watch before Tonight says so
+        private val COMMAND_URI = "wear://*${DataLayerPaths.STATE_COMMAND}".toUri()
         private val CLOCK = DateTimeFormatter.ofPattern("h:mm:ss a", Locale.US)
 
         // ro.* properties are readable through getprop; the value is empty when the build does not set it.

@@ -1,8 +1,12 @@
 package com.opentdi.mobile.stats
 
+import com.opentdi.mobile.session.SESSIONS_DIR
+import com.opentdi.shared.stats.AlarmOutcome
+import com.opentdi.shared.stats.DreamReport
 import com.opentdi.shared.stats.Epochs
 import com.opentdi.shared.stats.NightSummary
 import com.opentdi.shared.stats.SUMMARY_VERSION
+import com.opentdi.shared.stats.WbtbOutcome
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
@@ -56,8 +60,7 @@ class NightsTest {
         "9000,8000,0,CUE_END,INITIAL_INCUBATION,NIGHTSTAND_SPEAKER,2,0.5,2000,,,,7,\n" +
         "602000,601000,1,CUE_START,WAKE_PROMPT,NIGHTSTAND_SPEAKER,2,0.5,2000,GAIN_TRANSIENT,,,7,\n" +
         "650000,649000,1,CUE_SKIPPED,RE_INCUBATION,NIGHTSTAND_SPEAKER,,,,,,,7,dnd_muted\n"
-    private val config = "key,value\napp.version,0.2.0\ntheme,\"a tree, at night\"\n" +
-        "routine.caffeine,1\nroutine.alcohol,0\nroutine.shower,1\n"
+    private val config = "key,value\napp.version,0.2.0\ntheme,\"a tree, at night\"\n"
 
     @Test
     fun phoneSession_fromItsCsvs() {
@@ -66,17 +69,13 @@ class NightsTest {
         assertEquals(1_300_000L, s.endMs)
         assertEquals(2, s.loops) // one CYCLE_COMPLETED, and the last loop ends the session (MAX_CYCLES)
         assertEquals(2, s.cues) // a skipped cue never began to play
-        assertEquals(2, s.routineDone)
-        assertEquals(3, s.routineTotal)
     }
 
     @Test
-    fun phoneSession_nullWithoutACompleteRow_noRoutineWhenNoneLogged() {
+    fun phoneSession_nullWithoutACompleteRow_orForAQuickTest() {
         assertNull(phoneSession("x", transitions.substringBefore('\n') + "\n", audio, config))
         val bare = phoneSession("x", transitions, "", "key,value\napp.version,0.2.0\n")!!
         assertEquals(0, bare.cues)
-        assertNull(bare.routineDone)
-        assertNull(bare.routineTotal)
         assertNull(phoneSession("x", transitions, audio, "key,value\nsession.quickTest,1\n")) // no night
         assertEquals(0, phoneSession("x", transitions, "", "key,value\nsession.quickTest,0\n")!!.cues)
     }
@@ -107,45 +106,60 @@ class NightsTest {
         epochs = Epochs(ms(from), movement = emptyList(), hrBpm = emptyList(), asleep = emptyList()),
     )
 
-    private fun session(id: String, at: String, minutes: Int, loops: Int, cues: Int, ticked: Int) =
-        PhoneSession(id, ms(at), ms(at) + minutes * 60_000L, loops, cues, routineDone = ticked, routineTotal = 15)
+    private fun session(id: String, at: String, minutes: Int, loops: Int, cues: Int) =
+        PhoneSession(id, ms(at), ms(at) + minutes * 60_000L, loops, cues)
 
     @Test
     fun nights_joinNoonToNoon_newestFirst() {
         val oct27 = LocalDate.of(2026, 10, 27)
-        val wholeNight = summary("a", "2026-10-27T23:00", "2026-10-28T07:00")
-        val test = summary("b", "2026-10-27T21:00", "2026-10-27T21:20")
+        val longer = summary("a", "2026-10-27T22:30", "2026-10-28T04:30")
+        val earlyReport = DreamReport(ms("2026-10-28T04:35"), "WBTB")
+        val wholeNight = longer.copy(reports = listOf(earlyReport), wbtb = WbtbOutcome(ms("2026-10-28T04:30")))
+        // Restarted after 4:30: the wake-up alarm and the morning report went to the new folder.
+        val morningReport = DreamReport(ms("2026-10-28T07:05"), "WAKE", recalled = "YES")
+        val wake = AlarmOutcome(ms("2026-10-28T07:00"))
+        val restart = summary("b", "2026-10-28T04:40", "2026-10-28T07:30")
+            .copy(reports = listOf(morningReport), wake = wake)
         val morning = File("w_dream_064512.m4a")
         val evening = File("w_dream_235901.m4a")
         val copies = listOf(
-            WatchNight(oct27, test, emptyList()),
+            WatchNight(oct27, restart, emptyList()),
             WatchNight(oct27, wholeNight, listOf(morning, evening)),
             WatchNight(LocalDate.of(2026, 10, 25), null, emptyList()), // too little to summarise: no row
             WatchNight(LocalDate.of(2026, 10, 24), null, listOf(File("w_dream_070000.m4a"))),
         )
         val sessions = listOf(
-            session("p2", "2026-10-28T00:30", 30, loops = 1, cues = 2, ticked = 4), // after midnight: same night
-            session("p1", "2026-10-27T22:50", 50, loops = 2, cues = 5, ticked = 3),
-            session("p0", "2026-10-26T23:00", 40, loops = 3, cues = 7, ticked = 0),
+            session("p2", "2026-10-28T00:30", 30, loops = 1, cues = 2), // after midnight: same night
+            session("p1", "2026-10-27T22:50", 50, loops = 2, cues = 5),
+            session("p0", "2026-10-26T23:00", 40, loops = 3, cues = 7),
         )
 
         val rows = joinNights(copies, sessions, zone)
 
         assertEquals(listOf(oct27, LocalDate.of(2026, 10, 26), LocalDate.of(2026, 10, 24)), rows.map { it.night })
         with(rows[0]) {
-            assertEquals(wholeNight, watch) // the night's longest recording
-            assertEquals(PhoneNight(listOf("p1", "p2"), ms("2026-10-27T22:50"), ms("2026-10-28T01:00"), 3, 7), phone)
-            assertEquals(4, routineDone) // the night's last logged checklist
-            assertEquals(15, routineTotal)
+            // The longest recording's sleep, with every part's reports and alarms.
+            assertEquals(wholeNight.copy(reports = listOf(earlyReport, morningReport), wake = wake), watch)
+            assertEquals(PhoneNight(ms("2026-10-27T22:50"), ms("2026-10-28T01:00"), 3, 7), phone)
             assertEquals(listOf(evening, morning), recordings) // 23:59 before 06:45
         }
-        with(rows[1]) {
-            assertNull(watch)
-            assertNull(routineDone) // nothing ticked
-            assertNull(routineTotal)
-        }
+        assertNull(rows[1].watch)
         assertNull(rows[2].phone)
         assertEquals(1, rows[2].recordings.size)
+    }
+
+    @Test
+    fun phoneSessions_keepThoseWhoseFolderIsGone() = withDir { filesDir ->
+        val id = "20261028T030000Z-0001"
+        val dir = File(filesDir, "$SESSIONS_DIR/$id").apply { mkdirs() }
+        File(dir, "p_transitions.csv").writeText(transitions)
+        File(dir, "p_audio.csv").writeText(audio)
+        File(dir, "p_config.csv").writeText(config)
+        val read = NightsRepository.phoneSessions(filesDir)
+        assertEquals(listOf(id), read.map { it.id })
+
+        dir.deleteRecursively() // no folder left at all, as after deleting every listed one
+        assertEquals(read, NightsRepository.phoneSessions(filesDir))
     }
 
     @Test

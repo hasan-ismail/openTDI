@@ -76,7 +76,7 @@ fun loadOwnVoice(context: Context, cue: PromptCue, sha: String): WavAudio {
     val file = ownFile(context, cue)
     val bytes = if (file.exists()) file.readBytes() else null
     if (bytes == null || sha256(bytes) != sha) {
-        throw CueException("Your recording for \"${cue.name}\" is missing. Record it again, or use the synthetic voice.")
+        throw CueException("One of your own recordings is missing. Record it again, or tap Use the app's voice.")
     }
     return WavIo.read(bytes)
 }

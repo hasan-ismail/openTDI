@@ -56,7 +56,7 @@ import kotlin.math.roundToInt
 
 /**
  * One night (tap a night anywhere in Stats; owner, 2026-10-28): estimated sleep, the timeline, the morning reports,
- * the dream recordings, the alarms and cues, and the routine. Sleep figures are estimates, never stages.
+ * the dream recordings, and the alarms and cues. Sleep figures are estimates, never stages.
  */
 @Composable
 internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: () -> Unit) {
@@ -70,7 +70,7 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
         Section("Estimated sleep") {
             val sleep = s?.sleep
             when {
-                s == null -> Help("The watch recorded nothing this night.")
+                s == null -> Help("The watch didn't track your sleep this night.")
                 sleep == null -> Help("Too little watch data this night to estimate sleep.")
                 else -> {
                     Text(hm(sleep.sleepMin), style = MaterialTheme.typography.headlineMedium)
@@ -93,7 +93,7 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
             Section("The night") { Timeline(s, row.phone, row.night, zone) }
         }
         s?.reports?.forEach { r ->
-            Section(if (r.after == "WBTB") "WBTB report, ${at(r.atMs)}" else "Morning report, ${at(r.atMs)}") {
+            Section("${if (r.after == "WBTB") "Early wake-up questions" else "Morning questions"}, ${at(r.atMs)}") {
                 answers(r).forEach { (question, answer) ->
                     Row(Modifier.fillMaxWidth()) {
                         Text(
@@ -111,7 +111,7 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
         if (row.recordings.isNotEmpty()) {
             Section("Dream recordings") { Recordings(row.recordings, s?.reports.orEmpty()) }
         }
-        Section("Alarms and cues") {
+        Section("Alarms and sounds") {
             val lines = buildList {
                 s?.wake?.let { a ->
                     val stopped = a.stoppedAtMs?.let { "\"I'm awake\" at ${at(it)}" } ?: "it rang out"
@@ -121,7 +121,13 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
                 }
                 s?.wbtb?.let { w ->
                     if (w.skipped != null) {
-                        add("WBTB skipped: ${w.skipped}")
+                        add(
+                            if (w.skipped == "MIN_SLEEP_BEFORE_WBTB") {
+                                "Early wake-up skipped: the watch had been tracking your sleep for less than 4½ hours"
+                            } else {
+                                "Early wake-up skipped"
+                            },
+                        )
                     } else {
                         val steps = listOfNotNull(
                             w.ringAtMs?.let { "alarm ${at(it)}" },
@@ -132,27 +138,22 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
                                 "asleep again about ${at(o)}$later (estimated)"
                             },
                         )
-                        if (steps.isNotEmpty()) add("WBTB: ${steps.joinToString(", ")}")
+                        if (steps.isNotEmpty()) add("Early wake-up: ${steps.joinToString(", ")}")
                     }
                 }
                 s?.lateCues?.takeIf { armShown(row, today) }?.let { c ->
                     add(
                         when {
-                            c.mode != "EXPERIMENT" -> "Late cues: ${plural(c.cuesPlayed, "cue")} played"
-                            c.cueNight -> "Experiment: a cue night, ${plural(c.cuesPlayed, "cue")} played"
-                            else -> "Experiment: a no-cue night, ${plural(c.wouldCue, "cue")} held back"
+                            c.mode != "EXPERIMENT" -> "Soft sounds: ${plural(c.cuesPlayed, "sound")} played"
+                            c.cueNight -> "Test night with soft sounds: ${plural(c.cuesPlayed, "sound")} played"
+                            else -> "Test night without soft sounds: ${plural(c.wouldCue, "sound")} held back"
                         },
                     )
                 }
-                row.phone?.let { add("Sleep-onset cues on the phone: ${phoneLine(it, row.night, zone)}") }
+                row.phone?.let { add("The voice on the phone: ${phoneLine(it, row.night, zone)}") }
             }
             lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            if (lines.isEmpty()) Help("No alarms or cues this night.")
-        }
-        row.routineTotal?.let { total ->
-            Section(null) {
-                Text("Bedtime routine: ${row.routineDone ?: 0} of $total done", style = MaterialTheme.typography.bodyMedium)
-            }
+            if (lines.isEmpty()) Help("No alarms or sounds this night.")
         }
     }
 }
@@ -163,16 +164,16 @@ private fun answers(r: DreamReport): List<Pair<String, String>> {
     return listOf(
         "Do you remember a dream?" to when (r.recalled) {
             "YES" -> "Yes"
-            "WHITE" -> "Sure I dreamed, no content"
+            "WHITE" -> "I dreamed, but can't recall it"
             "NO" -> "No"
             else -> null
         },
-        "Knew you were dreaming?" to r.insight?.let { "$it of 5" },
+        "Did you know you were dreaming?" to r.insight?.let { "$it of 5" },
         "Could you steer it?" to r.control?.let { "$it of 5" },
         "Nightmare?" to yes(r.nightmare),
         "Did you dream that you woke up?" to yes(r.falseAwakening),
-        "Did a cue turn up in a dream?" to yes(r.cueInDream),
-        "Did a cue wake you?" to yes(r.cueWoke),
+        "Did you hear the voice or a sound in your dream?" to yes(r.cueInDream),
+        "Did the voice or a sound wake you?" to yes(r.cueWoke),
         "How refreshed?" to r.refreshed?.let { "$it of 5" },
         "Sleep paralysis?" to yes(r.sleepParalysis),
         "Unusual night?" to yes(r.unusualNight),
@@ -378,7 +379,7 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                             val y = LANE.toPx() - 4.dp.toPx()
                             val to = Offset(maxOf(b, a + 2.dp.toPx()), y)
                             drawLine(colors.onSurfaceVariant, Offset(a, y), to, 4.dp.toPx(), StrokeCap.Round)
-                            label("Cues", a + 12.dp.toPx())
+                            label("Voice", a + 12.dp.toPx())
                         }
                         for (m in events) {
                             val mx = x(m.atMs)

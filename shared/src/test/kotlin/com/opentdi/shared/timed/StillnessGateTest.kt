@@ -92,4 +92,25 @@ class StillnessGateTest {
         waiting.onCueFinished(INITIAL_INCUBATION, 4_000)
         assertNull(waiting.onTick(600_000).filterIsInstance<TimedEvent.StateChanged>().firstOrNull())
     }
+
+    @Test
+    fun secondsWithoutMotionData_neitherMoveNorKeepTheWatchFresh() {
+        val still = StillnessGate(config)
+        still.seconds(0, 100, 1f, 70f)
+        for (t in 100 until 110) still.add(t * 1000L, null, 70f) // the accelerometer drops out
+        assertFalse(still.moving(109_000)) // a running countdown is not cut by missing data
+        assertFalse(still.fresh(99_000 + 121_000))
+
+        val gate = StillnessGate(config)
+        val s = TimedCueScheduler("any", config, gate)
+        s.start()
+        s.onCueFinished(INITIAL_INCUBATION, 4_000)
+        var dwell: TimedEvent.StateChanged? = null
+        for (t in 0 until 300) { // tossing past the earliest time, then an outage that sends frames without motion
+            gate.add(t * 1000L, if (t < 70) 0.1f else null, 70f)
+            dwell = s.onTick(t * 1000L).filterIsInstance<TimedEvent.StateChanged>().firstOrNull() ?: continue
+            break
+        }
+        assertEquals(StateReason.FALLBACK_TO_TIMED to 190_000L, dwell?.reason to dwell?.atMs) // 120 s after 69 s
+    }
 }

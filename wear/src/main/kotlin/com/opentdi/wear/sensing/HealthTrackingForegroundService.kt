@@ -75,17 +75,23 @@ class HealthTrackingForegroundService : LifecycleService() {
         } else if (intent?.action == ACTION_WAIT) {
             if (!foreground) startInForeground(WAITING_TEXT)
             if (ticker == null) SensingStateHolder.update { it.copy(waiting = true) }
-        } else if (intent?.action == ACTION_START_FROM_PHONE && ticker != null) {
-            Unit // already recording: the night's recording goes on
+        } else if (intent?.action == ACTION_START_FROM_PHONE && ticker != null &&
+            SystemClock.elapsedRealtime() - SensingStateHolder.state.value.startedElapsedMs < WakeAlarms.NEW_NIGHT_MS
+        ) {
+            Unit // already recording tonight: the night's recording goes on
         } else {
             // A second startForeground from the background could fail the health type's while-in-use check.
             if (foreground) showNotification(RECORDING_TEXT) else startInForeground(RECORDING_TEXT)
             SensingStateHolder.update { it.copy(waiting = false) }
-            stopSession()
+            // A sensor restart during the recording (a permission granted, basic sensors, back from the Store) keeps
+            // the night's alarms; the phone's Start over a recording left from last night begins a new night.
+            val sameNight = ticker != null && intent?.action != ACTION_START_FROM_PHONE
+            stopSession(endNight = !sameNight)
             val logRawAccel = intent?.getBooleanExtra(EXTRA_LOG_RAW_ACCEL, AccelConfig().logRawAccel) == true
             startSession(
                 SessionConfig(accel = AccelConfig(logRawAccel = logRawAccel)),
                 androidSensorsOnly = intent?.getBooleanExtra(EXTRA_ANDROID_SENSORS, false) == true,
+                keepNight = sameNight,
             )
         }
         // A system restart would start a health FGS from the background; Phase 1 sessions are restarted by the user.
@@ -98,11 +104,11 @@ class HealthTrackingForegroundService : LifecycleService() {
         super.onDestroy()
     }
 
-    private fun startSession(config: SessionConfig, androidSensorsOnly: Boolean) {
+    private fun startSession(config: SessionConfig, androidSensorsOnly: Boolean, keepNight: Boolean = false) {
         ticker = lifecycleScope.launch(sensing) {
             val s = LoggingSession(applicationContext, handler, config, androidSensorsOnly, telemetry)
             session = s
-            s.start()
+            s.start(keepNight)
             // Scheduled on SystemClock.elapsedRealtime(); the wake lock keeps the uptime-based delay on time (§14.4).
             var seconds = 0L
             var next = SystemClock.elapsedRealtime()
@@ -116,31 +122,35 @@ class HealthTrackingForegroundService : LifecycleService() {
         }
     }
 
-    /** The alarms the phone sent last, rescheduled when it sends new ones (a Start session while recording). */
+    /** The alarms the phone sent last, rescheduled when it sends new ones while recording (a Start, an alarm change). */
     private fun tickAlarms(s: LoggingSession) {
         val json = WakeAlarms.loadConfigJson(applicationContext)
         val now = System.currentTimeMillis()
         val current = alarms
+        val dir = File(filesDir, "sessions/${s.sessionId}")
         if (current == null) {
-            val dir = File(filesDir, "sessions/${s.sessionId}")
             val recordingStart = now - (SystemClock.elapsedRealtime() - SensingStateHolder.state.value.startedElapsedMs)
             val nightStart = WakeAlarms.nightStart(applicationContext, recordingStart)
             alarms = WakeAlarms(applicationContext, dir, now, WakeAlarms.parse(json), nightStart)
-        } else if (json != alarmsJson) {
-            current.update(WakeAlarms.parse(json), now) // keeps the night's state
+        } else {
+            current.dir = dir // after a sensor restart the night's log follows the new session folder
+            if (json != alarmsJson) current.update(WakeAlarms.parse(json), now) // keeps the night's state
         }
         alarmsJson = json
         val p = SensingStateHolder.state.value.lastPacket?.packet
         alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
     }
 
-    private fun stopSession() {
+    /** Stops the sensors; [endNight] false keeps the night's alarms for the session that starts next. */
+    private fun stopSession(endNight: Boolean = true) {
         ticker?.cancel()
         ticker = null
         handler.post {
-            alarms?.close()
-            alarms = null
-            alarmsJson = null
+            if (endNight) {
+                alarms?.close()
+                alarms = null
+                alarmsJson = null
+            }
             session?.stop()
             session = null
         }
@@ -175,7 +185,7 @@ class HealthTrackingForegroundService : LifecycleService() {
 
     private fun startInForeground(text: String) {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Sensor logging", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(CHANNEL_ID, "Night tracking", NotificationManager.IMPORTANCE_LOW),
         )
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
@@ -194,8 +204,8 @@ class HealthTrackingForegroundService : LifecycleService() {
         private const val ACTION_START_GUIDE = "com.opentdi.wear.action.START_GUIDE"
         private const val ACTION_STOP_GUIDE = "com.opentdi.wear.action.STOP_GUIDE"
         private const val ACTION_START_FROM_PHONE = "com.opentdi.wear.action.START_FROM_PHONE"
-        private const val WAITING_TEXT = "Waiting for the phone"
-        private const val RECORDING_TEXT = "Logging sensors"
+        private const val WAITING_TEXT = "Ready. Tap Start the night on your phone."
+        private const val RECORDING_TEXT = "Tracking your sleep. Tap to open."
         private const val EXTRA_LOG_RAW_ACCEL = "logRawAccel"
         private const val EXTRA_ANDROID_SENSORS = "androidSensorsOnly"
         private const val CHANNEL_ID = "sensing"
@@ -253,7 +263,7 @@ class HealthTrackingForegroundService : LifecycleService() {
             )
         }
 
-        /** A tap or a bezel turn during the guide stops it. */
+        /** Holding the screen, or the back key, during the guide stops it. */
         fun stopGuide(context: Context) {
             context.startService(
                 Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_STOP_GUIDE),

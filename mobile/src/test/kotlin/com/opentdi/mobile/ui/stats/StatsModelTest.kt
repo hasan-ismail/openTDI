@@ -37,7 +37,7 @@ class StatsModelTest {
         Epochs(0, 60, emptyList(), emptyList(), emptyList()), wake, wbtb, lateCues, reports,
     )
 
-    private fun row(night: LocalDate, s: NightSummary? = summary(night)) = NightRow(night, s, null, null, null)
+    private fun row(night: LocalDate, s: NightSummary? = summary(night)) = NightRow(night, s, null)
 
     private fun report(after: String = "WAKE", recalled: String? = null, insight: Int? = null, nightmare: Boolean? = null) =
         DreamReport(0, after, recalled = recalled, insight = insight, nightmare = nightmare)
@@ -138,7 +138,7 @@ class StatsModelTest {
         assertEquals(listOf(false, false, false, true, false, false), nights.map { it.nightmare })
         assertEquals(4, nights[3].insight)
         assertEquals(
-            "Mornings: 1 lucid moment, 1 dream, 1 dreamed without content, 1 with no dream, 2 without a report.",
+            "Mornings: 1 lucid moment, 1 dream, 1 dreamed but can't recall it, 1 with no dream, 2 not answered.",
             outcomeTakeaway(nights.groupingBy(::outcome).eachCount()),
         )
         assertEquals("No recorded nights in this range yet.", outcomeTakeaway(emptyMap()))
@@ -158,7 +158,7 @@ class StatsModelTest {
         val two = listOf(arm(10, true, "1/2", 4), arm(9, false, "2/2", 0), arm(8, false, "1/2", 1), arm(7, true, "2/2", 1))
         val early = experiment(two, today)
         assertEquals(Experiment(pairs = 2, cueLucid = 1, noCueLucid = 0, onlyCue = 1, onlyNoCue = 0, waiting = 0), early)
-        assertEquals("2 of 5 pairs so far: shares show from 5 pairs.", verdict(early))
+        assertEquals("2 of 5 pairs so far: results show after 5 pairs.", verdict(early))
         assertEquals("1 of 2", armValue(early.cueLucid, early.pairs))
 
         val odd = listOf(
@@ -174,7 +174,10 @@ class StatsModelTest {
         assertEquals(6, shown.pairs)
         assertEquals(0.03125, shown.p, 1e-9)
         assertTrue(shown.clear)
-        assertEquals("More lucid moments on cue nights so far. Small numbers can mislead: keep going.", verdict(shown))
+        assertEquals(
+            "More lucid moments on nights with soft sounds so far. Small numbers can mislead: keep going.",
+            verdict(shown),
+        )
         assertEquals("100% (6 of 6)", armValue(shown.cueLucid, shown.pairs))
         assertEquals("0% (0 of 6)", armValue(shown.noCueLucid, shown.pairs))
 
@@ -185,6 +188,22 @@ class StatsModelTest {
         assertEquals(5, notYet.pairs)
         assertFalse(notYet.clear) // 4 to 1: p = 0.375
         assertEquals("No clear difference yet.", verdict(notYet))
+    }
+
+    @Test
+    fun experiment_countsAMorningWithoutARememberedDreamAsNotLucid() {
+        fun night(daysBack: Long, cue: Boolean, pair: String, morning: DreamReport): NightRow {
+            val night = today.minusDays(daysBack)
+            return row(night, summary(night, lateCues = LateCueOutcome("EXPERIMENT", cue, pair), reports = listOf(morning)))
+        }
+        val noDream = listOf(night(4, true, "1/2", report("WAKE", "NO")), night(3, false, "2/2", report("WAKE", "YES", 4)))
+        assertEquals(
+            Experiment(pairs = 1, cueLucid = 0, noCueLucid = 1, onlyCue = 0, onlyNoCue = 1, waiting = 0),
+            experiment(noDream, today),
+        )
+        // A remembered dream whose "Did you know you were dreaming?" was skipped is unrated.
+        val unrated = listOf(night(2, true, "1/2", report("WAKE", "YES")), night(1, false, "2/2", report("WAKE", "WHITE")))
+        assertEquals(Experiment(0, 0, 0, 0, 0, waiting = 2), experiment(unrated, today))
     }
 
     @Test
@@ -221,7 +240,7 @@ class StatsModelTest {
 
         assertEquals("Copying from the watch…", syncWords(true, SyncResult(1, 1, "old")))
         assertNull(syncWords(false, null))
-        assertEquals("Couldn't copy from the watch: watch not reachable", syncWords(false, SyncResult(0, 0, "watch not reachable")))
+        assertEquals("watch not reachable", syncWords(false, SyncResult(0, 0, "watch not reachable")))
         assertEquals("Up to date with the watch", syncWords(false, SyncResult(0, 0)))
         assertEquals("Copied 1 new file from the watch", syncWords(false, SyncResult(1, 10)))
         assertEquals("Copied 3 new files from the watch", syncWords(false, SyncResult(3, 10)))
@@ -267,7 +286,7 @@ class StatsModelTest {
             reports = listOf(DreamReport(ms(next, 7, 5), "WAKE"), DreamReport(ms(next, 4, 33), "WBTB")),
         )
         assertEquals(
-            listOf("WBTB", "Up", "Report", "Bed", "Asleep", "Alarm", "Awake", "Report"),
+            listOf("Early", "Up", "Questions", "Bed", "Asleep", "Alarm", "Awake", "Questions"),
             marks(s).map { it.short },
         )
     }

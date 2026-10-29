@@ -10,8 +10,10 @@ import com.opentdi.shared.model.SessionConfig
  * packets; a loop may start once the sleeper has been still for [com.opentdi.shared.model.TimedCueConfig.stillForS]
  * and the heart rate has dropped below the session's own baseline, or has been still for twice that long (a baseline
  * taken while already calm may never show the drop). Movement is the §8.10 major movement (3 of the last 5 seconds
- * not still), so a single twitch, like a hypnic jerk at sleep onset, does not count. Times are the phone's elapsed ms
- * when a packet arrived; batches arrive every 2 s, which is fine at this scale. Pure and not thread-safe.
+ * not still), so a single twitch, like a hypnic jerk at sleep onset, does not count. A second without motion data is
+ * neither still nor moving and does not keep the watch fresh, so a sensor outage ages out into the timed fallback.
+ * Times are the phone's elapsed ms when a packet arrived; batches arrive every 2 s, which is fine at this scale. Pure
+ * and not thread-safe.
  */
 class StillnessGate(private val config: SessionConfig) {
     private val thresholds = config.detection.thresholds()
@@ -23,16 +25,18 @@ class StillnessGate(private val config: SessionConfig) {
     private var baselineCount = 0
     private val recentHr = ArrayDeque<Pair<Long, Float>>()
 
-    /** One watch second: [stillness] 0..1 (null without enough accel samples counts as movement), [hr] in bpm. */
+    /** One watch second: [stillness] 0..1 (null without enough accel samples: no motion data), [hr] in bpm. */
     fun add(atMs: Long, stillness: Float?, hr: Float?) {
         val first = firstAtMs ?: atMs.also { firstAtMs = it }
-        lastAtMs = atMs
-        recentMoving.addLast(stillness == null || stillness < thresholds.stillThreshold)
-        if (recentMoving.size > MAJOR_MOVEMENT_WINDOW_S) recentMoving.removeFirst()
-        if (recentMoving.count { it } >= MAJOR_MOVEMENT_MIN_S) {
-            stillSinceMs = null
-        } else if (stillSinceMs == null) {
-            stillSinceMs = atMs
+        if (stillness != null) {
+            lastAtMs = atMs
+            recentMoving.addLast(stillness < thresholds.stillThreshold)
+            if (recentMoving.size > MAJOR_MOVEMENT_WINDOW_S) recentMoving.removeFirst()
+            if (recentMoving.count { it } >= MAJOR_MOVEMENT_MIN_S) {
+                stillSinceMs = null
+            } else if (stillSinceMs == null) {
+                stillSinceMs = atMs
+            }
         }
         if (hr == null) return
         if (atMs - first < config.detection.baselineWindowS * 1000L) {

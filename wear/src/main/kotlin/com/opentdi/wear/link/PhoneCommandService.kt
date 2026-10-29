@@ -22,8 +22,8 @@ import com.opentdi.wear.sensing.SensingStateHolder
 
 /**
  * The phone's `/opentdi/state_command` requests: Start session starts the recording (and brings the night's alarm
- * settings), the phone's "Stop watch recording" ends it, a tone test plays a few seconds of an alarm, and every request
- * is answered with the watch's [WatchStatus].
+ * settings), a ConfigSync brings alarm changes, the phone's "Stop watch recording" ends it, a tone test plays a few
+ * seconds of an alarm, and every request is answered with the watch's [WatchStatus].
  */
 class PhoneCommandService : WearableListenerService() {
     override fun onRequest(nodeId: String, path: String, request: ByteArray): Task<ByteArray>? {
@@ -40,9 +40,11 @@ class PhoneCommandService : WearableListenerService() {
             state.waiting -> WatchState.WAITING
             else -> WatchState.IDLE
         }
-        if (command is TdiCommand.StartSession) {
-            WakeAlarms.saveConfig(this, command.config.alarms)
-            WatchOutputs.saveChoice(this, command.config.audio.watchOutput == WatchOutput.EARBUDS)
+        // A ConfigSync is an alarm change made on the phone, in any watch state; a running night picks it up next tick.
+        val sent = (command as? TdiCommand.StartSession)?.config ?: (command as? TdiCommand.ConfigSync)?.config
+        if (sent != null) {
+            WakeAlarms.saveConfig(this, sent.alarms)
+            WatchOutputs.saveChoice(this, sent.audio.watchOutput == WatchOutput.EARBUDS)
         }
         if (command is TdiCommand.TestAlarm) {
             Thread {
@@ -56,7 +58,8 @@ class PhoneCommandService : WearableListenerService() {
             LateCues(applicationContext, { AlarmConfig() }) { _, _, _, _ -> }.play(command.volume, command.earbuds)
         }
         try {
-            if (command is TdiCommand.StartSession && now == WatchState.WAITING) {
+            // While recording too: the service keeps tonight's recording and replaces one left from last night.
+            if (command is TdiCommand.StartSession && now != WatchState.IDLE) {
                 HealthTrackingForegroundService.startFromPhone(this)
                 now = WatchState.RECORDING
             } else if (command is TdiCommand.AbortSession && now != WatchState.IDLE) {

@@ -100,7 +100,7 @@ fun OpenTdiTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = 
     CompositionLocalProvider(LocalContentColor provides Colors.onSurface, content = content)
 }
 
-val TABS = listOf("Tonight", "Watch", "Stats", "Sessions", "Settings")
+val TABS = listOf("Tonight", "Watch", "Stats", "Settings")
 
 @Composable
 fun BottomTabs(selected: Int, onSelect: (Int) -> Unit) {
@@ -112,7 +112,7 @@ fun BottomTabs(selected: Int, onSelect: (Int) -> Unit) {
             modifier = Modifier.navigationBarsPadding(),
         ) {
             TABS.forEachIndexed { i, name ->
-                // The content form has no 16 dp side padding, so five one-line names fit a 360 dp wide phone.
+                // The content form has no 16 dp side padding, so four one-line names fit a 360 dp wide phone.
                 Tab(
                     selected = i == selected,
                     onClick = { onSelect(i) },
@@ -162,7 +162,7 @@ fun Help(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-/** True while Settings shows its sliders (owner, 2026-10-28: sliders live behind "Show advanced settings"). */
+/** True while Settings shows its expert controls (behind "More settings" at the bottom of Settings). */
 val LocalAdvanced = staticCompositionLocalOf { false } // Settings provides it; the set-up guide shows no sliders
 
 /** A slider setting; hidden unless [LocalAdvanced]. */
@@ -184,7 +184,7 @@ fun IntSetting(
         label = "advanced",
     ) {
         Column {
-            Text("$label: $value $unit".trimEnd())
+            Text(if (unit == "s") "$label: ${span(value)}" else "$label: $value $unit".trimEnd())
             Help(help)
             Slider(
                 value = value.coerceIn(range).toFloat(),
@@ -224,10 +224,10 @@ fun ColumnScope.Fold(label: String, forceOpen: Boolean = false, content: @Compos
 
 /** A small down-pointing chevron that turns up when [open]; drawn, as the app has no icon library. */
 @Composable
-fun Chevron(open: Boolean, modifier: Modifier = Modifier) {
+private fun Chevron(open: Boolean) {
     val turn by animateFloatAsState(if (open) 180f else 0f, tween(250), label = "chevron")
     val color = LocalContentColor.current
-    Canvas(modifier.size(14.dp).graphicsLayer { rotationZ = turn }) {
+    Canvas(Modifier.size(14.dp).graphicsLayer { rotationZ = turn }) {
         val v = Path().apply {
             moveTo(size.width * 0.15f, size.height * 0.35f)
             lineTo(size.width * 0.5f, size.height * 0.7f)

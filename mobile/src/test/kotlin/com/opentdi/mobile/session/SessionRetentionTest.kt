@@ -1,6 +1,8 @@
 package com.opentdi.mobile.session
 
 import android.app.ApplicationExitInfo
+import com.opentdi.mobile.stats.KEEP_CSV_NIGHTS
+import com.opentdi.shared.csv.sessionStartMs
 import com.opentdi.shared.model.StateReason
 import com.opentdi.shared.model.TdiState
 import org.junit.Assert.assertEquals
@@ -12,25 +14,34 @@ import java.nio.file.Files
 
 class SessionRetentionTest {
     private fun id(day: Int, second: Int) = "202610%02dT0000%02dZ-%04x".format(day, second, day * 100 + second)
+    private val yearLater = sessionStartMs("20271001T000000Z-0000")!! // every id() is older than the stats' copies
 
     @Test
     fun keepsTheNewest30_deletesTheOldest() {
         val names = (1..20).flatMap { day -> listOf(id(day, 1), id(day, 2)) }.shuffled() // 40 sessions
-        val deleted = sessionDirsToDelete(names)
+        val deleted = sessionDirsToDelete(names, yearLater)
         assertEquals((1..5).flatMap { day -> listOf(id(day, 1), id(day, 2)) }, deleted)
     }
 
     @Test
+    fun dirsTheStatsStillRead_stayBeyondThe30() {
+        val names = (1..20).flatMap { day -> listOf(id(day, 1), id(day, 2)) } // 40 sessions
+        val now = sessionStartMs(id(1, 1))!! + (KEEP_CSV_NIGHTS + 3) * 86_400_000L // days 1-2 are past 121 days
+        assertEquals(listOf(id(1, 1), id(1, 2), id(2, 1), id(2, 2)), sessionDirsToDelete(names, now))
+    }
+
+    @Test
     fun thirtyOrFewer_deletesNothing() {
-        assertEquals(emptyList<String>(), sessionDirsToDelete((1..15).flatMap { listOf(id(it, 1), id(it, 2)) }))
-        assertEquals(emptyList<String>(), sessionDirsToDelete(emptyList()))
+        val names = (1..15).flatMap { listOf(id(it, 1), id(it, 2)) }
+        assertEquals(emptyList<String>(), sessionDirsToDelete(names, yearLater))
+        assertEquals(emptyList<String>(), sessionDirsToDelete(emptyList(), yearLater))
     }
 
     @Test
     fun otherNames_areNeverChosen_andDoNotCount() {
         val sessions = (1..31).map { id(1 + it % 28, it % 60) }.distinct()
         val others = listOf("watch", "notes.txt", "20261001T000000Z-zzzz", "20261001T000000Z-0001-copy", "")
-        val deleted = sessionDirsToDelete(others + sessions)
+        val deleted = sessionDirsToDelete(others + sessions, yearLater)
         assertEquals(sessions.sorted().take(sessions.size - 30), deleted)
         assertTrue(deleted.none { it in others })
     }
@@ -70,7 +81,7 @@ class SessionRetentionTest {
             File(filesDir, "cues").mkdirs()
             val watchCopy = File(filesDir, "watch/20250101T000000Z-0001").apply { mkdirs() } // older than all of them
 
-            deleteOldSessions(filesDir)
+            deleteOldSessions(filesDir, yearLater)
 
             val left = root.list()!!.toSet()
             assertEquals(ids.sorted().drop(2).toSet() + "keep-me" + "20260101T000000Z-0000", left)

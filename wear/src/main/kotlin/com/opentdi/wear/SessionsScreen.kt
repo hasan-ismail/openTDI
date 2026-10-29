@@ -33,7 +33,6 @@ import com.opentdi.shared.csv.sessionDirs
 import com.opentdi.shared.csv.sessionStartMs
 import com.opentdi.shared.csv.sizeOnDisk
 import com.opentdi.shared.csv.watchSessionDurationMs
-import com.opentdi.shared.csv.watchSessionSummary
 import com.opentdi.wear.sensing.SensingStateHolder
 import com.opentdi.wear.sensing.logEvent
 import java.io.File
@@ -74,7 +73,7 @@ fun SessionsScreen(runningId: String?) {
     BackHandler(enabled = open != null) { openId = null }
     SwipeToDismissBox(onDismissed = { openId = null }, userSwipeEnabled = open != null) { isBackground ->
         if (open != null && !isBackground) {
-            SessionDetails(open, File(root, open.id), onDelete = { delete(listOf(open.id)) })
+            SessionDetails(open, onDelete = { delete(listOf(open.id)) })
         } else {
             SessionList(sessions, runningId, onOpen = { openId = it }, onDeleteAll = ::delete)
         }
@@ -94,14 +93,16 @@ private fun SessionList(
     val listState = rememberTransformingLazyColumnState()
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
-            item { ListHeader { Text("Sessions") } }
+            item { ListHeader { Text("Saved nights") } }
             if (sessions == null) item { Line("Loading…") }
-            if (sessions?.isEmpty() == true) item { Line("No sessions yet") }
+            if (sessions?.isEmpty() == true) item { Line("No nights yet") }
             items(sessions.orEmpty(), key = { it.id }) { s ->
                 val running = s.id == runningId
                 Card(onClick = { onOpen(s.id) }, enabled = !running, modifier = Modifier.fillMaxWidth()) {
                     Text(startText(context, s))
-                    Text(if (running) "Running" else listOfNotNull(duration(s), size(context, s)).joinToString(" · "))
+                    Text(
+                        if (running) "Tracking now" else listOfNotNull(duration(s), size(context, s)).joinToString(" · "),
+                    )
                 }
             }
             if (deletable.isNotEmpty()) {
@@ -115,36 +116,32 @@ private fun SessionList(
     }
     ConfirmDelete(
         visible = confirm,
-        title = if (deletable.size == 1) "Delete 1 session?" else "Delete ${deletable.size} sessions?",
+        title = if (deletable.size == 1) {
+            "Delete 1 night from the watch?"
+        } else {
+            "Delete ${deletable.size} nights from the watch?"
+        },
         onDismiss = { confirm = false },
         onConfirm = { onDeleteAll(deletable) },
     )
 }
 
 @Composable
-private fun SessionDetails(s: WatchSession, dir: File, onDelete: () -> Unit) {
+private fun SessionDetails(s: WatchSession, onDelete: () -> Unit) {
     val context = LocalContext.current
     var confirm by remember { mutableStateOf(false) }
-    // Counted for the opened session only: it reads the whole file.
-    val packets by produceState("…", dir) {
-        value = withContext(Dispatchers.IO) {
-            readPackets(dir) { it.useLines(block = ::watchSessionSummary).packets.toString() } ?: "—"
-        }
-    }
     val listState = rememberTransformingLazyColumnState()
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item { ListHeader { Text(startText(context, s)) } }
             item { Line("Duration ${duration(s) ?: "—"}") }
-            item { Line("Packets $packets") }
             item { Line("Size ${size(context, s)}") }
-            item { Line(s.id) }
             item {
                 FilledTonalButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete") }
             }
         }
     }
-    ConfirmDelete(confirm, "Delete this session?", onDismiss = { confirm = false }, onConfirm = onDelete)
+    ConfirmDelete(confirm, "Delete this night from the watch?", onDismiss = { confirm = false }, onConfirm = onDelete)
 }
 
 @Composable
@@ -162,7 +159,7 @@ private fun ConfirmDelete(visible: Boolean, title: String, onDismiss: () -> Unit
         },
         title = { Text(title) },
         dismissButton = { AlertDialogDefaults.DismissButton(onClick = onDismiss) },
-        text = { Text("This cannot be undone.") },
+        text = { Text("Open Stats on your phone first: nights it hasn't copied are lost for good.") },
     )
 }
 

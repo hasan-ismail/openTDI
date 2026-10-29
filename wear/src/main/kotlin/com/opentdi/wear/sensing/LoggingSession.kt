@@ -116,14 +116,31 @@ class LoggingSession(
     private var ppgSamples = 0L
     private var ppgSamplesAtRate = 0L
 
-    fun start() {
+    /** [keepNight]: a sensor restart during the recording, whose alarms, guide and dream-report prompt carry on. */
+    fun start(keepNight: Boolean = false) {
         SensingStateHolder.update {
-            SensingState(
+            val fresh = SensingState(
                 running = true,
                 sessionId = sessionId,
                 startedElapsedMs = SystemClock.elapsedRealtime(),
                 logRawAccel = config.accel.logRawAccel,
             )
+            // Only the night's fields: the old session's status, source and fallback cause must not survive.
+            if (!keepNight) {
+                fresh
+            } else {
+                fresh.copy(
+                    startedElapsedMs = it.startedElapsedMs,
+                    alarmRinging = it.alarmRinging,
+                    wbtbBackToSleepAtMs = it.wbtbBackToSleepAtMs,
+                    lastWakeText = it.lastWakeText,
+                    snoozesLeft = it.snoozesLeft,
+                    lateCuesTraining = it.lateCuesTraining,
+                    guideOffered = it.guideOffered,
+                    guideRunning = it.guideRunning,
+                    reportAfter = it.reportAfter,
+                )
+            }
         }
         if (config.link.watchWakeLock) acquireWakeLock()
         dir.mkdirs()
@@ -411,11 +428,12 @@ class LoggingSession(
         if (emitted.isEmpty()) return
         for (e in emitted) {
             val p = e.packet
+            val seq = packets++ // outside io(): after a CSV failure the phone still gets rising seqs
             // No engine runs yet: every frame is IDLE, without a score. Its seq is the packet's w_packets.csv seq.
-            frames += TelemetryFrame(packets, p, TdiState.IDLE, stateReason = null, completedCycles = 0, score = null)
+            frames += TelemetryFrame(seq, p, TdiState.IDLE, stateReason = null, completedCycles = 0, score = null)
             io {
                 packetsCsv?.row(
-                    p.timestamp, packets++, p.source, p.hr, p.hrStatus, p.ibiList, p.rmssd, p.skinConductance,
+                    p.timestamp, seq, p.source, p.hr, p.hrStatus, p.ibiList, p.rmssd, p.skinConductance,
                     p.edaStatus, p.accelMean, p.accelRms, p.accelPeak, p.stillnessScore, p.jerkEvent, p.limpEvent,
                     e.tiltDeg, e.accelSampleCount, e.emittedWallMs, p.skinTemperature, p.spo2, e.angleZDeg,
                 )

@@ -6,11 +6,8 @@ import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -36,9 +33,12 @@ import com.opentdi.mobile.session.SessionMonitor
 import com.opentdi.shared.csv.PhoneSessionSummary
 import com.opentdi.shared.model.StateReason
 
-/** The session directories, newest first, to delete test sessions; the running session cannot be selected. */
+/**
+ * Settings' "Saved nights": the phone's session directories, newest first, to delete test nights; the running one
+ * cannot be selected. A plain Column, not a LazyColumn, as it sits in the scrolling Settings page (at most 30 rows).
+ */
 @Composable
-fun SessionsScreen(viewModel: MainViewModel) {
+fun SavedNights(viewModel: MainViewModel) {
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val status by SessionMonitor.status.collectAsStateWithLifecycle()
     val runningId = status.sessionId.takeIf { status.running }
@@ -50,20 +50,16 @@ fun SessionsScreen(viewModel: MainViewModel) {
     val chosen = deletable.filter { it in selected }
     LaunchedEffect(status.running) { viewModel.loadSessions() } // again when a session starts or ends
 
-    // No Scaffold of its own: the night sky shows through, as on every other tab.
-    Column(
-        Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("Sessions", style = MaterialTheme.typography.headlineMedium)
-        if (sessions?.isEmpty() == true) Text("No nights recorded yet. Each session you run shows up here.")
-        if (list.isNotEmpty()) Help("Tap sessions to select them for deleting.")
-        LazyColumn(Modifier.weight(1f)) {
-            items(list, key = { it.id }) { s ->
+    Section("Saved nights") {
+        if (sessions?.isEmpty() == true) Text("No saved nights yet. Each night you start shows up here.")
+        if (list.isNotEmpty()) {
+            Help("What the voice did each night, newest first. Tap nights to select them for deleting.")
+        }
+        Column {
+            for (s in list) {
                 val running = s.id == runningId
                 Row(
                     Modifier
-                        .animateItem() // a deleted session slides out
                         .fillMaxWidth()
                         .toggleable(value = s.id in chosen, enabled = !running, role = Role.Checkbox) { on ->
                             selected = if (on) selected + s.id else selected - s.id
@@ -95,8 +91,10 @@ fun SessionsScreen(viewModel: MainViewModel) {
     confirm?.let { ids ->
         AlertDialog(
             onDismissRequest = { confirm = null },
-            title = { Text(if (ids.size == 1) "Delete 1 session?" else "Delete ${ids.size} sessions?") },
-            text = { Text("The session logs are removed from this phone. This cannot be undone.") },
+            title = { Text(if (ids.size == 1) "Delete 1 night?" else "Delete ${ids.size} nights?") },
+            text = {
+                Text("What the voice did on these nights is removed from this phone and from Stats. This cannot be undone.")
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -126,5 +124,5 @@ private fun outcome(s: PhoneSessionSummary): String? {
         StateReason.TIME_LIMIT -> "time limit"
         else -> "stopped" // USER_ABORT, which the service's error ends use too
     }
-    return "${s.completedCycles} ${if (s.completedCycles == 1) "cycle" else "cycles"}, $how"
+    return "${s.completedCycles} ${if (s.completedCycles == 1) "round" else "rounds"}, $how"
 }
