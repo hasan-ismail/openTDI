@@ -23,17 +23,21 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -54,6 +58,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.mobile.MainViewModel
@@ -62,9 +67,11 @@ import com.opentdi.mobile.cues.cueSetProblem
 import com.opentdi.mobile.link.WatchTelemetry
 import com.opentdi.mobile.session.SessionMonitor
 import com.opentdi.mobile.session.SessionStatus
+import com.opentdi.shared.audio.alarmsAhead
 import com.opentdi.shared.config.validate
 import com.opentdi.shared.config.warnings
 import com.opentdi.shared.model.SessionConfig
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.Optional
 import kotlinx.coroutines.delay
@@ -80,6 +87,7 @@ private val OK_COLOR = Color(0xFF86B79C) // muted green, dim enough for a dark b
 fun TonightScreen(
     viewModel: MainViewModel,
     onStart: () -> Unit,
+    onQuickTest: () -> Unit,
     onStop: () -> Unit,
     onAllowBattery: () -> Unit,
     onRaiseVolume: () -> Unit,
@@ -116,8 +124,12 @@ fun TonightScreen(
         if (onWatch) ui.watchTested else ui.calibratedIndex != null, watch, onWatch,
         watchStatus?.batteryPct ?: live.watchBatteryPct.takeIf { streaming },
         alarmsOn = config.alarms.wakeEnabled || config.alarms.wbtbEnabled,
+        firstCueMin = config.timed.firstSleepMaxMin.takeIf { testTiming(config) },
     )
     val ready = errors.isEmpty() && checks.none { it.blocking && !it.ok }
+    // A Quick test runs on its own timing, so the night's test-timing row does not hold it back.
+    val quickReady = errors.isEmpty() && checks.none { it.blocking && !it.ok && it.check != Check.TIMING }
+    var confirmStopWatch by remember { mutableStateOf(false) }
     val idle = !status.running && !ui.preparing && !ui.testing
     val running = status.running
     // Shown rows: no watch row before its first answer, and none a running session cannot act on.
@@ -129,6 +141,7 @@ fun TonightScreen(
 
     fun fix(check: Check): Pair<String, () -> Unit>? {
         val fix = when (check) {
+            Check.TIMING -> "Use Lucid night" to { viewModel.edit(TimingPreset.LUCID_NIGHT::applyTo) }
             Check.VOLUME -> "Turn up" to onRaiseVolume
             Check.DND -> "Open settings" to onOpenDnd
             Check.BATTERY -> if (ui.batteryManual) null else "Allow" to onAllowBattery
@@ -146,7 +159,7 @@ fun TonightScreen(
 
     Page("Tonight") {
         MoonHeader(remember { System.currentTimeMillis() })
-        StatusCard(status, now, ready)
+        StatusCard(status, now, ready, watchRecording = watch == WatchState.RECORDING)
         if (!running) alarmsLine(config.alarms)?.let { Help(it) }
         if (running) {
             OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth().height(64.dp)) {
@@ -167,9 +180,30 @@ fun TonightScreen(
             }
             // The watch records the whole night, past the end of the cues: in the morning it is stopped here.
             if (watch == WatchState.RECORDING) {
-                OutlinedButton(onClick = viewModel::stopWatch, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { confirmStopWatch = true }, modifier = Modifier.fillMaxWidth()) {
                     Text("Stop watch recording")
                 }
+            }
+            if (confirmStopWatch) {
+                // In the night this button sits right under "Cues done": stopping also cancels the alarms.
+                val ahead = alarmsAhead(config.alarms, System.currentTimeMillis(), ZoneId.systemDefault())
+                AlertDialog(
+                    onDismissRequest = { confirmStopWatch = false },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            confirmStopWatch = false
+                            viewModel.stopWatch()
+                        }) { Text("Stop recording") }
+                    },
+                    dismissButton = { TextButton(onClick = { confirmStopWatch = false }) { Text("Keep recording") } },
+                    title = { Text("End the night on the watch?") },
+                    text = {
+                        Text(
+                            "The watch stops recording." +
+                                (ahead?.let { " ${it.replaceFirstChar(Char::uppercase)} won't ring." } ?: ""),
+                        )
+                    },
+                )
             }
         }
         AnimatedVisibility(!running || shownChecks.any { !it.ok }, enter = Appear, exit = Disappear) {
@@ -207,7 +241,7 @@ fun TonightScreen(
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 NightPlanCard(config, ZonedDateTime.now())
                 RoutineCard()
-                PresetCard(viewModel, enabled = idle)
+                PresetCard(viewModel, enabled = idle, quickReady = idle && quickReady, onQuickTest = onQuickTest)
                 InstructionsCard(config)
             }
         }
@@ -244,7 +278,7 @@ private fun StartButton(ready: Boolean, onStart: () -> Unit) {
 }
 
 @Composable
-private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean) {
+private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean, watchRecording: Boolean) {
     val (headline, cycle) = statusLines(status, now, ready)
     Section(null) {
         AnimatedContent(
@@ -256,6 +290,10 @@ private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean) {
         cycle?.let {
             Text(it, style = MaterialTheme.typography.titleMedium)
             LoopDots(currentCycle(status), status.maxCycles)
+        }
+        // The cue loops end long before the night; the watch's recording and alarms go on (owner, 2026-10-29).
+        if (status.state == TdiState.SESSION_COMPLETE && watchRecording) {
+            Text("The watch keeps recording and runs your alarms until you stop it in the morning.")
         }
         status.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (status.lastEvent != null || status.running) {
@@ -330,20 +368,24 @@ private fun CheckRow(item: CheckItem, fix: Pair<String, () -> Unit>?) {
 }
 
 @Composable
-private fun PresetCard(viewModel: MainViewModel, enabled: Boolean) {
+private fun PresetCard(viewModel: MainViewModel, enabled: Boolean, quickReady: Boolean, onQuickTest: () -> Unit) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     Section("Timing: ${presetOf(ui.config)?.label ?: "Custom"}") {
         PresetButtons(ui.config, enabled, viewModel::edit)
         Help(timingSummary(ui.config))
+        OutlinedButton(onClick = onQuickTest, enabled = quickReady, modifier = Modifier.fillMaxWidth()) {
+            Text("Quick test now (about 5 min)")
+        }
+        Help("Runs once on short timing to try it out. Tonight's timing stays as it is.")
     }
 }
 
-/** The timing presets in a row, the one [config] matches filled (Tonight and Settings). */
+/** The night presets in a row, the one [config] matches filled (Tonight and Settings); Quick test has its own button. */
 @Composable
 internal fun PresetButtons(config: SessionConfig, enabled: Boolean, edit: Edit) {
     val current = presetOf(config)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-        for (preset in TimingPreset.entries) {
+        for (preset in TimingPreset.entries - TimingPreset.QUICK_TEST) {
             val onClick = { edit(preset::applyTo) }
             if (preset == current) {
                 Button(onClick = onClick, enabled = enabled, modifier = Modifier.weight(1f)) { Text(preset.label) }

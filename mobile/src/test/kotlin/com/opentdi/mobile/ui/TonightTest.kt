@@ -11,6 +11,7 @@ import com.opentdi.shared.model.WatchState
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -42,14 +43,27 @@ class TonightTest {
             "Back to sleep — next cue in 6:10" to "Cycle 3 of 4", // the scheduler still says cycle 2 here
             statusLines(running(TdiState.AWAKE_INCUBATING, 370_000, cycle = 2, completed = 2), NOW, true),
         )
-        assertEquals("Session complete" to null, statusLines(running(TdiState.SESSION_COMPLETE, cycle = 4), NOW, true))
+        assertEquals(CUES_DONE to null, statusLines(running(TdiState.SESSION_COMPLETE, cycle = 4), NOW, true))
         val ended = SessionStatus(state = TdiState.SESSION_COMPLETE, completedCycles = 4, maxCycles = 4)
-        assertEquals("Session complete" to null, statusLines(ended, NOW, ready = true))
+        assertEquals(CUES_DONE to null, statusLines(ended, NOW, ready = true))
         assertEquals("0:00", clock(-5_000)) // an overdue step never shows a negative time
         assertEquals( // past its earliest time a loop waits for stillness
             "Waiting until you're still",
             statusLines(running(TdiState.AWAKE_INCUBATING, -1_000), NOW, ready = true).first,
         )
+    }
+
+    @Test
+    fun testTiming_blocksStart_untilLucidNight() {
+        val night = SessionConfig(mode = SessionMode.TIMED_CUES)
+        val quick = TimingPreset.QUICK_TEST.applyTo(night)
+        assertFalse(testTiming(night))
+        assertTrue(testTiming(quick))
+        assertFalse(testTiming(TimingPreset.LUCID_NIGHT.applyTo(quick))) // the row's fix
+        val row = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.WAITING, firstCueMin = 1).first()
+        assertEquals(Check.TIMING, row.check)
+        assertTrue(row.blocking && !row.ok)
+        assertTrue(checklist(false, DndEffect.PLAYS, true, null, true, WatchState.WAITING).none { it.check == Check.TIMING })
     }
 
     @Test

@@ -49,6 +49,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.wear.ambient.AmbientLifecycleObserver
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
@@ -66,6 +67,7 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SwipeToDismissBox
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
+import com.opentdi.shared.audio.alarmsAhead
 import com.opentdi.shared.model.AccelConfig
 import com.opentdi.shared.model.GravityMode
 import com.opentdi.shared.model.PROTOCOL_VERSION
@@ -80,6 +82,7 @@ import com.opentdi.wear.sensing.heartRatePermission
 import com.opentdi.wear.sensing.runtimePermissions
 import com.opentdi.wear.sensing.statusText
 import java.io.File
+import java.time.ZoneId
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -98,6 +101,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Always-on: in ambient the app stays on the dim screen instead of the watch taking it back to the watch face.
+        lifecycle.addObserver(AmbientLifecycleObserver(this, object : AmbientLifecycleObserver.AmbientLifecycleCallback {}))
         setContent {
             val state by SensingStateHolder.state.collectAsStateWithLifecycle()
             var logRawAccelChoice by rememberSaveable { mutableStateOf(AccelConfig().logRawAccel) }
@@ -110,9 +115,10 @@ class MainActivity : ComponentActivity() {
                     // Under the alarm, so I'm awake leads to "Record your dream"; an open report stays open.
                     LaunchedEffect(ringing) { if (ringing != null && page != Page.REPORT) page = Page.MAIN }
                     val stop = {
-                        // Closing too: an open app would start waiting again the next time it resumes.
+                        // Closing too: an open app would start waiting again the next time it resumes. The whole task,
+                        // so an older copy of this screen underneath cannot resume and start waiting.
                         HealthTrackingForegroundService.stop(this@MainActivity)
-                        finish()
+                        finishAndRemoveTask()
                     }
                     Box(Modifier.fillMaxSize()) {
                         SwipeToDismissBox(
@@ -145,7 +151,14 @@ class MainActivity : ComponentActivity() {
                                     onSaved = { SensingStateHolder.update { it.copy(reportAfter = null) } },
                                     onDone = { page = Page.MAIN },
                                 )
-                                Page.END_NIGHT -> EndNightScreen(onEnd = stop, onKeep = { page = Page.MAIN })
+                                Page.END_NIGHT -> EndNightScreen(
+                                    alarmsAhead = remember {
+                                        val alarms = WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity))
+                                        alarmsAhead(alarms, System.currentTimeMillis(), ZoneId.systemDefault())
+                                    },
+                                    onEnd = stop,
+                                    onKeep = { page = Page.MAIN },
+                                )
                             }
                         }
                         if (state.guideRunning && ringing == null) {
@@ -496,12 +509,14 @@ private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (Sensor
 
 /** Asks before Stop recording ends the night and closes the app; Keep recording, or swiping back, goes back. */
 @Composable
-private fun EndNightScreen(onEnd: () -> Unit, onKeep: () -> Unit) {
+private fun EndNightScreen(alarmsAhead: String?, onEnd: () -> Unit, onKeep: () -> Unit) {
     val listState = rememberTransformingLazyColumnState()
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item { BigLine("End the night?") }
             item { Line("Recording stops and the app closes.") }
+
+            alarmsAhead?.let { item { Line("${it.replaceFirstChar(Char::uppercase)} won't ring.") } }
             item {
                 Button(
                     onClick = onKeep,

@@ -79,6 +79,7 @@ dependencies {
     implementation(libs.androidx.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.wear.ongoing)
+    implementation(libs.androidx.wear)
     implementation(libs.play.services.wearable)
     implementation(libs.kotlinx.coroutines.play.services)
 

@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
     // Lint sees the androidx.fragment 1.1 that play-services pulls in; its bug is in FragmentActivity, not used here.
     @SuppressLint("InvalidFragmentVersionForActivityResult")
     private val askNotifications =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { startSessionService() }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { startSessionService(quickTest) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
@@ -98,7 +98,8 @@ class MainActivity : ComponentActivity() {
                             when (shown) {
                                 0 -> TonightScreen(
                                     viewModel,
-                                    onStart = ::start,
+                                    onStart = { start(quick = false) },
+                                    onQuickTest = { start(quick = true) },
                                     onStop = ::stop,
                                     onAllowBattery = ::allowBattery,
                                     onRaiseVolume = ::raiseVolume,
@@ -121,7 +122,10 @@ class MainActivity : ComponentActivity() {
         viewModel.showBattery(batteryUnrestricted())
     }
 
-    private fun start() {
+    private var quickTest = false
+
+    private fun start(quick: Boolean) {
+        quickTest = quick
         // The phone's volume and DND only matter when the phone speaker plays the cues.
         if (viewModel.ui.value.config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER) {
             // A session calibrated at index 0 would scale later cues to silence (§7.7 step 5); the button is off then.
@@ -130,15 +134,17 @@ class MainActivity : ComponentActivity() {
             if (dndEffect(filter, categories) == DndEffect.TOTAL_SILENCE) return // §7.7: blocks Start; Tonight says why
         }
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            startSessionService()
+            startSessionService(quick)
         } else {
             askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
     // Called while this activity is visible, which the foreground service start needs (§14.3).
-    private fun startSessionService() {
-        startForegroundService(Intent(this, NapSessionService::class.java))
+    private fun startSessionService(quick: Boolean) {
+        startForegroundService(
+            Intent(this, NapSessionService::class.java).putExtra(NapSessionService.EXTRA_QUICK_TEST, quick),
+        )
     }
 
     private fun stop() {

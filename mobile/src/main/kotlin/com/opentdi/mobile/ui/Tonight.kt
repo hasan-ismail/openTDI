@@ -11,12 +11,15 @@ import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.time.clock12
 import java.util.Locale
 
+/** Only the falling-asleep cue loops are over, not the night: "Session complete" read as the watch's end too. */
+const val CUES_DONE = "Cues done for tonight"
+
 /** The Tonight card's big line and the cycle line under it, for [status] at [nowMs] (elapsedRealtime). */
 fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean): Pair<String, String?> {
     val left = status.nextEventAtRealtimeMs?.let { clock(it - nowMs) }
     val headline = if (!status.running) {
         when {
-            status.state == TdiState.SESSION_COMPLETE -> "Session complete"
+            status.state == TdiState.SESSION_COMPLETE -> CUES_DONE
             ready -> "Ready"
             else -> "Not ready yet"
         }
@@ -33,7 +36,7 @@ fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean): Pair<String
             TdiState.WAKING_USER, TdiState.RE_INCUBATING -> "Cue playing"
             TdiState.RECORDING_DREAM -> left?.let { "Listening for your answer — $it left" } ?: "Listening for your answer"
             TdiState.PAUSED -> "Paused"
-            TdiState.SESSION_COMPLETE -> "Session complete"
+            TdiState.SESSION_COMPLETE -> CUES_DONE
         }
     }
     val n = currentCycle(status)
@@ -115,7 +118,15 @@ private fun span(s: Int) = when {
     else -> "${s / 60} min ${s % 60} s"
 }
 
-enum class Check { VOLUME, DND, BATTERY, CUES, TEST_CUE, WATCH, WATCH_BATTERY }
+enum class Check { TIMING, VOLUME, DND, BATTERY, CUES, TEST_CUE, WATCH, WATCH_BATTERY }
+
+/**
+ * Test timing: the first cue would come before anyone could be asleep. The owner's first two nights both ran on
+ * leftover Quick test timing (2026-10-27, 2026-10-28), so Start refuses it; Quick test runs once without saving.
+ */
+fun testTiming(config: SessionConfig) = config.timed.firstSleepMaxMin < REAL_FIRST_CUE_MIN
+
+private const val REAL_FIRST_CUE_MIN = 5 // GUESSED: Lucid night waits 10–15 min, Quick test 1
 
 /** One pre-flight line: [ok], or a problem said in [text]; a [blocking] problem keeps Start off. */
 data class CheckItem(val check: Check, val ok: Boolean, val text: String, val blocking: Boolean = false)
@@ -137,7 +148,20 @@ fun checklist(
     onWatch: Boolean = false,
     watchBatteryPct: Int? = null, // null while the watch does not answer
     alarmsOn: Boolean = false, // a wake-up or WBTB alarm, which rings on the watch
+    firstCueMin: Int? = null, // set when the timing is test timing ([testTiming])
 ): List<CheckItem> = buildList {
+    if (firstCueMin != null) {
+        val wait = if (firstCueMin == 1) "1 minute" else "$firstCueMin minutes"
+        add(
+            CheckItem(
+                Check.TIMING,
+                false,
+                "This is test timing: the first cue comes after $wait and the cues end soon after. Use Lucid " +
+                    "night for a real night.",
+                blocking = true,
+            ),
+        )
+    }
     val needed = onWatch || alarmsOn
     val why = when {
         onWatch -> " It plays tonight's cues."

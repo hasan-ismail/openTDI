@@ -52,6 +52,7 @@ import com.opentdi.shared.model.PromptCue
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SessionEndReason
 import com.opentdi.shared.model.TdiState
+import com.opentdi.mobile.ui.TimingPreset
 import com.opentdi.shared.model.newSessionId
 import com.opentdi.shared.timed.StillnessGate
 import com.opentdi.shared.timed.TimedCueScheduler
@@ -88,7 +89,7 @@ class NapSessionService : LifecycleService() {
             session?.stop() ?: stopSelf()
         } else {
             startForeground(NOTIFICATION_ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-            if (session == null) session = open()
+            if (session == null) session = open(quickTest = intent?.getBooleanExtra(EXTRA_QUICK_TEST, false) == true)
         }
         return START_NOT_STICKY // a nap never restarts by itself after the process died
     }
@@ -101,8 +102,9 @@ class NapSessionService : LifecycleService() {
         super.onDestroy()
     }
 
-    private fun open(): Session? {
-        val config = loadConfig(this)
+    /** [quickTest]: one run on Quick test timing, which is never saved, so a real night cannot start on it. */
+    private fun open(quickTest: Boolean): Session? {
+        val config = loadConfig(this).let { if (quickTest) TimingPreset.QUICK_TEST.applyTo(it) else it }
         val invalid = config.validate().firstOrNull()
         if (invalid != null) return refuse("Invalid settings: $invalid")
         // The volume guard reads the media index of the current media device, which must be the cue's speaker.
@@ -376,6 +378,7 @@ class NapSessionService : LifecycleService() {
 
     companion object {
         const val ACTION_STOP = "com.opentdi.mobile.action.STOP"
+        const val EXTRA_QUICK_TEST = "quickTest"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "session"
         private const val TICK_MS = 250L
