@@ -103,7 +103,7 @@ private fun StreamStatus(receivedAtMs: Long?, status: SensorStatus?) {
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.tertiary,
             )
-            Help("It starts when you tap Start session, or Start recording on the watch.")
+            Help("It starts when you tap Start the night, or Start recording on the watch.")
         } else {
             Text(sensorWords(status), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
         }

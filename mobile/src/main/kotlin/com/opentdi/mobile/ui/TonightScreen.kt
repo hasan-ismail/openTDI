@@ -11,12 +11,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,14 +33,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -62,6 +63,8 @@ import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.mobile.MainViewModel
+import com.opentdi.mobile.markTipsSeen
+import com.opentdi.mobile.tipsSeen
 import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.cues.cueSetProblem
 import com.opentdi.mobile.link.WatchTelemetry
@@ -69,7 +72,6 @@ import com.opentdi.mobile.session.SessionMonitor
 import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.audio.alarmsAhead
 import com.opentdi.shared.config.validate
-import com.opentdi.shared.config.warnings
 import com.opentdi.shared.model.SessionConfig
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -108,11 +110,11 @@ fun TonightScreen(
         }
     }
     val config = ui.config
+    val context = LocalContext.current
     val errors = remember(config) { config.validate() }
-    val warnings = remember(config) { config.warnings() }
     val cueProblem = remember(config, ui.cues) { cueSetProblem(ui.cues, config) }
     val streaming = live.receivedAtMs?.let { now - it <= STALE_MS } == true
-    // null until the watch's first answer (up to 5 s), so its row does not flash "Can't reach the watch" on opening.
+    // null until the watch's first answer (up to 5 s), so nothing says "Can't reach the watch" on opening.
     val watchAnswer by remember(viewModel) { viewModel.watchStatus.map { Optional.ofNullable(it) } }
         .collectAsStateWithLifecycle(initialValue = null)
     val watchStatus = watchAnswer?.orElse(null)
@@ -126,18 +128,18 @@ fun TonightScreen(
         alarmsOn = config.alarms.wakeEnabled || config.alarms.wbtbEnabled,
         firstCueMin = config.timed.firstSleepMaxMin.takeIf { testTiming(config) },
     )
-    val ready = errors.isEmpty() && checks.none { it.blocking && !it.ok }
-    // A Quick test runs on its own timing, so the night's test-timing row does not hold it back.
-    val quickReady = errors.isEmpty() && checks.none { it.blocking && !it.ok && it.check != Check.TIMING }
-    var confirmStopWatch by remember { mutableStateOf(false) }
     val idle = !status.running && !ui.preparing && !ui.testing
     val running = status.running
-    // Shown rows: no watch row before its first answer, and none a running session cannot act on.
-    val shownChecks = checks.filterNot {
-        (checkingWatch && it.check == Check.WATCH) ||
-            (running && (it.check == Check.WATCH_BATTERY || it.check == Check.TEST_CUE))
+    // What Start stops on; a Quick test runs on its own timing, so test timing does not hold it back.
+    fun problems(quick: Boolean) = checks.filter {
+        !it.ok && !(quick && it.check == Check.TIMING) && !(checkingWatch && it.check == Check.WATCH)
     }
-    val toFix = errors.size + shownChecks.count { it.blocking && !it.ok }
+    val ready = errors.isEmpty() && !checkingWatch && problems(quick = false).isEmpty()
+    // The pre-flight popup (owner, 2026-10-29: the checklist was "so ugly ... make it a one time popup"): Start opens
+    // it only when something needs attention, listing just that. null = closed, else whether it is for a Quick test.
+    var startAsk by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    var confirmStopWatch by rememberSaveable { mutableStateOf(false) }
+    var tipsOpen by rememberSaveable { mutableStateOf(!tipsSeen(context)) }
 
     fun fix(check: Check): Pair<String, () -> Unit>? {
         val fix = when (check) {
@@ -157,123 +159,141 @@ fun TonightScreen(
         return fix?.takeIf { fixEnabled }
     }
 
+    fun begin(quick: Boolean) = if (quick) onQuickTest() else onStart()
+    fun tryStart(quick: Boolean) {
+        if (errors.isEmpty() && !checkingWatch && problems(quick).isEmpty()) begin(quick) else startAsk = quick
+    }
+
     Page("Tonight") {
         MoonHeader(remember { System.currentTimeMillis() })
         StatusCard(status, now, ready, watchRecording = watch == WatchState.RECORDING)
-        if (!running) alarmsLine(config.alarms)?.let { Help(it) }
         if (running) {
             OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth().height(64.dp)) {
                 Text("Stop session", style = MaterialTheme.typography.titleLarge)
             }
-        } else {
-            StartButton(idle && ready, onStart)
-            // A disabled button is barely visible at night, so the reason sits right under it.
-            if (!ready) {
-                Text(
-                    when (toFix) {
-                        0 -> "Checking the watch…" // only the watch's first answer is missing
-                        1 -> "Fix 1 item below to start"
-                        else -> "Fix $toFix items below to start"
-                    },
-                    color = MaterialTheme.colorScheme.tertiary,
-                )
+            // Only what can go wrong while it runs, such as the watch out of reach or the volume turned off.
+            val during = checks.filter {
+                !it.ok && it.check !in NOT_WHILE_RUNNING && !(checkingWatch && it.check == Check.WATCH)
             }
+            AnimatedVisibility(during.isNotEmpty(), enter = Appear, exit = Disappear) {
+                Section(null) { during.forEach { CheckRow(it, fix(it.check)) } }
+            }
+        } else {
+            StartButton(enabled = idle, glow = idle && ready) { tryStart(quick = false) }
+            if (ui.preparing) Help(ui.prepareStatus)
             // The watch records the whole night, past the end of the cues: in the morning it is stopped here.
             if (watch == WatchState.RECORDING) {
                 OutlinedButton(onClick = { confirmStopWatch = true }, modifier = Modifier.fillMaxWidth()) {
                     Text("Stop watch recording")
                 }
             }
-            if (confirmStopWatch) {
-                // In the night this button sits right under "Cues done": stopping also cancels the alarms.
-                val ahead = alarmsAhead(config.alarms, System.currentTimeMillis(), ZoneId.systemDefault())
-                AlertDialog(
-                    onDismissRequest = { confirmStopWatch = false },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            confirmStopWatch = false
-                            viewModel.stopWatch()
-                        }) { Text("Stop recording") }
-                    },
-                    dismissButton = { TextButton(onClick = { confirmStopWatch = false }) { Text("Keep recording") } },
-                    title = { Text("End the night on the watch?") },
-                    text = {
-                        Text(
-                            "The watch stops recording." +
-                                (ahead?.let { " ${it.replaceFirstChar(Char::uppercase)} won't ring." } ?: ""),
-                        )
-                    },
-                )
+            NightPlanCard(config, ZonedDateTime.now())
+            InstructionsCard(config)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { tryStart(quick = true) }, enabled = idle, modifier = Modifier.weight(1f)) {
+                    Text("Quick test (5 min)")
+                }
+                OutlinedButton(onClick = { tipsOpen = true }, modifier = Modifier.weight(1f)) { Text("Bedtime tips") }
             }
         }
-        AnimatedVisibility(!running || shownChecks.any { !it.ok }, enter = Appear, exit = Disappear) {
-            Section("Before you sleep") {
-                // Problems first; a fixed one ticks, then folds away into the ready list.
-                for (item in shownChecks) {
-                    key(item.check) {
-                        AnimatedVisibility(
-                            !item.ok,
-                            enter = expandVertically() + fadeIn(tween(500)),
-                            exit = fadeOut(tween(300, delayMillis = 700)) + shrinkVertically(tween(300, delayMillis = 700)),
-                        ) { CheckRow(item, fix(item.check)) }
+    }
+
+    startAsk?.let { quick ->
+        val left = problems(quick)
+        val blocked = !idle || errors.isNotEmpty() || checkingWatch || left.any { it.blocking }
+        AlertDialog(
+            onDismissRequest = { startAsk = null },
+            title = { Text(if (quick) "Before the quick test" else "Before you start") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    errors.forEach { Text(settingsProblem(it), color = MaterialTheme.colorScheme.error) }
+                    if (checkingWatch) Text("Checking the watch…")
+                    left.forEach { CheckRow(it, fix(it.check)) }
+                    if (left.any { it.check == Check.BATTERY } && ui.batteryManual) {
+                        Help("Settings > Apps > OpenTDI > Battery > Unrestricted")
+                    }
+                    when {
+                        ui.preparing -> Help(ui.prepareStatus)
+                        ui.testing -> Help("Playing the test cue…")
+                    }
+                    ui.cueMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    when {
+                        left.isEmpty() && !blocked -> Text("All set.", color = OK_COLOR)
+                        !blocked -> Help("You can start anyway; fixing these makes the night more reliable.")
                     }
                 }
-                val okItems = checks.filter { it.ok }
-                if (!running) {
-                    AnimatedVisibility(ready && okItems.size == checks.size, enter = Appear, exit = Disappear) {
-                        Text("All set for tonight", style = MaterialTheme.typography.titleMedium, color = OK_COLOR)
-                    }
-                    if (okItems.isNotEmpty()) Fold("✓ ${okItems.size} ready") { okItems.forEach { CheckRow(it, null) } }
-                }
-                if (!ui.batteryUnrestricted && ui.batteryManual) {
-                    Help("Settings > Apps > OpenTDI > Battery > Unrestricted")
-                }
-                when {
-                    ui.preparing -> Help(ui.prepareStatus)
-                    ui.testing -> Help("Playing the test cue…")
-                }
-                ui.cueMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                errors.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
-                warnings.forEach { Text(it, color = MaterialTheme.colorScheme.tertiary) }
-            }
-        }
-        AnimatedVisibility(!running, enter = Appear, exit = Disappear) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                NightPlanCard(config, ZonedDateTime.now())
-                RoutineCard()
-                PresetCard(viewModel, enabled = idle, quickReady = idle && quickReady, onQuickTest = onQuickTest)
-                InstructionsCard(config)
-            }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    startAsk = null
+                    begin(quick)
+                }, enabled = !blocked) { Text(if (left.isEmpty()) "Start" else "Start anyway") }
+            },
+            dismissButton = { TextButton(onClick = { startAsk = null }) { Text("Not now") } },
+        )
+    }
+    if (confirmStopWatch) {
+        // At night this button sits right under "Cues done": stopping also cancels the alarms.
+        val ahead = alarmsAhead(config.alarms, System.currentTimeMillis(), ZoneId.systemDefault())
+        AlertDialog(
+            onDismissRequest = { confirmStopWatch = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmStopWatch = false
+                    viewModel.stopWatch()
+                }) { Text("Stop recording") }
+            },
+            dismissButton = { TextButton(onClick = { confirmStopWatch = false }) { Text("Keep recording") } },
+            title = { Text("End the night on the watch?") },
+            text = {
+                Text("The watch stops recording." + (ahead?.let { " ${it.replaceFirstChar(Char::uppercase)} won't ring." } ?: ""))
+            },
+        )
+    }
+    if (tipsOpen) {
+        BedtimeTipsDialog {
+            markTipsSeen(context)
+            tipsOpen = false
         }
     }
 }
 
-/** Start, with a slow breathing halo while it can be tapped (composed only then, so it costs nothing otherwise). */
+/** Checks a running session cannot act on, or that only matter before it starts. */
+private val NOT_WHILE_RUNNING = setOf(Check.TIMING, Check.TEST_CUE, Check.WATCH_BATTERY)
+
+/** A settings error ([validate]) in plain words; the theme is the one a user can easily get wrong. */
+private fun settingsProblem(error: String) = if (error.startsWith("theme")) {
+    "Type a dream theme of up to 60 characters in Settings."
+} else {
+    "A setting is out of range ($error). Change it in Settings under Show advanced settings."
+}
+
+/** Start, with a slow breathing halo when nothing needs attention (composed only then, so it costs nothing otherwise). */
 @Composable
-private fun StartButton(ready: Boolean, onStart: () -> Unit) {
-    val glow = if (ready) {
+private fun StartButton(enabled: Boolean, glow: Boolean, onStart: () -> Unit) {
+    val halo = if (glow) {
         rememberInfiniteTransition(label = "start").animateFloat(
             0f, 1f, infiniteRepeatable(tween(5000, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "glow",
         )
     } else {
         null
     }
-    val halo = MaterialTheme.colorScheme.primary
+    val color = MaterialTheme.colorScheme.primary
     Button(
         onClick = onStart,
-        enabled = ready,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth().height(64.dp).drawBehind {
-            val v = glow?.value ?: 0f // read here, so only the drawing updates each frame
+            val v = halo?.value ?: 0f // read here, so only the drawing updates each frame
             if (v > 0f) {
                 val g = 8.dp.toPx() * v
                 drawRoundRect(
-                    halo, Offset(-g, -g), Size(size.width + 2 * g, size.height + 2 * g),
+                    color, Offset(-g, -g), Size(size.width + 2 * g, size.height + 2 * g),
                     CornerRadius(size.height / 2 + g), alpha = 0.30f * (1f - v),
                 )
             }
         },
     ) {
-        Text("Start session", style = MaterialTheme.typography.titleLarge)
+        Text("Start the night", style = MaterialTheme.typography.titleLarge)
     }
 }
 
@@ -364,19 +384,6 @@ private fun CheckRow(item: CheckItem, fix: Pair<String, () -> Unit>?) {
                 Text(fix.first)
             }
         }
-    }
-}
-
-@Composable
-private fun PresetCard(viewModel: MainViewModel, enabled: Boolean, quickReady: Boolean, onQuickTest: () -> Unit) {
-    val ui by viewModel.ui.collectAsStateWithLifecycle()
-    Section("Timing: ${presetOf(ui.config)?.label ?: "Custom"}") {
-        PresetButtons(ui.config, enabled, viewModel::edit)
-        Help(timingSummary(ui.config))
-        OutlinedButton(onClick = onQuickTest, enabled = quickReady, modifier = Modifier.fillMaxWidth()) {
-            Text("Quick test now (about 5 min)")
-        }
-        Help("Runs once on short timing to try it out. Tonight's timing stays as it is.")
     }
 }
 

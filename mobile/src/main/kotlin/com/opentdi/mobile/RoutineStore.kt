@@ -1,16 +1,15 @@
 package com.opentdi.mobile
 
 import android.content.Context
-import java.time.Instant
-import java.time.ZoneId
 
 /** One step of the bedtime routine: [whenText] relative to bedtime, the step, and why, from lucid_induction.md §7. */
 data class RoutineStep(val id: String, val whenText: String, val text: String, val why: String)
 
 /**
- * The bedtime routine (owner, 2026-10-28: "a checklist like watch battery at 100 and a warm shower before bed").
+ * The bedtime routine (owner, 2026-10-28: "a checklist like watch battery at 100 and a warm shower before bed"), shown
+ * as tips since 2026-10-29 ("the checklist is so ugly ... make it a one time popup").
  * Evidence and sources: docs/references/lucid_induction.md §7 (about falling asleep and REM, not lucidity itself).
- * The watch battery is also checked automatically in Before you sleep.
+ * The watch battery is also checked when Start is tapped.
  */
 val ROUTINE = listOf(
     RoutineStep(
@@ -46,8 +45,9 @@ val ROUTINE = listOf(
     RoutineStep(
         "aod",
         "Before bed",
-        "Turn off the watch's Always On Display",
-        "A lit watch face all night drains the battery the recording needs (Settings > Display on the watch).",
+        "Keep the watch's Always On Display on",
+        "OpenTDI then stays on the watch screen all night, dimmed, instead of going back to the watch face " +
+            "(Settings > Display on the watch).",
     ),
     RoutineStep(
         "dim",
@@ -100,23 +100,12 @@ val ROUTINE = listOf(
 )
 
 private const val PREFS = "routine"
-private const val KEY_NIGHT = "night"
-private const val KEY_DONE = "done"
+private const val KEY_TIPS_SEEN = "tipsSeen"
 
-/** The evening a time belongs to: noon to noon, so an evening and the night after it share one checklist. */
-fun nightOf(epochMs: Long, zone: ZoneId): String =
-    Instant.ofEpochMilli(epochMs - 12 * 3_600_000L).atZone(zone).toLocalDate().toString()
+/** True once the bedtime tips were shown: they open by themselves only the first time. */
+fun tipsSeen(context: Context): Boolean =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_TIPS_SEEN, false)
 
-/** The steps ticked tonight; a new evening starts empty. */
-fun loadRoutine(context: Context, nowMs: Long = System.currentTimeMillis()): Set<String> {
-    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    if (prefs.getString(KEY_NIGHT, null) != nightOf(nowMs, ZoneId.systemDefault())) return emptySet()
-    return prefs.getStringSet(KEY_DONE, emptySet()).orEmpty()
-}
-
-fun saveRoutine(context: Context, done: Set<String>) {
-    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-        .putString(KEY_NIGHT, nightOf(System.currentTimeMillis(), ZoneId.systemDefault()))
-        .putStringSet(KEY_DONE, done)
-        .apply()
+fun markTipsSeen(context: Context) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_TIPS_SEEN, true).apply()
 }

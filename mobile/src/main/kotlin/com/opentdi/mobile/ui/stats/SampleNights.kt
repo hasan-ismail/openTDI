@@ -1,6 +1,5 @@
 package com.opentdi.mobile.ui.stats
 
-import com.opentdi.mobile.ROUTINE
 import com.opentdi.mobile.stats.NightRow
 import com.opentdi.mobile.stats.PhoneNight
 import com.opentdi.shared.stats.AlarmOutcome
@@ -166,8 +165,7 @@ fun sampleNights(today: LocalDate, zone: ZoneId, count: Int = 120, seed: Int = 2
         } else {
             null
         }
-        val routine = if (chance(0.7f)) 3 + r.nextInt(ROUTINE.size - 2) else null
-        rows += NightRow(night, summary, phone, routine, routine?.let { ROUTINE.size })
+        rows += NightRow(night, summary, phone, null, null) // the routine is no longer ticked (2026-10-29)
     }
     return rows.reversed()
 }

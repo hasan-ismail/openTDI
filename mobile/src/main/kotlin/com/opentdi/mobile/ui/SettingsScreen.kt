@@ -402,7 +402,7 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
     val alarms = config.alarms
     fun change(transform: (AlarmConfig) -> AlarmConfig) = edit { it.copy(alarms = transform(it.alarms)) }
     Section("Alarms (on the watch)") {
-        Help("They ring on the watch while it records. Start session sends them to the watch.")
+        Help("They ring on the watch while it records. Start the night sends them to the watch.")
         SwitchRow("Wake-up alarm", alarms.wakeEnabled, enabled) { on -> change { it.copy(wakeEnabled = on) } }
         if (alarms.wakeEnabled) {
             TimeRow("Wake up at", alarms.wakeAtMin, enabled) { m -> change { it.copy(wakeAtMin = m) } }

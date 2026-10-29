@@ -13,8 +13,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.opentdi.shared.audio.nextAlarmAt
 import com.opentdi.shared.model.SessionConfig
+import com.opentdi.shared.time.clock12
 import java.time.ZonedDateTime
-import java.util.Locale
 
 /** One part of tonight's plan, in minutes from now. */
 data class PlanMark(val label: String, val fromMin: Int, val toMin: Int = fromMin)
@@ -31,9 +31,9 @@ fun nightPlan(c: SessionConfig, now: ZonedDateTime): List<PlanMark> {
     )
 }
 
-/** "Cues from about 23:20 until 2:10 at the latest · early wake 4:30 · wake-up 7:00" for [nightPlan]. */
+/** "Cues from about 11:20 PM until 2:10 AM at the latest · early wake 4:30 AM · wake-up 7 AM" for [nightPlan]. */
 fun nightPlanLine(c: SessionConfig, now: ZonedDateTime): String {
-    fun at(min: Int) = now.plusMinutes(min.toLong()).let { String.format(Locale.ROOT, "%d:%02d", it.hour, it.minute) }
+    fun at(min: Int) = now.plusMinutes(min.toLong()).let { clock12(it.hour * 60 + it.minute) }
     return nightPlan(c, now).joinToString(" · ") {
         when (it.label) {
             CUES -> "Cues from about ${at(it.fromMin)} until ${at(it.toMin)} at the latest"

@@ -163,9 +163,9 @@ private fun StepPage(
             Step.FIRST_NIGHT -> Section(null) {
                 Text("Every night:", style = MaterialTheme.typography.titleMedium)
                 Bullets(
-                    "Go through the Bedtime routine on the Tonight tab.",
+                    "Read the Bedtime tips on the Tonight tab once.",
                     "Open OpenTDI on the watch: it waits for the phone.",
-                    "Tap Start session on the phone, lie down and let go.",
+                    "Tap Start the night on the phone, lie down and let go. If anything needs fixing first, it tells you.",
                     "In the morning, tell the watch your dream and answer its few questions.",
                 )
                 Help("Give it a few weeks: lucid dreams come on some nights, not every night.")

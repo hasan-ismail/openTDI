@@ -25,7 +25,7 @@ class TonightTest {
     @Test
     fun statusLines_sayWhatHappensNext() {
         assertEquals("Ready" to null, statusLines(SessionStatus(), NOW, ready = true))
-        assertEquals("Not ready yet" to null, statusLines(SessionStatus(), NOW, ready = false))
+        assertEquals("Almost ready" to null, statusLines(SessionStatus(), NOW, ready = false))
         assertEquals(
             "Waiting — first cue in 12:30" to "Cycle 1 of 4",
             statusLines(running(TdiState.AWAKE_INCUBATING, 750_000), NOW, ready = true),
@@ -122,6 +122,7 @@ class TonightTest {
             .singleOrNull { it.check == Check.WATCH_BATTERY }
         assertNull(battery(null)) // unknown while the watch is not streaming
         assertTrue(battery(100)!!.ok)
+        assertTrue(battery(80)!!.ok) // enough for a night
         val low = battery(62)!!
         assertTrue(!low.ok && !low.blocking && "62%" in low.text)
     }
@@ -134,15 +135,6 @@ class TonightTest {
     }
 
     @Test
-    fun alarmsLine_namesTheAlarmsThatAreOn() {
-        assertNull(alarmsLine(AlarmConfig()))
-        assertEquals(
-            "Watch alarms: WBTB 4:30 AM, wake up 7:05 AM",
-            alarmsLine(AlarmConfig(wakeEnabled = true, wakeAtMin = 425, wbtbEnabled = true, wbtbAtMin = 270)),
-        )
-    }
-
-    @Test
     fun nightPlan_wrapsPastMidnight() {
         val cfg = SessionConfig(alarms = AlarmConfig(wakeEnabled = true, wakeAtMin = 7 * 60))
         val zone = ZoneId.of("America/New_York")
@@ -150,12 +142,12 @@ class TonightTest {
         val plan = nightPlan(cfg, at23)
         assertEquals(PlanMark("wake-up", 480), plan.last()) // 23:00 to 7:00
         assertEquals(PlanMark("Cues", 10, 180), plan.first())
-        assertEquals("Cues from about 23:10 until 2:00 at the latest · wake-up 7:00", nightPlanLine(cfg, at23))
+        assertEquals("Cues from about 11:10 PM until 2 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, at23))
         assertEquals(PlanMark("wake-up", 480), nightPlan(cfg, at23.withSecond(30)).last()) // still 7:00, not 6:59
         // DST ends at 2:00 that night: 3 real hours end at 1:00, and 7:00 is 9 hours away.
         val fallBack = ZonedDateTime.of(2026, 10, 31, 23, 0, 0, 0, zone)
         assertEquals(PlanMark("wake-up", 540), nightPlan(cfg, fallBack).last())
-        assertEquals("Cues from about 23:10 until 1:00 at the latest · wake-up 7:00", nightPlanLine(cfg, fallBack))
+        assertEquals("Cues from about 11:10 PM until 1 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, fallBack))
     }
 
     private companion object {

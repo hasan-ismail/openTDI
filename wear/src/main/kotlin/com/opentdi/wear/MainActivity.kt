@@ -372,16 +372,18 @@ private fun MainScreen(
             if (waitingOnly) {
                 item { Canvas(Modifier.fillMaxWidth().height(56.dp)) { drawMoon(moon) } } // tonight's real moon phase
                 item { BigLine("Ready for tonight") }
-                item { Line("Tap Start session on your phone. The watch starts with it.") }
+                item { Line("Tap Start the night on your phone. The watch starts with it.") }
                 item {
                     val context = LocalContext.current
                     // Apps cannot read or change Always On Display, so the watch offers its display settings instead.
+                    // With it off the watch went back to the watch face during the night (owner, 2026-10-29); with it
+                    // on, this always-on app stays on the dim screen.
                     Button(
                         onClick = { openDisplaySettings(context) },
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Turn off Always On Display") },
-                        secondaryLabel = { Text("Saves watch battery overnight") },
+                        label = { Text("Keep Always On Display on") },
+                        secondaryLabel = { Text("So OpenTDI stays on screen all night") },
                     )
                 }
             } else if (!state.running) {

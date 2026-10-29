@@ -1,6 +1,5 @@
 package com.opentdi.mobile.ui
 
-import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.cues.cueText
 import com.opentdi.shared.model.PromptCue
@@ -8,7 +7,6 @@ import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.WatchState
-import com.opentdi.shared.time.clock12
 import java.util.Locale
 
 /** Only the falling-asleep cue loops are over, not the night: "Session complete" read as the watch's end too. */
@@ -21,7 +19,7 @@ fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean): Pair<String
         when {
             status.state == TdiState.SESSION_COMPLETE -> CUES_DONE
             ready -> "Ready"
-            else -> "Not ready yet"
+            else -> "Almost ready"
         }
     } else {
         when (status.state) {
@@ -216,7 +214,7 @@ fun checklist(
         when (watch) {
             WatchState.RECORDING -> CheckItem(Check.WATCH, true, "Watch is recording", blocking = needed)
             WatchState.WAITING ->
-                CheckItem(Check.WATCH, true, "Watch is ready: Start session starts it too", blocking = needed)
+                CheckItem(Check.WATCH, true, "Watch is ready: Start the night starts it too", blocking = needed)
             WatchState.IDLE -> CheckItem(
                 Check.WATCH,
                 false,
@@ -230,20 +228,14 @@ fun checklist(
         add(
             CheckItem(
                 Check.WATCH_BATTERY,
-                watchBatteryPct >= 100,
-                if (watchBatteryPct >= 100) "Watch battery is full" else
-                    "Watch battery is at $watchBatteryPct%. Charge it to 100% first: recording uses about 8% an hour.",
+                watchBatteryPct >= NIGHT_BATTERY_PCT,
+                if (watchBatteryPct >= NIGHT_BATTERY_PCT) "Watch battery is at $watchBatteryPct%" else
+                    "Watch battery is at $watchBatteryPct%. A night of recording takes about 70%, so charge it first.",
             ),
         )
     }
 }
 
-/** "Watch alarms: WBTB 4:30 AM, wake up 7 AM", or null when both are off. */
-fun alarmsLine(alarms: AlarmConfig): String? {
-    fun hhmm(m: Int) = clock12(m)
-    val parts = listOfNotNull(
-        "WBTB ${hhmm(alarms.wbtbAtMin)}".takeIf { alarms.wbtbEnabled },
-        "wake up ${hhmm(alarms.wakeAtMin)}".takeIf { alarms.wakeEnabled },
-    )
-    return if (parts.isEmpty()) null else "Watch alarms: " + parts.joinToString(", ")
-}
+// MEASURED: night 1 (2026-10-27) used about 7.5% an hour, so 9 h takes about 70%; 80 leaves a margin. Lower, Start asks
+// first: below 100 every night it would ask every night.
+private const val NIGHT_BATTERY_PCT = 80
