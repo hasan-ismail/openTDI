@@ -1,6 +1,8 @@
 package com.opentdi.wear.alarm
 
+import android.util.Log
 import java.io.File
+import java.io.IOException
 import com.opentdi.shared.audio.WavIo
 import android.content.Context
 import android.media.AudioAttributes
@@ -30,12 +32,21 @@ class AlarmPlayer(private val context: Context) {
      */
     fun start(tone: AlarmTone, volume: Float, gentle: Boolean, earbuds: Boolean = false) {
         stop()
+        // The vibration first: a sound the system refuses must leave the vibration, and the night's recording, running.
+        val effect = if (gentle) {
+            VibrationEffect.createWaveform(longArrayOf(0, 300, 2700), intArrayOf(0, 90, 0), 0)
+        } else {
+            VibrationEffect.createWaveform(longArrayOf(0, 500, 700), intArrayOf(0, 255, 0), 0)
+        }
+        vibrate(effect)
         val voice = if (tone == AlarmTone.SPOKEN) spokenLoop() else null
         // Without a voice from the phone yet, SPOKEN falls back to the melody.
         val loop = voice ?: alarmLoop(if (tone == AlarmTone.SPOKEN) AlarmTone.MELODY else tone, SAMPLE_RATE)
         val rate = if (voice != null) voiceRate else SAMPLE_RATE
-        if (loop.isNotEmpty()) {
-            track = AudioTrack.Builder()
+        if (loop.isEmpty()) return
+        var built: AudioTrack? = null
+        track = try {
+            AudioTrack.Builder()
                 .setAudioAttributes(ATTRIBUTES)
                 .setAudioFormat(
                     AudioFormat.Builder()
@@ -47,6 +58,7 @@ class AlarmPlayer(private val context: Context) {
                 .setTransferMode(AudioTrack.MODE_STATIC)
                 .setBufferSizeInBytes(loop.size * Float.SIZE_BYTES)
                 .build()
+                .also { built = it }
                 .apply {
                     write(loop, 0, loop.size, AudioTrack.WRITE_BLOCKING)
                     setLoopPoints(0, loop.size, -1)
@@ -54,13 +66,11 @@ class AlarmPlayer(private val context: Context) {
                     setVolume(volume)
                     play()
                 }
+        } catch (e: RuntimeException) { // e.g. UnsupportedOperationException while the audio server restarts
+            Log.w(TAG, "ALARM_SOUND_FAILED reason=${e.javaClass.simpleName}")
+            built?.release()
+            null
         }
-        val effect = if (gentle) {
-            VibrationEffect.createWaveform(longArrayOf(0, 300, 2700), intArrayOf(0, 90, 0), 0)
-        } else {
-            VibrationEffect.createWaveform(longArrayOf(0, 500, 700), intArrayOf(0, 255, 0), 0)
-        }
-        vibrate(effect)
     }
 
     fun setVolume(volume: Float) {
@@ -76,6 +86,8 @@ class AlarmPlayer(private val context: Context) {
         val audio = try {
             WavIo.read(file.readBytes())
         } catch (e: IllegalArgumentException) { // an unreadable file: the melody instead
+            return null
+        } catch (e: IOException) {
             return null
         }
         voiceRate = audio.sampleRate
@@ -113,6 +125,7 @@ class AlarmPlayer(private val context: Context) {
     companion object {
         /** The spoken wake-up, stored by WristSpeakerService when the phone sends it. */
         const val WAKE_VOICE_FILE = "wake_voice.wav"
+        private const val TAG = "OTDI.Audio"
         private const val SAMPLE_RATE = 24_000
         private val ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ALARM)

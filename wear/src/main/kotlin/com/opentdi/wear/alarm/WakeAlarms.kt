@@ -205,7 +205,7 @@ class WakeAlarms(
             log = { event, s, h, detail -> log(System.currentTimeMillis(), "WBTB", event, s, h, detail) },
         ) { at ->
             guide = null
-            lateCues?.arm(at)
+            if (ringing?.kind != "WAKE") lateCues?.arm(at) // stopped by the wake-up: the night is over
             SensingStateHolder.update { it.copy(guideRunning = false) }
         }
         if (guide == null) lateCues?.arm(buzz) // a clip went bad since the buzz: as without the guide
@@ -219,6 +219,9 @@ class WakeAlarms(
     }
 
     fun close() {
+        // The stop time, so a recording started again soon after keeps the night's start (nightStart).
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong(KEY_STOPPED, System.currentTimeMillis()).apply()
         player.stop()
         if (ringing != null) context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         lateCues?.close()
@@ -239,17 +242,26 @@ class WakeAlarms(
     private fun guideReady() = config.wbtbGuide && guideClipsPresent(context)
 
     private fun ring(nowMs: Long, kind: String, tone: AlarmTone, gentle: Boolean, stillness: Float?, hr: Float?) {
-        if (kind == "WAKE") { // the morning: no guide and no lucidity cue during the ring, the replay or the report
+        ringing = Ringing(kind, tone, nowMs) // first: a guide stopped below sees the wake-up and arms no cues
+        // The morning: no guide, no back-to-sleep buzz and no lucidity cue during the ring, the replay or the report,
+        // even when the wake-up comes within the WBTB's time awake.
+        if (kind == "WAKE") {
             guide?.stop(nowMs, stillness, hr)
             guideOfferedAt = null
+            backToSleepAt = null
             lateCues?.disarm()
         }
-        ringing = Ringing(kind, tone, nowMs)
         player.start(tone, if (config.rampS == 0) 1f else 0.05f, gentle, WatchOutputs.earbudsChosen(context))
         log(nowMs, kind, "RING", stillness, hr, "tone=$tone;alarm_volume=${player.alarmVolumeIndex()}")
         val left = if (kind == "WAKE") config.maxSnoozes - snoozes else 0
         SensingStateHolder.update {
-            it.copy(alarmRinging = kind, snoozesLeft = left, guideOffered = guideOfferedAt != null)
+            it.copy(
+                alarmRinging = kind,
+                snoozesLeft = left,
+                guideOffered = guideOfferedAt != null,
+                wbtbBackToSleepAtMs = backToSleepAt,
+                lateCuesTraining = it.lateCuesTraining && kind != "WAKE",
+            )
         }
         notifyRinging(kind, left > 0)
     }
@@ -305,9 +317,35 @@ class WakeAlarms(
         private const val NOTIFICATION_ID = 2
         private const val PREFS = "alarms"
         private const val KEY_CONFIG = "config"
+        private const val KEY_NIGHT_START = "nightStart"
+        private const val KEY_STOPPED = "stopped"
+        private const val SAME_NIGHT_GAP_MS = 2 * 3_600_000L // GUESSED: a restart within 2 h is the same night
 
         /** m:ss, or "—" when it never happened. */
         fun clock(ms: Long?): String = ms?.let { String.format(Locale.ROOT, "%d:%02d", it / 60_000, it / 1000 % 60) } ?: "—"
+
+        /**
+         * When tonight's sleep began, for the WBTB's "too early" check: the start of a recording, or the night's earlier
+         * one ([lastStartMs]) when it stopped ([lastStopMs]) less than [SAME_NIGHT_GAP_MS] before this one began. A
+         * night ended at 3 AM and started again at 3:10 still had its 23:00 start.
+         */
+        internal fun nightStart(recordingStartMs: Long, lastStartMs: Long?, lastStopMs: Long?): Long =
+            if (lastStartMs != null && lastStopMs != null && lastStartMs <= lastStopMs &&
+                recordingStartMs - lastStopMs in 0 until SAME_NIGHT_GAP_MS
+            ) {
+                lastStartMs
+            } else {
+                recordingStartMs
+            }
+
+        /** [nightStart] from the night saved by the previous recording; saves this one's start for the next. */
+        fun nightStart(context: Context, recordingStartMs: Long): Long {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            fun long(key: String) = prefs.getLong(key, -1).takeIf { it >= 0 }
+            val start = nightStart(recordingStartMs, long(KEY_NIGHT_START), long(KEY_STOPPED))
+            prefs.edit().putLong(KEY_NIGHT_START, start).remove(KEY_STOPPED).apply()
+            return start
+        }
 
         /** The alarms the phone sent with its last Start session; the defaults (both off) before any. */
         fun loadConfigJson(context: Context): String? =

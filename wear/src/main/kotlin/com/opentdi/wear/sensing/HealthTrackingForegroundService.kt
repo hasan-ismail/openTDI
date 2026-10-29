@@ -1,5 +1,6 @@
 package com.opentdi.wear.sensing
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -123,7 +124,8 @@ class HealthTrackingForegroundService : LifecycleService() {
         if (current == null) {
             val dir = File(filesDir, "sessions/${s.sessionId}")
             val recordingStart = now - (SystemClock.elapsedRealtime() - SensingStateHolder.state.value.startedElapsedMs)
-            alarms = WakeAlarms(applicationContext, dir, now, WakeAlarms.parse(json), recordingStart)
+            val nightStart = WakeAlarms.nightStart(applicationContext, recordingStart)
+            alarms = WakeAlarms(applicationContext, dir, now, WakeAlarms.parse(json), nightStart)
         } else if (json != alarmsJson) {
             current.update(WakeAlarms.parse(json), now) // keeps the night's state
         }
@@ -155,13 +157,8 @@ class HealthTrackingForegroundService : LifecycleService() {
             .setOngoing(true)
     }
 
-    private fun showNotification(text: String) =
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text).build())
-
-    private fun startInForeground(text: String) {
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Sensor logging", NotificationManager.IMPORTANCE_LOW),
-        )
+    /** The notification with its Ongoing Activity: a plain update would drop the way back from the watch face. */
+    private fun ongoing(text: String): Notification {
         val open =
             PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val notification = notification(text)
@@ -170,12 +167,22 @@ class HealthTrackingForegroundService : LifecycleService() {
             .setTouchIntent(open)
             .build()
             .apply(applicationContext)
+        return notification.build()
+    }
+
+    private fun showNotification(text: String) =
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, ongoing(text))
+
+    private fun startInForeground(text: String) {
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Sensor logging", NotificationManager.IMPORTANCE_LOW),
+        )
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
         } else {
             0
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification.build(), type)
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, ongoing(text), type)
         foreground = true
     }
 

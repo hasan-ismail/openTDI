@@ -152,6 +152,8 @@ class MainActivity : ComponentActivity() {
                                     onDone = { page = Page.MAIN },
                                 )
                                 Page.END_NIGHT -> EndNightScreen(
+                                    reportDue = state.reportAfter != null,
+                                    onReport = { page = Page.REPORT },
                                     alarmsAhead = remember {
                                         val alarms = WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity))
                                         alarmsAhead(alarms, System.currentTimeMillis(), ZoneId.systemDefault())
@@ -430,7 +432,7 @@ private fun MainScreen(
                     )
                 }
             }
-            if (state.sessionId != null) {
+            if (state.sessionId != null && awake) { // in ambient they would redraw the screen every second
                 item {
                     TileRow {
                         Tile("Heart", format("%.0f", packet?.hr), "bpm", Modifier.weight(1f))
@@ -511,7 +513,13 @@ private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (Sensor
 
 /** Asks before Stop recording ends the night and closes the app; Keep recording, or swiping back, goes back. */
 @Composable
-private fun EndNightScreen(alarmsAhead: String?, onEnd: () -> Unit, onKeep: () -> Unit) {
+private fun EndNightScreen(
+    reportDue: Boolean,
+    onReport: () -> Unit,
+    alarmsAhead: String?,
+    onEnd: () -> Unit,
+    onKeep: () -> Unit,
+) {
     val listState = rememberTransformingLazyColumnState()
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
@@ -519,6 +527,17 @@ private fun EndNightScreen(alarmsAhead: String?, onEnd: () -> Unit, onKeep: () -
             item { Line("Recording stops and the app closes.") }
 
             alarmsAhead?.let { item { Line("${it.replaceFirstChar(Char::uppercase)} won't ring.") } }
+            // The report waits only in memory: once the night ends and the app closes, it is gone.
+            if (reportDue) {
+                item { Line("Your dream isn't recorded yet.") }
+                item {
+                    Button(
+                        onClick = onReport,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Record your dream", Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                    )
+                }
+            }
             item {
                 Button(
                     onClick = onKeep,
