@@ -148,6 +148,7 @@ fun checklist(
     watchBatteryPct: Int? = null, // null while the watch does not answer
     alarmsOn: Boolean = false, // a wake-up or WBTB alarm, which rings on the watch
     firstCueMin: Int? = null, // set when the timing is test timing ([testTiming])
+    dndOff: Boolean = false, // Do Not Disturb is off, so notifications can wake the sleeper
 ): List<CheckItem> = buildList {
     if (firstCueMin != null) {
         val wait = if (firstCueMin == 1) "1 minute" else "$firstCueMin minutes"
@@ -176,15 +177,21 @@ fun checklist(
                 blocking = true,
             ),
         )
-        add(
-            CheckItem(
-                Check.DND,
-                dnd == DndEffect.PLAYS,
-                dnd.message ?: "Do Not Disturb lets cues play",
-                blocking = dnd == DndEffect.TOTAL_SILENCE,
-            ),
-        )
     }
+    // On either route: the phone's own Do Not Disturb settings matter to its speaker only, but its notifications (and
+    // the watch's, which follows the phone's Do Not Disturb when synced) can wake anyone.
+    add(
+        when {
+            !onWatch && dnd != DndEffect.PLAYS ->
+                CheckItem(Check.DND, false, dnd.message.orEmpty(), blocking = dnd == DndEffect.TOTAL_SILENCE)
+            dndOff -> CheckItem(
+                Check.DND,
+                false,
+                "Turn on Do Not Disturb so notifications don't wake you. Cues and alarms still play.",
+            )
+            else -> CheckItem(Check.DND, true, if (onWatch) "Do Not Disturb is on" else "Do Not Disturb lets cues play")
+        },
+    )
     add(
         CheckItem(
             Check.BATTERY,

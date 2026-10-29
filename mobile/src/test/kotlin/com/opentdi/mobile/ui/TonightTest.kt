@@ -103,7 +103,7 @@ class TonightTest {
     fun checklist_onTheWatch_skipsThePhoneSpeaker_andNeedsTheWatch() {
         // The phone muted in Total silence does not matter; an untested, silent watch does.
         val bad = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = false, watch = null, onWatch = true)
-        assertEquals(listOf(Check.BATTERY, Check.CUES, Check.TEST_CUE, Check.WATCH), bad.map { it.check })
+        assertEquals(listOf(Check.DND, Check.BATTERY, Check.CUES, Check.TEST_CUE, Check.WATCH), bad.map { it.check })
         assertEquals(setOf(Check.TEST_CUE, Check.WATCH), bad.filter { it.blocking && !it.ok }.map { it.check }.toSet())
         val good = checklist(true, DndEffect.TOTAL_SILENCE, true, null, tested = true, watch = WatchState.RECORDING, onWatch = true)
         assertTrue(good.all { it.ok })
@@ -115,6 +115,19 @@ class TonightTest {
         assertTrue(closed.single { it.check == Check.WATCH }.let { !it.ok && it.blocking })
         assertTrue(checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE).single { it.check == Check.WATCH }
             .let { !it.ok && !it.blocking }) // optional when the phone plays the cues
+    }
+
+    @Test
+    fun checklist_asksForDoNotDisturb_onEitherRoute_withoutBlocking() {
+        for (onWatch in listOf(false, true)) {
+            val off = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.RECORDING, onWatch, dndOff = true)
+                .single { it.check == Check.DND }
+            assertTrue(!off.ok && !off.blocking && "Do Not Disturb" in off.text)
+            assertTrue(
+                checklist(false, DndEffect.PLAYS, true, null, true, WatchState.RECORDING, onWatch)
+                    .single { it.check == Check.DND }.ok,
+            )
+        }
     }
 
     @Test

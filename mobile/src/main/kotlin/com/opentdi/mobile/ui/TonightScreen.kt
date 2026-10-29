@@ -99,6 +99,7 @@ fun TonightScreen(
     val status by SessionMonitor.status.collectAsStateWithLifecycle()
     val volumeOff by viewModel.mediaVolumeOff.collectAsStateWithLifecycle(initialValue = false)
     val dnd by viewModel.dnd.collectAsStateWithLifecycle(initialValue = DndEffect.PLAYS)
+    val dndOff by viewModel.dndOff.collectAsStateWithLifecycle(initialValue = false)
     val live by WatchTelemetry.live.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val now by produceState(SystemClock.elapsedRealtime()) {
@@ -127,6 +128,7 @@ fun TonightScreen(
         watchStatus?.batteryPct ?: live.watchBatteryPct.takeIf { streaming },
         alarmsOn = config.alarms.wakeEnabled || config.alarms.wbtbEnabled,
         firstCueMin = config.timed.firstSleepMaxMin.takeIf { testTiming(config) },
+        dndOff = dndOff,
     )
     val idle = !status.running && !ui.preparing && !ui.testing
     val running = status.running

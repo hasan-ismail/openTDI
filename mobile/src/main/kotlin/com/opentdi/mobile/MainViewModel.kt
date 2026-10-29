@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -102,14 +103,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }.distinctUntilChanged()
 
     /** How Do Not Disturb treats cues now (§7.7); polled while the screen collects it. */
-    val dnd: Flow<DndEffect> = flow {
+    private val dndNow: Flow<Pair<Int, Int>> = flow {
         val notifications = app.getSystemService(NotificationManager::class.java)
         while (true) {
-            val (filter, categories) = notifications.dndState()
-            emit(dndEffect(filter, categories))
+            emit(notifications.dndState())
             delay(1000)
         }
-    }.distinctUntilChanged()
+    }
+    val dnd: Flow<DndEffect> = dndNow.map { (filter, categories) -> dndEffect(filter, categories) }.distinctUntilChanged()
+
+    /** Do Not Disturb is off: notifications can buzz and light up the room (owner, 2026-10-29: they "got in the way"). */
+    val dndOff: Flow<Boolean> =
+        dndNow.map { it.first == NotificationManager.INTERRUPTION_FILTER_ALL }.distinctUntilChanged()
 
     /** The watch app's state and battery, asked every 5 s while the screen collects it; null when it does not answer. */
     val watchStatus: Flow<WatchStatus?> = flow {
