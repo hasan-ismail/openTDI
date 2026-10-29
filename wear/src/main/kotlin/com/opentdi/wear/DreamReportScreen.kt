@@ -83,6 +83,7 @@ private val LABELS = mapOf(
     "NONE" to "Nothing odd",
 )
 private const val RECALLED = 0 // its index in QUESTIONS, as the ones below
+private val ABOUT_THE_DREAM = 1..5 // knew, steered, nightmare, dreamed of waking, a cue in it (owner, 2026-10-28)
 private const val NIGHTMARE = 3
 private const val SLEEP_PARALYSIS = 8
 internal const val GUIDE_SLEEP = 10
@@ -90,18 +91,21 @@ internal const val ODD = 11
 internal const val SIGN_SEEN = 12
 
 /**
- * The indices of the questions this report asks, in order: the guide's after a guided WBTB ([guided]), what was odd
- * only about a remembered dream, the dream-sign question only when the phone sent signs ([signs]).
+ * The indices of the questions this report asks, in order: the guide's after a guided WBTB ([guided]); the questions
+ * about the dream itself only about a remembered one (no dream, or one without content, has nothing to judge); the
+ * dream-sign question only when the phone sent signs ([signs]).
  */
-internal fun shownQuestions(answers: Map<Int, String>, guided: Boolean, signs: Boolean): List<Int> =
-    QUESTIONS.indices.filter {
+internal fun shownQuestions(answers: Map<Int, String>, guided: Boolean, signs: Boolean): List<Int> {
+    val dream = answers[RECALLED] == "YES"
+    return QUESTIONS.indices.filter {
         when (it) {
+            in ABOUT_THE_DREAM, ODD -> dream
             GUIDE_SLEEP -> guided
-            ODD -> answers[RECALLED] == "YES"
-            SIGN_SEEN -> signs
+            SIGN_SEEN -> signs && dream
             else -> true
         }
     }
+}
 
 /**
  * The morning report (owner, 2026-10-28; lucid_induction.md §5.3), also after WBTB: say the dream into the watch, then

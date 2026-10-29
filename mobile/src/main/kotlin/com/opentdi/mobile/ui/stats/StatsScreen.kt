@@ -245,7 +245,7 @@ private fun Figures(nights: List<NightRow>, days: Int) {
             "Lucid moments",
             if (rated == 0) "—" else "$lucidMornings",
             if (rated == 0) "After your first morning report" else
-                "Of ${plural(rated, "rated morning")} (insight $LUCID_INSIGHT or more)",
+                "Of ${plural(rated, "reported morning")} (insight $LUCID_INSIGHT or more)",
             Modifier.weight(1f),
         )
     }

@@ -44,14 +44,15 @@ class DreamReportTest {
 
     @Test
     fun shownQuestions_askTheNewOnesOnlyWhenTheyApply() {
-        val always = (0..9).toList()
-        assertEquals(always, shownQuestions(emptyMap(), guided = false, signs = false))
-        assertEquals(always, shownQuestions(mapOf(0 to "WHITE"), guided = false, signs = false)) // no content to judge
-        assertEquals(always + ODD, shownQuestions(mapOf(0 to "YES"), guided = false, signs = false))
-        assertEquals(always + GUIDE_SLEEP, shownQuestions(emptyMap(), guided = true, signs = false))
-        assertEquals(always + SIGN_SEEN, shownQuestions(mapOf(0 to "NO"), guided = false, signs = true))
+        val noDream = listOf(0, 6, 7, 8, 9) // recall, a cue woke you, refreshed, sleep paralysis, unusual night
+        val dream = (0..9).toList()
+        assertEquals(noDream, shownQuestions(emptyMap(), guided = false, signs = false))
+        assertEquals(noDream, shownQuestions(mapOf(0 to "WHITE"), guided = false, signs = false)) // no content to judge
+        assertEquals(dream + ODD, shownQuestions(mapOf(0 to "YES"), guided = false, signs = false))
+        assertEquals(noDream + GUIDE_SLEEP, shownQuestions(emptyMap(), guided = true, signs = false))
+        assertEquals(noDream, shownQuestions(mapOf(0 to "NO"), guided = false, signs = true)) // no dream, no sign in it
         assertEquals(
-            always + listOf(GUIDE_SLEEP, ODD, SIGN_SEEN),
+            dream + listOf(GUIDE_SLEEP, ODD, SIGN_SEEN),
             shownQuestions(mapOf(0 to "YES"), guided = true, signs = true),
         )
     }
