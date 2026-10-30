@@ -40,11 +40,15 @@ class WakeAlarms(
     private var config: AlarmConfig,
     private val recordingStartMs: Long = startMs,
 ) {
+    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private var zone = ZoneId.systemDefault()
     private var wakeAt = if (config.wakeEnabled) nextAlarmAt(config.wakeAtMin, startMs, zone) else null
     private var firstRingAt: Long? = null // the first ring of a snoozed wake-up
-    private var wbtbAt = if (config.wbtbEnabled) nextAlarmAt(config.wbtbAtMin, startMs, zone) else null
-    private var wbtbDoneAt: Long? = null // the early wake-up or the wake-up rang: tonight's early wake-up is over
+    // Tonight's early wake-up is over: it rang, was skipped or started early, or the wake-up rang. Saved, so a
+    // recording started again tonight (the app died, End the night and a new Start) does not ring it again.
+    private var wbtbDoneAt: Long? = prefs.getLong(KEY_WBTB_DONE, -1).takeIf { it >= recordingStartMs }
+    private var wbtbSkippedAt: Long? = prefs.getLong(KEY_WBTB_SKIPPED, -1).takeIf { it >= recordingStartMs }
+    private var wbtbAt = if (config.wbtbEnabled) nextWbtbAt(config.wbtbAtMin, startMs, wbtbDoneAt, zone) else null
     private var aliveSavedAt = 0L
     private val player = AlarmPlayer(context)
     private var ringing: Ringing? = null
@@ -56,7 +60,7 @@ class WakeAlarms(
     private var guide: GuideRoutine? = null // the guided back-to-sleep, while it plays
 
     init {
-        publishWbtbSkip()
+        publishWbtb(startMs)
     }
 
     private fun makeLateCues(): LateCues? = if (config.wbtbEnabled && config.lateCues != LateCueMode.OFF) {
@@ -93,7 +97,7 @@ class WakeAlarms(
         if (!next.wakeEnabled && ringing?.kind == "WAKE") stop(nowMs, null, null)
         if (next.wbtbEnabled != old.wbtbEnabled || next.wbtbAtMin != old.wbtbAtMin) {
             wbtbAt = if (next.wbtbEnabled) nextWbtbAt(next.wbtbAtMin, nowMs, wbtbDoneAt, zone) else null
-            publishWbtbSkip()
+            publishWbtb(nowMs)
         }
         if (old.wbtbEnabled && !next.wbtbEnabled) { // turned off on the phone: tonight's early wake-up ends here
             if (ringing?.kind == "WBTB") stop(nowMs, null, null, "TURNED_OFF") // not STOPPED: no stay-up, no report
@@ -126,15 +130,15 @@ class WakeAlarms(
         // Alive: a recording whose process dies without close() still leaves a stop time for nightStart.
         if (nowMs - aliveSavedAt >= ALIVE_SAVE_MS) {
             aliveSavedAt = nowMs
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(KEY_STOPPED, nowMs).apply()
+            prefs.edit().putLong(KEY_STOPPED, nowMs).putString(KEY_LAST_DIR, dir.path).apply()
         }
         // The time zone changed (travel, a correction): each alarm keeps its date and clock time in the new zone.
         ZoneId.systemDefault().takeIf { it != zone }?.let { z ->
             if (firstRingAt == null) wakeAt = wakeAt?.let { sameClockTime(it, zone, z) } // a snooze is a timer
             wbtbAt = wbtbAt?.let { sameClockTime(it, zone, z) }
             zone = z
-            publishWbtbSkip()
         }
+        publishWbtb(nowMs) // every tick: tonight's early wake-up comes within 12 h as the clock moves on
         lateCues?.tick(nowMs, stillness, hr, seconds)
         guide?.tick(nowMs, stillness, hr)
         val r = ringing
@@ -185,7 +189,7 @@ class WakeAlarms(
         }
         if (wbtbAt?.let { nowMs >= it } == true) {
             wbtbAt = nextAlarmAt(config.wbtbAtMin, nowMs, zone) // tomorrow, if the recording runs on
-            publishWbtbSkip()
+            publishWbtb(nowMs)
             if (wbtbTooSoon(nowMs, recordingStartMs)) {
                 log(nowMs, "WBTB", "SKIPPED", stillness, hr, "recording_ms=${nowMs - recordingStartMs}")
             } else {
@@ -280,12 +284,36 @@ class WakeAlarms(
         guide?.stop(nowMs, stillness, hr)
     }
 
+    /**
+     * "Skip the early wake-up": tonight's does not ring; the wake-up alarm and the rest of the night go on. Before it,
+     * only End the night stopped it, and that also cancelled the wake-up alarm.
+     */
+    fun skipWbtbTonight(nowMs: Long, stillness: Float?, hr: Float?) {
+        if (wbtbAhead(wbtbAt, nowMs, recordingStartMs) == null) return
+        wbtbSkippedAt = nowMs
+        prefs.edit().putLong(KEY_WBTB_SKIPPED, nowMs).apply()
+        log(nowMs, "WBTB", "SKIPPED", stillness, hr, "how=USER") // not the too-soon skip, which has recording_ms
+        wbtbDone(nowMs)
+    }
+
+    /**
+     * "I'm up now": awake before tonight's early wake-up, they start it themselves. It is the ring and "I'm awake" at
+     * once, silent: the stay-up time, the guide or the back-to-sleep buzz, the late cues and its dream questions.
+     */
+    fun startWbtbNow(nowMs: Long, stillness: Float?, hr: Float?) {
+        if (ringing != null || wbtbAhead(wbtbAt, nowMs, recordingStartMs) == null) return
+        ringing = Ringing("WBTB", config.wbtbTone, nowMs)
+        wbtbDone(nowMs)
+        log(nowMs, "WBTB", "RING", stillness, hr, "how=USER_NOW")
+        stop(nowMs, stillness, hr)
+    }
+
     fun close() {
         val now = System.currentTimeMillis()
         // Ended during the morning's ring or snooze: that morning is over, and its dream questions are still due.
         (firstRingAt ?: ringing?.takeIf { it.kind == "WAKE" }?.startMs)?.let { endMorning(now, it, "NIGHT_ENDED") }
         // The exact stop time, over the last alive one: a recording started again soon after keeps the night's start.
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(KEY_STOPPED, now).apply()
+        prefs.edit().putLong(KEY_STOPPED, now).putString(KEY_LAST_DIR, dir.path).apply()
         player.stop()
         if (ringing != null) context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         lateCues?.close()
@@ -296,6 +324,8 @@ class WakeAlarms(
                 alarmRinging = null,
                 wakeAgainAtMs = null,
                 wbtbSkipTonight = false,
+                wbtbAheadAtMs = null,
+                wbtbSkippedTonight = false,
                 wbtbBackToSleepAtMs = null,
                 lateCuesTraining = false,
                 guideOffered = false,
@@ -319,15 +349,30 @@ class WakeAlarms(
     /** The guide is on and every clip of it is on the watch; otherwise WBTB runs as it did before the guide. */
     private fun guideReady() = config.wbtbGuide && guideClipsPresent(context)
 
-    /** Tells the screen when tonight's early wake-up is on but [tick] will skip it, so it is not listed as ringing. */
-    private fun publishWbtbSkip() {
+    /**
+     * Tells the screen about tonight's early wake-up: still to ring, skipped with "Skip the early wake-up", or on but
+     * too soon after the night began, so [tick] skips it and it is not listed as ringing.
+     */
+    private fun publishWbtb(nowMs: Long) {
         val skip = wbtbAt?.let { wbtbTooSoon(it, recordingStartMs) } == true
-        SensingStateHolder.update { it.copy(wbtbSkipTonight = skip) }
+        val ahead = wbtbAhead(wbtbAt, nowMs, recordingStartMs)
+        val skipped = wbtbSkippedAt?.let { nowMs - it < NEW_NIGHT_MS } == true
+        SensingStateHolder.update {
+            it.copy(wbtbSkipTonight = skip, wbtbAheadAtMs = ahead, wbtbSkippedTonight = skipped)
+        }
+    }
+
+    /** Tonight's early wake-up is over: one set later, or a time moved, waits a night; saved for a restart tonight. */
+    private fun wbtbDone(nowMs: Long) {
+        wbtbDoneAt = nowMs
+        wbtbAt = wbtbAt?.let { nextWbtbAt(config.wbtbAtMin, nowMs, nowMs, zone) }
+        prefs.edit().putLong(KEY_WBTB_DONE, nowMs).apply()
+        publishWbtb(nowMs)
     }
 
     private fun ring(nowMs: Long, kind: String, tone: AlarmTone, gentle: Boolean, stillness: Float?, hr: Float?) {
         ringing = Ringing(kind, tone, nowMs) // first: a guide stopped below sees the wake-up and arms no cues
-        wbtbDoneAt = nowMs
+        wbtbDone(nowMs)
         // The morning: no guide, no back-to-sleep buzz and no lucidity cue during the ring, the replay or the report,
         // even when the wake-up comes within the WBTB's time awake.
         if (kind == "WAKE") {
@@ -335,8 +380,6 @@ class WakeAlarms(
             guideOfferedAt = null
             backToSleepAt = null
             lateCues?.disarm()
-            wbtbAt = wbtbAt?.let { nextWbtbAt(config.wbtbAtMin, nowMs, nowMs, zone) } // one set later waits a night
-            publishWbtbSkip()
             PhoneLink.endNight(context) // the phone's voice stops: no round talks over the morning
         }
         player.start(tone, if (config.rampS == 0) 1f else 0.05f, gentle, WatchOutputs.earbudsChosen(context))
@@ -412,6 +455,10 @@ class WakeAlarms(
         private const val KEY_CONFIG = "config"
         private const val KEY_NIGHT_START = "nightStart"
         private const val KEY_STOPPED = "stopped"
+        private const val KEY_LAST_DIR = "lastDir" // the session folder of the night that ended last, or is running
+        private const val KEY_WBTB_DONE = "wbtbDone" // counts only from tonight's start on
+        private const val KEY_WBTB_SKIPPED = "wbtbSkipped" // likewise
+        private const val LAST_NIGHT_MS = 14 * 3_600_000L // "Record a dream" for last night, until this long after it
         private const val SAME_NIGHT_GAP_MS = 2 * 3_600_000L // GUESSED: a restart within 2 h is the same night
         private const val ALIVE_SAVE_MS = 60_000L // the stop time a dying recording leaves is at most this old
 
@@ -427,6 +474,21 @@ class WakeAlarms(
          */
         internal fun nextWbtbAt(minuteOfDay: Int, nowMs: Long, doneAtMs: Long?, zone: ZoneId): Long =
             nextAlarmAt(minuteOfDay, maxOf(nowMs, (doneAtMs ?: 0L) + NEW_NIGHT_MS), zone)
+
+        /** The early wake-up at [atMs] when it is tonight's and will ring: within 12 h, and not too soon to ring. */
+        internal fun wbtbAhead(atMs: Long?, nowMs: Long, nightStartMs: Long): Long? =
+            atMs?.takeIf { it - nowMs <= NEW_NIGHT_MS && !wbtbTooSoon(it, nightStartMs) }
+
+        /**
+         * The night that ended last, for "Record a dream": its session folder and when it stopped (or was last alive,
+         * if the app died); null when it ended [LAST_NIGHT_MS] or more ago, or its folder is gone.
+         */
+        fun lastNight(context: Context): Pair<File, Long>? {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val dir = prefs.getString(KEY_LAST_DIR, null)?.let { File(it) }?.takeIf { it.isDirectory } ?: return null
+            val endMs = prefs.getLong(KEY_STOPPED, -1).takeIf { it >= 0 } ?: return null
+            return (dir to endMs).takeIf { System.currentTimeMillis() - endMs < LAST_NIGHT_MS }
+        }
 
         /** [atMs] moved to the same date and clock time in [to] as it has in [from]. */
         internal fun sameClockTime(atMs: Long, from: ZoneId, to: ZoneId): Long =

@@ -74,6 +74,16 @@ class HealthTrackingForegroundService : LifecycleService() {
                 val p = SensingStateHolder.state.value.lastPacket?.packet
                 alarms?.stopGuide(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
             }
+        } else if (intent?.action == ACTION_SKIP_WBTB) {
+            handler.post {
+                val p = SensingStateHolder.state.value.lastPacket?.packet
+                alarms?.skipWbtbTonight(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
+            }
+        } else if (intent?.action == ACTION_WBTB_NOW) {
+            handler.post {
+                val p = SensingStateHolder.state.value.lastPacket?.packet
+                alarms?.startWbtbNow(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
+            }
         } else if (intent?.action == ACTION_WAIT) {
             if (!foreground) startInForeground(WAITING_TEXT)
             if (ticker == null) SensingStateHolder.update { it.copy(waiting = true) }
@@ -215,6 +225,8 @@ class HealthTrackingForegroundService : LifecycleService() {
         private const val ACTION_SNOOZE_ALARM = "com.opentdi.wear.action.SNOOZE_ALARM"
         private const val ACTION_START_GUIDE = "com.opentdi.wear.action.START_GUIDE"
         private const val ACTION_STOP_GUIDE = "com.opentdi.wear.action.STOP_GUIDE"
+        private const val ACTION_SKIP_WBTB = "com.opentdi.wear.action.SKIP_WBTB"
+        private const val ACTION_WBTB_NOW = "com.opentdi.wear.action.WBTB_NOW"
         private const val ACTION_START_FROM_PHONE = "com.opentdi.wear.action.START_FROM_PHONE"
         private const val WAITING_TEXT = "Ready. Tap Start the night on your phone."
         private const val RECORDING_TEXT = "Tracking your sleep. Tap to open."
@@ -279,6 +291,23 @@ class HealthTrackingForegroundService : LifecycleService() {
         fun stopGuide(context: Context) {
             context.startService(
                 Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_STOP_GUIDE),
+            )
+        }
+
+        /** "Skip the early wake-up": tonight's does not ring; tracking and the wake-up alarm go on. */
+        fun skipWbtb(context: Context) {
+            context.startService(
+                Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_SKIP_WBTB),
+            )
+        }
+
+        /**
+         * "I'm up now": tonight's early wake-up starts now, as if it rang and I'm awake was tapped; it then sets
+         * reportAfter "WBTB" (WakeAlarms.startWbtbNow).
+         */
+        fun wbtbNow(context: Context) {
+            context.startService(
+                Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_WBTB_NOW),
             )
         }
 

@@ -188,12 +188,15 @@ private fun wakeOutcome(alarms: List<AlarmRow>): AlarmOutcome? {
 
 /**
  * The first WBTB alarm (§B4): skipped, or its ring, getting up ("I'm awake"; none when it rang out), the
- * back-to-sleep buzz and the re-onset LateCues logged after it.
+ * back-to-sleep buzz and the re-onset LateCues logged after it. "I'm up now" logs a silent RING (how=USER_NOW) and
+ * STOPPED at once, so it reads as an early wake-up rung at that time.
  */
 private fun wbtbOutcome(alarms: List<AlarmRow>): WbtbOutcome? {
     val first = alarms.next(0) { it.alarm == WBTB && (it.event == "RING" || it.event == "SKIPPED") } ?: return null
-    // Too little sleep recorded before it is the only reason the watch logs.
-    if (alarms[first].event == "SKIPPED") return WbtbOutcome(skipped = "MIN_SLEEP_BEFORE_WBTB")
+    // Too little sleep recorded before it, or "Skip the early wake-up" (how=USER).
+    if (alarms[first].event == "SKIPPED") {
+        return WbtbOutcome(skipped = if (alarms[first].detail["how"] == "USER") "USER" else "MIN_SLEEP_BEFORE_WBTB")
+    }
     val end = alarms.next(first + 1) { it.alarm == WBTB && (it.event == "STOPPED" || it.event == "TIMED_OUT") }
     val up = end?.takeIf { alarms[it].event == "STOPPED" }
     val buzz = up?.let { alarms.next(it + 1) { r -> r.alarm == WBTB && r.event == "BACK_TO_SLEEP" } }

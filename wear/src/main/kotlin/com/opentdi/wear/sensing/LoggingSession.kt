@@ -135,6 +135,8 @@ class LoggingSession(
                     alarmRinging = it.alarmRinging,
                     wakeAgainAtMs = it.wakeAgainAtMs,
                     wbtbSkipTonight = it.wbtbSkipTonight,
+                    wbtbAheadAtMs = it.wbtbAheadAtMs,
+                    wbtbSkippedTonight = it.wbtbSkippedTonight,
                     wbtbBackToSleepAtMs = it.wbtbBackToSleepAtMs,
                     lastWakeText = it.lastWakeText,
                     snoozesLeft = it.snoozesLeft,

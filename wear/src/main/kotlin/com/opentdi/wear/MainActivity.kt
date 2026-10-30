@@ -45,10 +45,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.ambient.AmbientLifecycleObserver
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import androidx.wear.compose.material3.AlertDialog
+import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
@@ -72,6 +75,7 @@ import com.opentdi.shared.model.PROTOCOL_VERSION
 import com.opentdi.shared.model.SensorSource
 import com.opentdi.shared.model.SensorStatus
 import com.opentdi.shared.sensing.AccelProcessor
+import com.opentdi.shared.time.clock12
 import com.opentdi.wear.alarm.WakeAlarms
 import com.opentdi.wear.link.PhoneLink
 import com.opentdi.wear.sensing.HealthTrackingForegroundService
@@ -110,10 +114,16 @@ class MainActivity : ComponentActivity() {
             var logRawAccelChoice by rememberSaveable { mutableStateOf(AccelConfig().logRawAccel) }
             var page by rememberSaveable { mutableStateOf(Page.MAIN) }
             var reportFromEnd by rememberSaveable { mutableStateOf(false) } // opened from End the night
+            var reportDir by rememberSaveable { mutableStateOf<String?>(null) } // last night's, after it ended
             // A report page restored after the app was killed has no night behind it, nor any folder the phone copies.
-            LaunchedEffect(state.sessionId) { if (page == Page.REPORT && state.sessionId == null) page = Page.MAIN }
-            fun openReport(fromEnd: Boolean) {
+            // Last night's has its folder, but a new night starting ends it: tonight's alarms open their own.
+            LaunchedEffect(state.sessionId, state.running) {
+                val over = if (reportDir == null) state.sessionId == null else state.running
+                if (page == Page.REPORT && over) page = Page.MAIN
+            }
+            fun openReport(fromEnd: Boolean, lastNight: File? = null) {
                 reportFromEnd = fromEnd
+                reportDir = lastNight?.path
                 page = Page.REPORT
             }
             // One step back; a report opened from End the night goes back there, so the night still ends.
@@ -166,6 +176,15 @@ class MainActivity : ComponentActivity() {
                                     onAllowNotifications = ::allowNotifications,
                                     onInBed = { HealthTrackingForegroundService.startGuide(this@MainActivity) },
                                     onReport = { openReport(fromEnd = false) },
+                                    onLastNightReport = { openReport(fromEnd = false, lastNight = it) },
+                                    onSkipWbtb = { HealthTrackingForegroundService.skipWbtb(this@MainActivity) },
+                                    onWbtbNow = {
+                                        HealthTrackingForegroundService.wbtbNow(this@MainActivity)
+                                        // Now, not when the service gets to it: the questions open as the early
+                                        // wake-up's from the first frame.
+                                        SensingStateHolder.update { it.copy(reportAfter = "WBTB") }
+                                        openReport(fromEnd = false)
+                                    },
                                     onDetails = { page = Page.DETAILS },
                                 )
                                 Page.DETAILS -> DetailsScreen(
@@ -178,7 +197,8 @@ class MainActivity : ComponentActivity() {
                                 Page.SESSIONS -> SessionsScreen(runningId = state.sessionId.takeIf { state.running })
                                 Page.REPORT -> DreamReportScreen(
                                     after = state.reportAfter ?: "WAKE",
-                                    dir = File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
+                                    dir = reportDir?.let(::File)
+                                        ?: File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
                                     requestMic = ::requestMic,
                                     onSaved = { SensingStateHolder.update { it.copy(reportAfter = null) } },
                                     // Read now, not when composed: a night ended from the phone has no End the night.
@@ -195,10 +215,11 @@ class MainActivity : ComponentActivity() {
                                         alarmsLeft(
                                             alarms,
                                             state.wakeAgainAtMs,
-                                            state.wbtbSkipTonight,
+                                            wbtbWontRing = state.wbtbAheadAtMs == null,
                                             System.currentTimeMillis(),
                                         )
                                     },
+                                    wbtbAhead = state.wbtbAheadAtMs != null,
                                     onEnd = {
                                         // Only here: Close OpenTDI while waiting must not stop a phone's Quick test.
                                         PhoneLink.endNight(this@MainActivity)
@@ -412,6 +433,9 @@ private fun MainScreen(
     onAllowNotifications: () -> Unit,
     onInBed: () -> Unit,
     onReport: () -> Unit,
+    onLastNightReport: (File) -> Unit,
+    onSkipWbtb: () -> Unit,
+    onWbtbNow: () -> Unit,
     onDetails: () -> Unit,
 ) {
     // Off in ambient and with the screen off: the stars stop, and the clock ticks once a minute.
@@ -431,6 +455,16 @@ private fun MainScreen(
     val listState = rememberTransformingLazyColumnState()
     val moon = remember { moonPhase(System.currentTimeMillis()) }
     val waitingOnly = state.waiting && !state.running
+    // Read each time the app comes back, as the 14 hours run out while it waits.
+    var lastNight by remember { mutableStateOf<File?>(null) }
+    LifecycleResumeEffect(state.running) {
+        lastNight = WakeAlarms.lastNight(context)?.first
+        onPauseOrDispose {}
+    }
+    val wbtbAt = state.wbtbAheadAtMs // tonight's early wake-up, while it can still be skipped or started
+    // Keyed on it: a question left open as the early wake-up rang or moved must not come back for another one.
+    var askSkip by remember(wbtbAt) { mutableStateOf(false) }
+    var askNow by remember(wbtbAt) { mutableStateOf(false) }
     ScreenScaffold(scrollState = listState) { contentPadding ->
         if (awake) WatchStars()
         if (awake && waitingOnly) BreathingRing(MaterialTheme.colorScheme.primary)
@@ -450,6 +484,17 @@ private fun MainScreen(
             if (state.reportAfter != null) {
                 item {
                     Button(onClick = onReport, modifier = Modifier.fillMaxWidth(), label = { Text("Record your dream") })
+                }
+            }
+            // A dream recalled after End the night still goes with that night, for Stats.
+            lastNight?.takeIf { !state.running && state.reportAfter == null }?.let { dir ->
+                item {
+                    Button(
+                        onClick = { onLastNightReport(dir) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Record a dream") },
+                        secondaryLabel = { Text("From last night") },
+                    )
                 }
             }
             // The WBTB awake time (sleep_and_dreams.md §4 [63][65], §6 [83]): the stay-up time first, then the
@@ -506,12 +551,33 @@ private fun MainScreen(
             } else if (state.running) {
                 item { BigLine(if (state.status == null) "Starting…" else "Tracking your sleep") }
                 // Nothing when an alarm is on but more than 12 h away: it is set, just not tonight's to list.
-                val alarms = alarmsLeft(config, state.wakeAgainAtMs, state.wbtbSkipTonight, System.currentTimeMillis())
+                val alarms = alarmsLeft(config, state.wakeAgainAtMs, wbtbAt == null, System.currentTimeMillis())
                     ?.let { "${it.replaceFirstChar(Char::uppercase)}." }
                     ?: "No alarm set on the watch".takeIf { !config.wakeEnabled && !config.wbtbEnabled }
                 alarms?.let { item { Line(it) } }
                 if (state.wbtbSkipTonight) {
                     item { Line("No early wake-up tonight: it's less than 4½ hours after you went to bed.") }
+                }
+                if (state.wbtbSkippedTonight) item { Line("Early wake-up skipped tonight.") }
+                // Awake before it: End the night was the only way to stop it, and it cancelled the wake-up alarm too.
+                if (wbtbAt != null) {
+                    item {
+                        Button(
+                            onClick = { askNow = true },
+                            colors = ButtonDefaults.filledTonalButtonColors(),
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("I'm up now") },
+                            secondaryLabel = { Text("Start the early wake-up now") },
+                        )
+                    }
+                    item {
+                        Button(
+                            onClick = { askSkip = true },
+                            colors = ButtonDefaults.filledTonalButtonColors(),
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Skip the early wake-up") },
+                        )
+                    }
                 }
             } else if (needsSetup) {
                 item { BigLine("One-time setup") }
@@ -566,6 +632,46 @@ private fun MainScreen(
             item { FilledTonalButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) { Text("Details") } }
         }
     }
+    // Asked first: tonight's early wake-up cannot be brought back once skipped or started.
+    if (wbtbAt != null) {
+        val at = WakeAlarms.hhmm(wbtbAt)
+        AskFirst(
+            visible = askNow,
+            title = "Start the early wake-up now?",
+            text = "It won't ring at $at.",
+            onDismiss = { askNow = false },
+            onConfirm = onWbtbNow,
+        )
+        AskFirst(
+            visible = askSkip,
+            title = "Skip tonight's early wake-up at $at?",
+            text = config.wakeAtMin.takeIf { config.wakeEnabled }
+                ?.let { "Your wake-up alarm at ${clock12(it)} still rings." },
+            onDismiss = { askSkip = false },
+            onConfirm = onSkipWbtb,
+        )
+    }
+}
+
+/** A yes or no question; yes closes it and then does [onConfirm]. */
+@Composable
+private fun AskFirst(visible: Boolean, title: String, text: String?, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        visible = visible,
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            AlertDialogDefaults.ConfirmButton(
+                onClick = {
+                    onDismiss()
+                    onConfirm()
+                },
+            )
+        },
+        // Not cut at the usual three lines with a large font: the time is the point of the question.
+        title = { Text(title, maxLines = Int.MAX_VALUE) },
+        dismissButton = { AlertDialogDefaults.DismissButton(onClick = onDismiss) },
+        text = if (text == null) null else { { Text(text) } },
+    )
 }
 
 /**
@@ -653,6 +759,7 @@ private fun EndNightScreen(
     reportDue: Boolean,
     onReport: () -> Unit,
     alarmsAhead: String?,
+    wbtbAhead: Boolean,
     onEnd: () -> Unit,
     onKeep: () -> Unit,
 ) {
@@ -661,8 +768,11 @@ private fun EndNightScreen(
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item { BigLine("End the night?") }
             item { Line("Tracking stops and the app closes.") }
-
+            // Ending in the middle of the night used to cancel the alarms still to come without a word.
             alarmsAhead?.let { item { Line("${it.replaceFirstChar(Char::uppercase)} won't ring.") } }
+            if (wbtbAhead) {
+                item { Line("Only want to skip the early wake-up? Go back and tap Skip the early wake-up.") }
+            }
             // Ending the night saves an unfinished report as it stands; questions not reached stay unanswered.
             if (reportDue) {
                 item { Line("Your dream questions aren't done yet.") }
@@ -807,11 +917,12 @@ private fun format(pattern: String, value: Float?) = value?.let { String.format(
 
 /**
  * The alarms still to ring, worded as [alarmsAhead]: a snoozed or rung-out wake-up at its next ring
- * ([wakeAgainAtMs]), and no early wake-up that WakeAlarms will skip ([wbtbSkipTonight]).
+ * ([wakeAgainAtMs]), and no early wake-up that won't ring tonight ([wbtbWontRing]: too soon after bedtime, rung,
+ * skipped or started early).
  */
-internal fun alarmsLeft(config: AlarmConfig, wakeAgainAtMs: Long?, wbtbSkipTonight: Boolean, nowMs: Long): String? =
+internal fun alarmsLeft(config: AlarmConfig, wakeAgainAtMs: Long?, wbtbWontRing: Boolean, nowMs: Long): String? =
     wakeAgainAtMs?.let { "the wake-up alarm at ${WakeAlarms.hhmm(it)}" }
-        ?: alarmsAhead(config.copy(wbtbEnabled = config.wbtbEnabled && !wbtbSkipTonight), nowMs, ZoneId.systemDefault())
+        ?: alarmsAhead(config.copy(wbtbEnabled = config.wbtbEnabled && !wbtbWontRing), nowMs, ZoneId.systemDefault())
 
 /** "2 h 5 min": in words, so the dim screen's once-a-minute update never reads like the clock. */
 private fun elapsed(ms: Long): String {

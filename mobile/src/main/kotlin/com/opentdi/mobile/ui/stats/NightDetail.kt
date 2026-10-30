@@ -130,8 +130,10 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
                         )
                     } else {
                         val steps = listOfNotNull(
-                            w.ringAtMs?.let { "alarm ${at(it)}" },
-                            w.upAtMs?.let { "up ${at(it)}" },
+                            w.ringAtMs?.let {
+                                if (w.byUser) "you got up on your own at ${at(it)}" else "alarm ${at(it)}"
+                            },
+                            w.upAtMs?.takeUnless { w.byUser }?.let { "up ${at(it)}" },
                             w.backToSleepAtMs?.let { "back to bed ${at(it)}" },
                             w.reOnsetMs?.let { o ->
                                 val later = w.reOnsetLatencyMin?.let { ", $it min later" }.orEmpty()

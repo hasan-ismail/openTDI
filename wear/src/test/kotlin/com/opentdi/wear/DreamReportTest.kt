@@ -128,16 +128,16 @@ class DreamReportTest {
         val config = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270)
         assertEquals(
             "the early wake-up at 4:30 AM and the wake-up alarm at 7 AM",
-            alarmsLeft(config, wakeAgainAtMs = null, wbtbSkipTonight = false, nowMs = at(1, 0)),
+            alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = false, nowMs = at(1, 0)),
         )
         assertEquals(
             "the wake-up alarm at 7 AM", // in bed at 1 AM: too soon before 4:30
-            alarmsLeft(config, wakeAgainAtMs = null, wbtbSkipTonight = true, nowMs = at(1, 0)),
+            alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = true, nowMs = at(1, 0)),
         )
         // Snoozed at 7: tomorrow's alarms are more than 12 h away, the next ring is not.
         assertEquals(
             "the wake-up alarm at 7:09 AM",
-            alarmsLeft(config, wakeAgainAtMs = at(7, 9), wbtbSkipTonight = false, nowMs = at(7, 0)),
+            alarmsLeft(config, wakeAgainAtMs = at(7, 9), wbtbWontRing = false, nowMs = at(7, 0)),
         )
     }
 

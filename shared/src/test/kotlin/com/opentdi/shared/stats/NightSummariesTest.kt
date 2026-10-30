@@ -266,6 +266,19 @@ class NightSummariesTest {
     }
 
     @Test
+    fun wbtbSkippedByTheUser_orStartedNow() {
+        val skipped = alarms(listOf(at(240), "WBTB", "SKIPPED", 1f, 60f, "how=USER"))
+        assertEquals(WbtbOutcome(skipped = "USER"), summarize(night() + skipped)!!.wbtb)
+        // "I'm up now": the silent ring and its stop at once, then the night as after a ring.
+        val now = alarms(
+            listOf(at(190), "WBTB", "RING", 0.3f, 72f, "how=USER_NOW"),
+            listOf(at(190), "WBTB", "STOPPED", 0.3f, 72f, "after_ms=0;first_movement_ms="),
+            listOf(at(246), "WBTB", "BACK_TO_SLEEP", 0.9f, 64f, null),
+        )
+        assertEquals(WbtbOutcome(at(190), at(190), at(246)), summarize(breakNight + now)!!.wbtb)
+    }
+
+    @Test
     fun wakeAlarm_snoozes_stop_laterRingIgnored_orRungOut() {
         val stopped = alarms(
             listOf(at(380), "WAKE", "RING", null, null, null),

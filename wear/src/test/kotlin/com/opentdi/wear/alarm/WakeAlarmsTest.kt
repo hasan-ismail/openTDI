@@ -2,6 +2,7 @@ package com.opentdi.wear.alarm
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.ZoneId
@@ -39,6 +40,23 @@ class WakeAlarmsTest {
         // The wake-up rang at 4:15, before it: the next night's 4:30.
         val woke = 28 * hour + 15 * 60_000
         assertEquals(52 * hour + 30 * 60_000, WakeAlarms.nextWbtbAt(wbtb, woke, woke, utc))
+    }
+
+    @Test
+    fun wbtbAhead_onlyTonightsStillToRing() {
+        val utc = ZoneOffset.UTC
+        val wbtb = 4 * 60 + 30 // 4:30 AM
+        val start = 23 * hour
+        val tonight = 28 * hour + 30 * 60_000
+        assertEquals(tonight, WakeAlarms.wbtbAhead(WakeAlarms.nextWbtbAt(wbtb, start, null, utc), start, start))
+        // Up at 2:00, skipped or started now: the next 4:30 is the next night's, so none is ahead tonight.
+        val up = 26 * hour
+        assertNull(WakeAlarms.wbtbAhead(WakeAlarms.nextWbtbAt(wbtb, up, up, utc), up, start))
+        // Moved to 5 AM at 3:00, or a restart at 3:00 with the saved done time: still none tonight.
+        assertNull(WakeAlarms.wbtbAhead(WakeAlarms.nextWbtbAt(5 * 60, 27 * hour, up, utc), 27 * hour, start))
+        // Too soon after the night began to ring, or more than 12 h away: none either.
+        assertNull(WakeAlarms.wbtbAhead(tonight, 25 * hour, 25 * hour))
+        assertNull(WakeAlarms.wbtbAhead(tonight, 14 * hour, 14 * hour))
     }
 
     @Test

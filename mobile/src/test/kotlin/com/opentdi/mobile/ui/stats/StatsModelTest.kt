@@ -119,6 +119,19 @@ class StatsModelTest {
     }
 
     @Test
+    fun imUpNow_isAnEarlyWakeUpWithoutAnAlarm() {
+        val night = LocalDate.of(2026, 10, 27)
+        val next = night.plusDays(1)
+        val w = WbtbOutcome(ms(next, 3), ms(next, 3), ms(next, 3, 20)) // the silent ring and its stop at once
+        assertTrue(w.byUser)
+        assertFalse(w.copy(upAtMs = ms(next, 3, 1)).byUser)
+        assertFalse(WbtbOutcome(skipped = "USER").byUser)
+        val s = summary(night, sleep = sleep(ms(night, 23, 10), ms(next, 7, 5)), wbtb = w)
+        assertEquals(listOf("Up on your own for the early wake-up", "Back to bed"), marks(s).map { it.label })
+        assertEquals(Window(670, 1145, 900..920), window(row(night, s))) // awake cut out, no alarm tick
+    }
+
+    @Test
     fun recallLucidAndOutcomes_countMorningsThatAnswered() {
         val day = { n: Long -> today.minusDays(n) }
         val nights = listOf(

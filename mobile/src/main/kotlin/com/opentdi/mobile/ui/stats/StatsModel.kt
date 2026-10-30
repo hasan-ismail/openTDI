@@ -6,6 +6,7 @@ import com.opentdi.mobile.stats.SyncResult
 import com.opentdi.shared.stats.DreamReport
 import com.opentdi.shared.stats.Epochs
 import com.opentdi.shared.stats.NightSummary
+import com.opentdi.shared.stats.WbtbOutcome
 import com.opentdi.shared.time.clock12
 import java.time.DateTimeException
 import java.time.DayOfWeek
@@ -186,9 +187,15 @@ fun window(row: NightRow): Window? {
     val awakeFrom = w?.ringAtMs
     val awakeTo = w?.reOnsetMs ?: w?.backToSleepAtMs
     val awake = if (awakeFrom != null && awakeTo != null && awakeTo > awakeFrom) at(awakeFrom)..at(awakeTo) else null
-    val alarms = listOfNotNull(w?.ringAtMs, s.wake?.ringAtMs).map(::at)
+    val alarms = listOfNotNull(w?.takeUnless { it.byUser }?.ringAtMs, s.wake?.ringAtMs).map(::at)
     return Window(at(sleep.onsetMs), at(sleep.finalWakeMs), awake, alarms)
 }
+
+/**
+ * "I'm up now" on the watch: no alarm rang, the sleeper started the early wake-up. WakeAlarms logs its silent RING and
+ * the STOPPED in one millisecond, which no answered ring can match.
+ */
+val WbtbOutcome.byUser: Boolean get() = ringAtMs != null && upAtMs == ringAtMs
 
 /** A slot's window: the night's own, or for a week or month the mean start and end (no cut-out, no alarms). */
 fun window(bin: Bin): Window? {
@@ -372,8 +379,9 @@ data class Mark(val atMs: Long, val label: String, val short: String)
 /** The night's alarms, WBTB steps and reports, in time order. */
 fun marks(s: NightSummary): List<Mark> = buildList {
     s.wbtb?.let { w ->
-        w.ringAtMs?.let { add(Mark(it, "Early wake-up", "Early")) }
-        w.upAtMs?.let { add(Mark(it, "Up for the early wake-up", "Up")) }
+        w.ringAtMs?.takeUnless { w.byUser }?.let { add(Mark(it, "Early wake-up", "Early")) }
+        val up = if (w.byUser) "Up on your own for the early wake-up" else "Up for the early wake-up"
+        w.upAtMs?.let { add(Mark(it, up, "Up")) }
         w.backToSleepAtMs?.let { add(Mark(it, "Back to bed", "Bed")) }
         w.reOnsetMs?.let { add(Mark(it, "Asleep again (estimated)", "Asleep")) }
     }
