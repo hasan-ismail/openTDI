@@ -95,14 +95,13 @@ fun deliveringStatus(
 }
 
 /**
- * The on-watch text of a status, in plain words; the codes and the raw [message] of CONNECTION_FAILED stay in Logcat
- * (the parameter is kept for the caller). [unsupported] names the tracker of TRACKER_UNSUPPORTED.
+ * The on-watch text of a status, in plain words; the codes and the raw message of CONNECTION_FAILED stay in Logcat.
+ * [unsupported] names the tracker of TRACKER_UNSUPPORTED.
  */
 fun statusText(
     status: SensorStatus,
     unsupported: Tracker? = null,
     edaAvailable: Boolean = true,
-    @Suppress("UNUSED_PARAMETER") message: String? = null,
 ): String = when (status) {
     SensorStatus.AAR_NOT_BUNDLED -> "Basic watch sensors: heart rate and movement. Samsung's extra sensors can be " +
         "added on the phone: Settings › More › Samsung's sensor kit."

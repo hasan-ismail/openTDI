@@ -43,10 +43,10 @@ val PHASE1_CUES = listOf(
 /**
  * OpenTDI's default words (§7.1): lucidity (owner, 2026-10-27 and 2026-10-30). Every line is true whenever it is
  * heard, awake, drifting off or dreaming: "dream" only as "if… in a dream", "when you dream" or a question, never
- * "you are dreaming" or "not real" said about now (docs/references/cue_wording.md). [theme] is not used; MIT's
+ * "you are dreaming" or "not real" said about now (docs/references/cue_wording.md). They never name the theme; MIT's
  * theme incubation wording is [mitThemeCueText]. SESSION_END is the sentence only: the chime is prepended at playback.
  */
-fun cueText(cue: PromptCue, @Suppress("UNUSED_PARAMETER") theme: String): String = when (cue) {
+fun cueText(cue: PromptCue): String = when (cue) {
     // The voice itself as the dream sign (TLR). If it wakes the sleeper, drop the first sentence first.
     PromptCue.INITIAL_INCUBATION ->
         "You are safe in bed. If you hear this voice in a dream, you'll know it's only a dream."
@@ -70,7 +70,7 @@ fun mitThemeCueText(cue: PromptCue, theme: String): String = when (cue) {
     PromptCue.INITIAL_INCUBATION -> "Remember to think of $theme."
     PromptCue.WAKE_PROMPT -> "You're falling asleep. Please tell me what's going through your mind."
     PromptCue.RE_INCUBATION -> "Remember to think of $theme. You can fall back asleep now."
-    PromptCue.SESSION_END, PromptCue.SLEEP_STATE_QUESTION, PromptCue.MORNING_WAKE -> cueText(cue, theme)
+    PromptCue.SESSION_END, PromptCue.SLEEP_STATE_QUESTION, PromptCue.MORNING_WAKE -> cueText(cue)
 }
 
 /** Stands for the theme in the user's own cue words, so edited cues follow a later theme change (§7.1). */
@@ -105,7 +105,7 @@ fun dropOldBuiltInWords(config: SessionConfig): SessionConfig {
 /** The words [cue] is rendered with: the user's own (audio.cueTexts), or the §7.1 wording when missing or blank. */
 fun cueText(cue: PromptCue, config: SessionConfig): String {
     val own = config.audio.cueTexts[cue]?.takeIf { it.isNotBlank() }?.replace(THEME_PLACEHOLDER, config.theme)
-    val words = own ?: cueText(cue, config.theme)
+    val words = own ?: cueText(cue)
     val name = config.alarms.sleeperName.trim()
     // Only the wake-up alarm says the name: in a night cue it woke a dreamer (lucid_induction.md §6). Own words that
     // keep "Good morning." get it too, so a light edit does not silently drop the name.

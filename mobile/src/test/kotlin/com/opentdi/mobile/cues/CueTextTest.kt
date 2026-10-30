@@ -18,18 +18,21 @@ class CueTextTest {
     fun defaultWording_isLucidity_andIgnoresTheTheme() {
         assertEquals(
             "You are safe in bed. If you hear this voice in a dream, you'll know it's only a dream.",
-            cueText(PromptCue.INITIAL_INCUBATION, "a tree"),
+            cueText(PromptCue.INITIAL_INCUBATION),
         )
         assertEquals(
             "You were falling asleep. What was going through your mind? Was it a dream?",
-            cueText(PromptCue.WAKE_PROMPT, "a tree"),
+            cueText(PromptCue.WAKE_PROMPT),
         )
         assertEquals(
             "You can fall back asleep now. When you dream, you'll know it's only a dream.",
-            cueText(PromptCue.RE_INCUBATION, "a fork"),
+            cueText(PromptCue.RE_INCUBATION),
         )
-        assertEquals("That's all for now. Sleep well.", cueText(PromptCue.SESSION_END, "a tree"))
-        assertEquals(cueText(PromptCue.RE_INCUBATION, "a tree"), cueText(PromptCue.RE_INCUBATION, "a fork"))
+        assertEquals("That's all for now. Sleep well.", cueText(PromptCue.SESSION_END))
+        assertEquals(
+            cueText(PromptCue.RE_INCUBATION, SessionConfig(theme = "a tree")),
+            cueText(PromptCue.RE_INCUBATION, SessionConfig(theme = "a fork")),
+        )
     }
 
     @Test
@@ -122,7 +125,7 @@ class CueTextTest {
         val migrated = dropOldBuiltInWords(config)
         assertEquals(mapOf(PromptCue.MORNING_WAKE to "Good morning. Rise and shine."), migrated.audio.cueTexts)
         assertEquals("dreaming", migrated.theme)
-        assertEquals(cueText(PromptCue.WAKE_PROMPT, "x"), cueText(PromptCue.WAKE_PROMPT, migrated))
+        assertEquals(cueText(PromptCue.WAKE_PROMPT), cueText(PromptCue.WAKE_PROMPT, migrated))
         assertNotEquals(cueFingerprint(config, "v"), cueFingerprint(migrated, "v")) // so the voice is made again
         val clean = SessionConfig()
         assertSame(clean, dropOldBuiltInWords(clean)) // nothing old: the same config back
@@ -136,8 +139,8 @@ class CueTextTest {
             audio = AudioConfig(cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to own, PromptCue.WAKE_PROMPT to "  ")),
         )
         assertEquals(own, cueText(PromptCue.INITIAL_INCUBATION, config))
-        assertEquals(cueText(PromptCue.WAKE_PROMPT, "a fork"), cueText(PromptCue.WAKE_PROMPT, config))
-        assertEquals(cueText(PromptCue.RE_INCUBATION, "a fork"), cueText(PromptCue.RE_INCUBATION, config))
+        assertEquals(cueText(PromptCue.WAKE_PROMPT), cueText(PromptCue.WAKE_PROMPT, config))
+        assertEquals(cueText(PromptCue.RE_INCUBATION), cueText(PromptCue.RE_INCUBATION, config))
     }
 
     @Test

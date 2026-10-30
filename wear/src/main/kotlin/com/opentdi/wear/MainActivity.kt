@@ -869,7 +869,7 @@ private fun statuses(state: SensingState) =
 /** A status: a problem on the main screen ([short]) with its tap fix, or any status on Details, in plain words. */
 @Composable
 private fun StatusLine(status: SensorStatus, state: SensingState, onTap: (SensorStatus) -> Unit, short: Boolean) {
-    val text = statusText(status, state.unsupported, state.edaAvailable, state.statusMessage)
+    val text = statusText(status, state.unsupported, state.edaAvailable)
     val tappable = status == SensorStatus.PERMISSION_MISSING ||
         (status in setOf(SensorStatus.HSS_NOT_INSTALLED, SensorStatus.HSS_TOO_OLD) && state.resolve != null)
     if (short && tappable) {

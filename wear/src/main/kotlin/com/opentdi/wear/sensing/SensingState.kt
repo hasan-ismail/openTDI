@@ -43,7 +43,6 @@ data class SensingState(
     val fallbackCause: SensorStatus? = null, // why this session uses basic watch sensors (AAR, HSS, unsupported)
     val unsupported: Tracker? = null, // the tracker behind TRACKER_UNSUPPORTED
     val edaAvailable: Boolean = true,
-    val statusMessage: String? = null, // the <message> of CONNECTION_FAILED
     val resolve: ((Activity) -> Boolean)? = null, // HealthTrackerException.resolve; false when the Store did not open
     val lastPacket: EmittedPacket? = null,
     val packetsWritten: Long = 0,

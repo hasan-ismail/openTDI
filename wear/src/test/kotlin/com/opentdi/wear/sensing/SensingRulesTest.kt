@@ -92,8 +92,7 @@ class SensingRulesTest {
             "Samsung's motion sensor isn't available here: using the watch's basic sensors.",
             statusText(SensorStatus.TRACKER_UNSUPPORTED, unsupported = Tracker.ACCEL),
         )
-        // The raw message stays in Logcat.
-        assertEquals("Sensors reconnecting…", statusText(SensorStatus.CONNECTION_FAILED, message = "connection ended"))
+        assertEquals("Sensors reconnecting…", statusText(SensorStatus.CONNECTION_FAILED))
         SensorStatus.entries.forEach { assertTrue(it.name, statusText(it).isNotBlank()) }
     }
 

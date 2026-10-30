@@ -413,7 +413,6 @@ class LoggingSession(
             it.copy(
                 status = status,
                 unsupported = unsupported ?: it.unsupported,
-                statusMessage = message,
                 resolve = resolve ?: it.resolve,
             )
         }

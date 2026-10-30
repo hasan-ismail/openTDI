@@ -139,19 +139,6 @@ class SessionDirsTest {
     }
 
     @Test
-    fun watchSummary_wholeRowsOnly_fromTheFirstToTheLastPacket() {
-        val text = packetsCsv(3600)
-
-        assertEquals(WatchSessionSummary(3_599_000, 3600), watchSessionSummary(text.lineSequence()))
-        // The app died mid-row: a cut ts_ms would otherwise become the "last" packet.
-        assertEquals(WatchSessionSummary(3_599_000, 3600), watchSessionSummary((text + "17930").lineSequence()))
-        assertEquals(WatchSessionSummary(null, 0), watchSessionSummary(text.lineSequence().take(1)))
-        assertEquals(WatchSessionSummary(null, 0), watchSessionSummary(emptySequence()))
-        val old = packetsCsv(3600, old = true) // a night logged before angle_z_deg: one column fewer
-        assertEquals(WatchSessionSummary(3_599_000, 3600), watchSessionSummary(old.lineSequence()))
-    }
-
-    @Test
     fun watchDuration_readsOnlyTheFileEnds_asTheFullSummary() = withFilesDir { root ->
         val file = File(root, CsvFiles.W_PACKETS.name)
         fun durationOf(text: String) = watchSessionDurationMs(file.apply { writeText(text) })

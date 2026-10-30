@@ -64,9 +64,6 @@ private fun deleteTree(dir: File): Boolean = try {
 /** A phone session from its p_transitions.csv: first to last row, and how it ended (null if it never did). */
 data class PhoneSessionSummary(val durationMs: Long?, val endReason: StateReason?, val completedCycles: Int)
 
-/** A watch session from its w_packets.csv: one row per 1 Hz packet, from the first to the last ts_ms. */
-data class WatchSessionSummary(val durationMs: Long?, val packets: Int)
-
 // Both files hold only numbers and enum names, never a quoted field, so a row splits on commas; the time is column 0.
 private val TRANSITIONS = CsvFiles.P_TRANSITIONS.columns
 private val TO = TRANSITIONS.indexOf("to")
@@ -94,22 +91,10 @@ fun phoneSessionSummary(lines: Sequence<String>): PhoneSessionSummary {
     return PhoneSessionSummary(if (first != null && last != null) last - first else null, endReason, completed)
 }
 
-/** [lines] of w_packets.csv, header first. A row cut short when the app died is skipped. */
-fun watchSessionSummary(lines: Sequence<String>): WatchSessionSummary {
-    var first: Long? = null
-    var last: Long? = null
-    var packets = 0
-    for (tsMs in lines.drop(1).mapNotNull(::packetTsMs)) {
-        if (first == null) first = tsMs
-        last = tsMs
-        packets++
-    }
-    return WatchSessionSummary(if (first != null && last != null) last - first else null, packets)
-}
-
 /**
- * [watchSessionSummary]'s durationMs from the first rows and the last [TAIL_BYTES] of w_packets.csv [file] only: a
- * night's file is several MB (§12.1), too much to read for every session in the watch's list.
+ * A watch session's length, first to last ts_ms of w_packets.csv [file], from its first rows and last [TAIL_BYTES]
+ * only: a night's file is several MB (§12.1), too much to read for every session in the watch's list. A row cut short
+ * when the app died is skipped.
  */
 fun watchSessionDurationMs(file: File): Long? {
     val first = file.useLines { lines -> lines.drop(1).firstNotNullOfOrNull(::packetTsMs) }

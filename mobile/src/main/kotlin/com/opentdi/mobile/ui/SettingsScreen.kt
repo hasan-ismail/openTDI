@@ -390,7 +390,7 @@ private fun CueWordsCard(
                 onClick = {
                     // Kept with the placeholder, so the words follow a later topic change.
                     val mit = PHASE1_CUES.associateWith { mitThemeCueText(it, THEME_PLACEHOLDER) }
-                        .filter { (cue, text) -> text != cueText(cue, THEME_PLACEHOLDER) }
+                        .filter { (cue, text) -> text != cueText(cue) }
                     edit { it.copy(audio = it.audio.copy(cueTexts = it.audio.cueTexts + mit)) }
                 },
                 enabled = enabled,
@@ -409,7 +409,7 @@ private fun CueWordsCard(
     }
 }
 
-/** One cue's words: the user's own once edited, else the §7.1 wording with the theme placeholder. */
+/** One cue's words: the user's own once edited, else the §7.1 wording. */
 @Composable
 private fun CueWords(
     cue: PromptCue,
@@ -419,7 +419,7 @@ private fun CueWords(
     viewModel: MainViewModel,
     recordingCue: PromptCue?,
 ) {
-    val template = cueText(cue, THEME_PLACEHOLDER) // so an edit keeps the placeholder, not today's theme
+    val template = cueText(cue)
     val own = config.audio.cueTexts[cue]
     Column {
         OutlinedTextField(
