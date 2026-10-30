@@ -62,6 +62,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.opentdi.mobile.stats.NightRow
@@ -105,6 +106,15 @@ internal class Ink(
     val axis: Color,
     val text: Color,
     val surface: Color,
+) {
+    /** One label line's height in px; it grows with the font size, so the bands around a plot grow with it. */
+    val lineH = measurer.measure("0", label).size.height
+}
+
+/** The y-axis gutter in px: [GUTTER], wider when large text makes a tick label of [axes] longer (6 dp from the plot). */
+internal fun Density.axisGutter(ink: Ink, vararg axes: YAxis): Float = maxOf(
+    GUTTER.toPx(),
+    axes.maxOf { a -> a.ticks.maxOf { ink.measurer.measure(a.label(it), ink.label).size.width } } + 6.dp.toPx(),
 )
 
 @Composable
@@ -192,7 +202,7 @@ internal fun BinChart(
     val ink = rememberInk()
     var table by rememberSaveable(title) { mutableStateOf(false) }
     var selected by remember(bins) { mutableStateOf<Int?>(null) }
-    val gutter = with(LocalDensity.current) { GUTTER.toPx() }
+    val gutter = LocalDensity.current.axisGutter(ink, axis)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium)
         if (legend.isNotEmpty()) Legend(legend)
@@ -217,7 +227,6 @@ internal fun BinChart(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(height)
                         .onSizeChanged { widthPx = it.width }
                         .semantics { contentDescription = takeaway }
                         .pointerInput(bins) {
@@ -232,9 +241,11 @@ internal fun BinChart(
                             ) { change, _ -> selected = slotAt(change.position.x, size.width, gutter, bins.size) }
                         },
                 ) {
-                    Canvas(Modifier.matchParentSize()) {
-                        val bottom = size.height - X_BAND.toPx()
-                        val p = Plot(gutter, TOP.toPx(), size.width - 4.dp.toPx(), bottom, bins.size, axis)
+                    // Its own height, not the box's: a readout taller than the chart (large text) makes the box taller.
+                    Canvas(Modifier.fillMaxWidth().height(height)) {
+                        val bottom = size.height - maxOf(X_BAND.toPx(), ink.lineH + 4.dp.toPx())
+                        val top = maxOf(TOP.toPx(), ink.lineH / 2f)
+                        val p = Plot(gutter, top, size.width - 4.dp.toPx(), bottom, bins.size, axis)
                         drawGrid(p, ink)
                         selected?.let { i ->
                             val wash = ink.text.copy(alpha = 0.06f) // the tapped slot, even when it has no mark
@@ -341,9 +352,11 @@ internal fun DrawScope.drawGrid(p: Plot, ink: Ink) {
     }
 }
 
-/** About four date labels under the slots, the newest always labelled. */
+/** About four date labels under the slots, fewer when large text would make them touch; the newest always labelled. */
 private fun DrawScope.drawDates(p: Plot, ink: Ink, bins: List<Bin>, dates: Dates) {
-    val every = ceil(bins.size / 4f).toInt().coerceAtLeast(1)
+    val label = ink.measurer.measure(dates.axis(bins.lastOrNull() ?: return), ink.label).size.width
+    val fit = ((p.right - p.left) / (label + 8.dp.toPx())).toInt().coerceIn(1, 4)
+    val every = ceil(bins.size / fit.toFloat()).toInt().coerceAtLeast(1)
     for (i in bins.indices) {
         if ((bins.size - 1 - i) % every != 0) continue
         val l = ink.measurer.measure(dates.axis(bins[i]), ink.label)
@@ -520,7 +533,10 @@ internal fun Table(header: List<String>, rows: List<Pair<List<String>, NightRow?
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         TableRow(header, header = true)
         for ((cells, night) in rows) {
-            val open = night?.let { n -> Modifier.clickable(onClickLabel = "Open night", role = Role.Button) { onOpen(n) } }
+            val open = night?.let { n ->
+                // 48 dp: a row that opens a night is a touch target.
+                Modifier.clickable(onClickLabel = "Open night", role = Role.Button) { onOpen(n) }.heightIn(min = 48.dp)
+            }
             TableRow(cells, modifier = open ?: Modifier)
         }
         if (rows.isEmpty()) Help("Nothing in this range yet.")

@@ -33,6 +33,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import android.content.pm.PackageManager
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -456,7 +458,8 @@ private fun OwnVoiceRow(
         if (granted) viewModel.recordOwnVoice(cue)
     }
     val context = LocalContext.current
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Wraps: with large text the two buttons don't fit side by side.
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
         when {
             recordingCue == cue -> Button(onClick = viewModel::stopOwnVoice) { Text("Stop recording") }
             else -> OutlinedButton(
@@ -818,7 +821,8 @@ private fun TimeRow(label: String, minuteOfDay: Int, enabled: Boolean, onChange:
                 }) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { picking = false }) { Text("Cancel") } },
-            text = { TimePicker(state) },
+            // Scrolls: the clock is taller than a phone held sideways or with a large display size.
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) { TimePicker(state) } },
         )
     }
 }

@@ -5,6 +5,7 @@ import android.text.format.DateUtils
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -81,7 +82,7 @@ fun SavedNights(viewModel: MainViewModel) {
         }
         // Quiet buttons under the list: deleting is never the page's main action.
         if (list.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) { // wraps with large text
                 OutlinedButton(onClick = { confirm = chosen }, enabled = chosen.isNotEmpty()) { Text("Delete selected") }
                 TextButton(onClick = { confirm = deletable }, enabled = deletable.isNotEmpty()) { Text("Delete all") }
             }

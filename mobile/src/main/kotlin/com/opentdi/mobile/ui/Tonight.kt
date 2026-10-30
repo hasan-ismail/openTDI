@@ -8,6 +8,7 @@ import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.WatchStatus
+import com.opentdi.shared.time.NBSP
 import java.util.Locale
 
 /** The voice is over, and the night goes on: the same words as the watch's night page. */
@@ -101,9 +102,9 @@ fun whatToExpect(config: SessionConfig): String {
 }
 
 internal fun span(s: Int) = when {
-    s < 60 -> "$s s"
-    s % 60 == 0 -> "${s / 60} min"
-    else -> "${s / 60} min ${s % 60} s"
+    s < 60 -> "$s${NBSP}s"
+    s % 60 == 0 -> "${s / 60}${NBSP}min"
+    else -> "${s / 60}${NBSP}min ${s % 60}${NBSP}s"
 }
 
 enum class Check { TIMING, VOLUME, SPEAKER, DND, BATTERY, CUES, TEST_CUE, WATCH, WATCH_APP, WATCH_BATTERY }

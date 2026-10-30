@@ -7,6 +7,7 @@ import com.opentdi.shared.stats.DreamReport
 import com.opentdi.shared.stats.Epochs
 import com.opentdi.shared.stats.NightSummary
 import com.opentdi.shared.stats.WbtbOutcome
+import com.opentdi.shared.time.NBSP
 import com.opentdi.shared.time.clock12
 import java.time.DateTimeException
 import java.time.DayOfWeek
@@ -321,9 +322,9 @@ fun syncWords(copying: Boolean, result: SyncResult?): String? = when {
 
 /** "7 h 5 min", "45 min", "8 h". */
 fun hm(min: Int): String = when {
-    min < 60 -> "$min min"
-    min % 60 == 0 -> "${min / 60} h"
-    else -> "${min / 60} h ${min % 60} min"
+    min < 60 -> "$min${NBSP}min"
+    min % 60 == 0 -> "${min / 60}${NBSP}h"
+    else -> "${min / 60}${NBSP}h ${min % 60}${NBSP}min"
 }
 
 fun plural(n: Int, word: String) = if (n == 1) "1 $word" else "$n ${word}s"

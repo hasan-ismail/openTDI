@@ -122,7 +122,6 @@ internal fun DreamCalendar(
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .height(cell * rows + gap * (rows - 1))
                                 .semantics { contentDescription = outcomeTakeaway(counts) }
                                 .pointerInput(from, to, step) {
                                     detectTapGestures { o ->
@@ -131,7 +130,8 @@ internal fun DreamCalendar(
                                     }
                                 },
                         ) {
-                            Canvas(Modifier.matchParentSize()) {
+                            // Its own height, not the box's: the readout is taller than a week or two of cells.
+                            Canvas(Modifier.fillMaxWidth().height(cell * rows + gap * (rows - 1))) {
                                 val c = cell.toPx()
                                 val corner = CornerRadius(minOf(4.dp.toPx(), c / 4))
                                 var d = from

@@ -65,6 +65,7 @@ import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.LocalTextStyle
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.ScreenScaffoldDefaults
 import androidx.wear.compose.material3.SwipeToDismissBox
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
@@ -939,7 +940,9 @@ private fun GuideScreen(onStop: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) { detectTapGestures(onLongPress = { onStop() }) },
+            .pointerInput(Unit) { detectTapGestures(onLongPress = { onStop() }) }
+            // As the scrolling pages have: with large text the lines reach the round screen's edge.
+            .padding(ScreenScaffoldDefaults.contentPadding),
         contentAlignment = Alignment.Center,
     ) {
         BackHandler(onBack = onStop)

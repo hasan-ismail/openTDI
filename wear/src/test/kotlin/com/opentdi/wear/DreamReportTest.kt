@@ -132,16 +132,16 @@ class DreamReportTest {
             .toEpochMilli()
         val config = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270)
         assertEquals(
-            "the early wake-up at 4:30 AM and the wake-up alarm at 7 AM",
+            "the early wake-up at 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM",
             alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = false, nowMs = at(1, 0)),
         )
         assertEquals(
-            "the wake-up alarm at 7 AM", // in bed at 1 AM: too soon before 4:30
+            "the wake-up alarm at 7\u00A0AM", // in bed at 1 AM: too soon before 4:30
             alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = true, nowMs = at(1, 0)),
         )
         // Snoozed at 7: tomorrow's alarms are more than 12 h away, the next ring is not.
         assertEquals(
-            "the wake-up alarm at 7:09 AM",
+            "the wake-up alarm at 7:09\u00A0AM",
             alarmsLeft(config, wakeAgainAtMs = at(7, 9), wbtbWontRing = false, nowMs = at(7, 0)),
         )
     }
@@ -153,11 +153,11 @@ class DreamReportTest {
             .toEpochMilli()
         val config = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270, wbtbAfterSleepMin = 360)
         assertEquals(
-            "the early wake-up by 4:30 AM and the wake-up alarm at 7 AM", // still waiting to see you fall asleep
+            "the early wake-up by 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM", // still waiting to see you fall asleep
             alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = false, nowMs = at(1, 0)),
         )
         assertEquals(
-            "the early wake-up at 3:40 AM and the wake-up alarm at 7 AM",
+            "the early wake-up at 3:40\u00A0AM and the wake-up alarm at 7\u00A0AM",
             alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = false, nowMs = at(1, 0), wbtbAtMs = at(3, 40)),
         )
     }

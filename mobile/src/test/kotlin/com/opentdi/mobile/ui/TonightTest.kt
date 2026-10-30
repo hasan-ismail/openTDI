@@ -68,39 +68,39 @@ class TonightTest {
             it.copy(audio = it.audio.copy(route = AudioRouteMode.WATCH_WRIST_SPEAKER))
         }
         assertEquals(
-            "The voice plays from your watch. Alarms on the watch: early wake-up 4:30 AM, wake-up 7 AM.",
+            "The voice plays from your watch. Alarms on the watch: early wake-up 4:30\u00A0AM, wake-up 7\u00A0AM.",
             tonightSummary(watch, at23),
         )
         assertEquals(
-            "The voice plays from your phone. Alarm on the watch: wake-up 7 AM.",
+            "The voice plays from your phone. Alarm on the watch: wake-up 7\u00A0AM.",
             tonightSummary(SessionConfig(alarms = both.copy(wbtbEnabled = false)), at23),
         )
         val none = AlarmConfig(wakeEnabled = false, wbtbEnabled = false)
         assertEquals("The voice plays from your phone. No alarms tonight.", tonightSummary(SessionConfig(alarms = none), at23))
         // At 1 AM the early wake-up is 3½ hours away: the watch skips it.
         assertEquals(
-            "The voice plays from your phone. Alarm on the watch: wake-up 7 AM. No early wake-up tonight: it's less " +
+            "The voice plays from your phone. Alarm on the watch: wake-up 7\u00A0AM. No early wake-up tonight: it's less " +
                 "than 4½ hours away.",
             tonightSummary(SessionConfig(alarms = both), at23.plusHours(2)),
         )
         assertEquals(
-            "The voice plays from your phone. Alarms on the watch: early wake-up by 4:30 AM, wake-up 7 AM.",
+            "The voice plays from your phone. Alarms on the watch: early wake-up by 4:30\u00A0AM, wake-up 7\u00A0AM.",
             tonightSummary(SessionConfig(alarms = both.copy(wbtbAfterSleepMin = 360)), at23),
         )
     }
 
     @Test
     fun nightOnText_namesTheAlarmsLeft_andTheEnd() {
-        val ahead = "the early wake-up at 4:30 AM and the wake-up alarm at 7 AM"
+        val ahead = "the early wake-up at 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM"
         assertEquals(
-            "The voice is done. Your alarms are on the watch: the early wake-up at 4:30 AM and the wake-up alarm at " +
-                "7 AM. The night ends by itself after your morning alarm.",
+            "The voice is done. Your alarms are on the watch: the early wake-up at 4:30\u00A0AM and the wake-up alarm at " +
+                "7\u00A0AM. The night ends by itself after your morning alarm.",
             nightOnText(ahead, wakeEnabled = true),
         )
         assertEquals(
-            "The voice is done. Your alarms are on the watch: the early wake-up at 4:30 AM. The night ends by " +
+            "The voice is done. Your alarms are on the watch: the early wake-up at 4:30\u00A0AM. The night ends by " +
                 "itself in the morning.",
-            nightOnText("the early wake-up at 4:30 AM", wakeEnabled = false),
+            nightOnText("the early wake-up at 4:30\u00A0AM", wakeEnabled = false),
         )
         assertEquals(
             "The voice is done. The watch tracks your sleep. The night ends by itself in the morning.",
@@ -253,12 +253,12 @@ class TonightTest {
         val plan = nightPlan(cfg, at23)
         assertEquals(PlanMark("wake-up", 480), plan.last()) // 23:00 to 7:00
         assertEquals(PlanMark("Voice", 10, 180), plan.first())
-        assertEquals("Voice now, then from about 11:10 PM until 2 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, at23))
+        assertEquals("Voice now, then from about 11:10\u00A0PM until 2\u00A0AM at the latest · wake-up 7\u00A0AM", nightPlanLine(cfg, at23))
         assertEquals(PlanMark("wake-up", 480), nightPlan(cfg, at23.withSecond(30)).last()) // still 7:00, not 6:59
         // DST ends at 2:00 that night: 3 real hours end at 1:00, and 7:00 is 9 hours away.
         val fallBack = ZonedDateTime.of(2026, 10, 31, 23, 0, 0, 0, zone)
         assertEquals(PlanMark("wake-up", 540), nightPlan(cfg, fallBack).last())
-        assertEquals("Voice now, then from about 11:10 PM until 1 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, fallBack))
+        assertEquals("Voice now, then from about 11:10\u00A0PM until 1\u00A0AM at the latest · wake-up 7\u00A0AM", nightPlanLine(cfg, fallBack))
     }
 
     @Test
@@ -279,7 +279,7 @@ class TonightTest {
         val at23 = ZonedDateTime.of(2026, 10, 28, 23, 0, 0, 0, zone)
         val cfg = SessionConfig(alarms = alarms)
         assertEquals(PlanMark("early wake-up by", 330), nightPlan(cfg, at23)[1])
-        assertTrue("· early wake-up by 4:30 AM ·" in nightPlanLine(cfg, at23))
+        assertTrue("· early wake-up by 4:30\u00A0AM ·" in nightPlanLine(cfg, at23))
         for (c in listOf(cfg, SessionConfig(alarms = alarms.copy(wbtbAfterSleepMin = null)))) {
             val line = nightPlanLine(c, at23.plusHours(2)) // 1 AM: 3.5 h before it, the watch skips it
             assertTrue(line, line.endsWith(" · no early wake-up tonight (less than 4½ hours after Start)"))

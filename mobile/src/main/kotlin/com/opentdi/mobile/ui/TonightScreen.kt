@@ -21,7 +21,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -253,7 +254,7 @@ fun TonightScreen(
         StatusCard(status, now, nightDone, sentence)
         if (ui.alarmsNotSent) Text(ALARMS_NOT_SENT, color = MaterialTheme.colorScheme.error)
         if (running) {
-            OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth().height(64.dp)) {
+            OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
                 Text("Stop the voice", style = MaterialTheme.typography.titleLarge)
             }
             // Only while the watch tracks: a Quick test arms no alarm, and a watch that missed Start rings none.
@@ -389,7 +390,8 @@ private fun StartButton(enabled: Boolean, glow: Boolean, onStart: () -> Unit) {
     Button(
         onClick = onStart,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(64.dp).drawBehind {
+        // At least 64 dp, not exactly: with large text the words take two lines.
+        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).drawBehind {
             val v = halo?.value ?: 0f // read here, so only the drawing updates each frame
             if (v > 0f) {
                 val g = 8.dp.toPx() * v
@@ -453,18 +455,22 @@ private fun LoopDots(current: Int, total: Int) {
 @Composable
 private fun CheckRow(item: CheckItem, fix: Pair<String, () -> Unit>?) {
     val color = if (item.blocking) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { stateDescription = "Needs attention" },
     ) {
-        // The text says the same, so color is never the only cue.
-        Canvas(Modifier.size(20.dp)) { drawCircle(color, radius = 5.dp.toPx()) }
-        Text(item.text, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // The text says the same, so color is never the only cue.
+            Canvas(Modifier.size(20.dp)) { drawCircle(color, radius = 5.dp.toPx()) }
+            Text(item.text, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+        }
+        // Under the words, lined up with them: beside them, large text left the words no room.
         if (fix != null) {
-            FilledTonalButton(onClick = fix.second, contentPadding = ButtonDefaults.TextButtonContentPadding) {
-                Text(fix.first)
-            }
+            FilledTonalButton(
+                onClick = fix.second,
+                contentPadding = ButtonDefaults.TextButtonContentPadding,
+                modifier = Modifier.padding(start = 32.dp),
+            ) { Text(fix.first) }
         }
     }
 }

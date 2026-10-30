@@ -35,6 +35,6 @@ class NightPageTest {
     fun nightEndLine_afterTheWakeUp_orByATime() {
         val start = LocalDate.of(2026, 10, 29).atTime(23, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         assertEquals("The night ends by itself after your wake-up alarm.", nightEndLine(wakeEnabled = true, start))
-        assertEquals("The night ends by itself by 11 AM.", nightEndLine(wakeEnabled = false, start))
+        assertEquals("The night ends by itself by 11\u00A0AM.", nightEndLine(wakeEnabled = false, start))
     }
 }

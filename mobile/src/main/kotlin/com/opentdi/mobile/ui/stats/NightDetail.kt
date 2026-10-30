@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,6 +37,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.opentdi.mobile.stats.NightRow
 import com.opentdi.mobile.stats.PhoneNight
@@ -44,6 +47,7 @@ import com.opentdi.mobile.ui.Page
 import com.opentdi.mobile.ui.Section
 import com.opentdi.shared.stats.DreamReport
 import com.opentdi.shared.stats.NightSummary
+import com.opentdi.shared.time.NBSP
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -95,7 +99,8 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
         s?.reports?.forEach { r ->
             Section("${questionsLabel(r.after)}, ${at(r.atMs)}") {
                 answers(r).forEach { (question, answer) ->
-                    Row(Modifier.fillMaxWidth()) {
+                    // A long answer goes under its question instead of squeezing it to a word a line.
+                    FlowRow(Modifier.fillMaxWidth()) {
                         Text(
                             question,
                             style = MaterialTheme.typography.bodyMedium,
@@ -208,7 +213,7 @@ private fun answers(r: DreamReport): List<Pair<String, String>> {
     ).mapNotNull { (q, a) -> a?.let { q to it } }
 }
 
-internal fun minutes(m: Float) = String.format(Locale.ROOT, "%.1f min", m)
+internal fun minutes(m: Float) = String.format(Locale.ROOT, "%.1f${NBSP}min", m)
 
 /** Plays one recording at a time; the page releases it when it closes. */
 private class OnePlayer {
@@ -259,13 +264,13 @@ private fun Recordings(files: List<File>, reports: List<DreamReport>) {
     }
 }
 
+// The text bands at the normal font size; larger text makes them taller (Timeline).
 private val LANE = 52.dp // three rows of event names
 private val BAND_TITLE = 18.dp
 private val MOVE_H = 56.dp
 private val BAND_GAP = 12.dp
 private val HR_H = 110.dp
 private val X_BAND = 22.dp
-private val GUTTER = 40.dp
 
 /**
  * The night's timeline: movement as thin bars and heart rate as a line, two charts with their own y-axes sharing one
@@ -291,8 +296,12 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
     val hrAxis = YAxis(niceTicks(hrs.minOrNull() ?: 50f, hrs.maxOrNull() ?: 70f, 3), { "${it.roundToInt()}" })
     val ink = rememberInk()
     val colors = MaterialTheme.colorScheme
-    val gutter = with(LocalDensity.current) { GUTTER.toPx() }
+    val gutter = LocalDensity.current.axisGutter(ink, moveAxis, hrAxis)
     val right = with(LocalDensity.current) { 4.dp.toPx() }
+    val line = with(LocalDensity.current) { ink.lineH.toDp() }
+    val lane = maxOf(LANE, line * 3 + 4.dp)
+    val bandTitle = maxOf(BAND_TITLE, line + 2.dp)
+    val xBand = maxOf(X_BAND, line + 6.dp)
     var selected by remember(s) { mutableStateOf<Long?>(null) }
     var table by rememberSaveable { mutableStateOf(false) }
     fun clock(ms: Long) = clockLabel(clockMin(ms, night, zone))
@@ -333,7 +342,7 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(LANE + BAND_TITLE + MOVE_H + BAND_GAP + BAND_TITLE + HR_H + X_BAND)
+                        .height(lane + bandTitle + MOVE_H + BAND_GAP + bandTitle + HR_H + xBand)
                         .onSizeChanged { widthPx = it.width }
                         .semantics { contentDescription = takeaway }
                         .pointerInput(s) {
@@ -352,9 +361,9 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                         val left = gutter
                         val end = size.width - right
                         fun x(t: Long) = left + (t - t0).toFloat() / (t1 - t0) * (end - left)
-                        val moveTop = (LANE + BAND_TITLE).toPx()
+                        val moveTop = (lane + bandTitle).toPx()
                         val moveBottom = moveTop + MOVE_H.toPx()
-                        val hrTop = moveBottom + (BAND_GAP + BAND_TITLE).toPx()
+                        val hrTop = moveBottom + (BAND_GAP + bandTitle).toPx()
                         val hrBottom = hrTop + HR_H.toPx()
                         for (r in runs) { // the estimated asleep time, a wash behind both charts
                             val a = x(t0 + r.first * stepMs)
@@ -366,8 +375,12 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                         drawGrid(move, ink)
                         drawGrid(heart, ink)
                         for ((title, top) in listOf("Movement, share of the minute" to moveTop, "Heart rate, bpm" to hrTop)) {
-                            val l = ink.measurer.measure(title, ink.label)
-                            drawText(l, topLeft = Offset(left, top - BAND_TITLE.toPx()))
+                            // One line, cut with "…" when large text makes it wider than the chart; the legend says it too.
+                            val l = ink.measurer.measure(
+                                title, ink.label, TextOverflow.Ellipsis, maxLines = 1,
+                                constraints = Constraints(maxWidth = (end - left).toInt().coerceAtLeast(0)),
+                            )
+                            drawText(l, topLeft = Offset(left, top - bandTitle.toPx()))
                         }
                         val slot = (end - left) * per * stepMs / (t1 - t0)
                         val w = (slot - 1.dp.toPx()).coerceAtLeast(1.dp.toPx())
@@ -398,13 +411,13 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                             val lx = (at - l.size.width / 2f).coerceIn(0f, maxOf(0f, size.width - l.size.width))
                             val row = rowEnds.indexOfFirst { it + 4.dp.toPx() <= lx }
                             if (row < 0) return
-                            drawText(l, topLeft = Offset(lx, row * 16.dp.toPx()))
+                            drawText(l, topLeft = Offset(lx, row * maxOf(16.dp.toPx(), ink.lineH.toFloat())))
                             rowEnds[row] = lx + l.size.width
                         }
                         phone?.let { p ->
                             val a = x(p.startMs.coerceIn(t0, t1))
                             val b = x(p.endMs.coerceIn(t0, t1))
-                            val y = LANE.toPx() - 4.dp.toPx()
+                            val y = lane.toPx() - 4.dp.toPx()
                             val to = Offset(maxOf(b, a + 2.dp.toPx()), y)
                             drawLine(colors.onSurfaceVariant, Offset(a, y), to, 4.dp.toPx(), StrokeCap.Round)
                             label("Voice", a + 12.dp.toPx())
@@ -412,7 +425,7 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                         for (m in events) {
                             val mx = x(m.atMs)
                             val hairline = colors.onSurfaceVariant.copy(alpha = 0.5f)
-                            drawLine(hairline, Offset(mx, LANE.toPx() - 2.dp.toPx()), Offset(mx, hrBottom), 1.dp.toPx())
+                            drawLine(hairline, Offset(mx, lane.toPx() - 2.dp.toPx()), Offset(mx, hrBottom), 1.dp.toPx())
                             label(m.short, mx)
                         }
                         val hours = when {

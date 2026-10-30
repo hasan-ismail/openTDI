@@ -86,10 +86,10 @@ class StatsModelTest {
         val spring = LocalDate.of(2026, 3, 7) // clocks go forward at 2:00 the next morning
         assertEquals(930, clockMin(ms(spring.plusDays(1), 3, 30), spring, zone)) // wall clock, not elapsed time
 
-        assertEquals("11 PM", clockLabel(660))
-        assertEquals("1:30 AM", clockLabel(810))
-        assertEquals("12 PM", clockLabel(1440))
-        assertEquals("11:30 AM", clockLabel(-30))
+        assertEquals("11\u00A0PM", clockLabel(660))
+        assertEquals("1:30\u00A0AM", clockLabel(810))
+        assertEquals("12\u00A0PM", clockLabel(1440))
+        assertEquals("11:30\u00A0AM", clockLabel(-30))
 
         assertEquals(600..1260, clockAxis(listOf(670, 1150))) // 23:10 to 7:10 gets 22:00 to 9:00
         assertEquals(540..1200, clockAxis(emptyList())) // 22:00 to 7:00 with an hour to spare
@@ -242,7 +242,7 @@ class StatsModelTest {
         assertEquals("Morning questions", questionsLabel("WAKE"))
         assertEquals("Early wake-up questions", questionsLabel("WBTB"))
         val made = listOf(DreamReport(0, "LATER", recording = "w_dream_151500.m4a"))
-        assertEquals("Recorded 3:15 PM", recordingLabel("w_dream_151500.m4a", made)) // no alarm named
+        assertEquals("Recorded 3:15\u00A0PM", recordingLabel("w_dream_151500.m4a", made)) // no alarm named
     }
 
     @Test
@@ -271,9 +271,9 @@ class StatsModelTest {
         assertEquals("Copied 1 new file from the watch", syncWords(false, SyncResult(1, 10)))
         assertEquals("Copied 3 new files from the watch", syncWords(false, SyncResult(3, 10)))
 
-        assertEquals("45 min", hm(45))
-        assertEquals("8 h", hm(480))
-        assertEquals("7 h 5 min", hm(425))
+        assertEquals("45\u00A0min", hm(45))
+        assertEquals("8\u00A0h", hm(480))
+        assertEquals("7\u00A0h 5\u00A0min", hm(425)) // breaks only between the hours and the minutes
         assertEquals("Insight: nothing in this range yet.", takeaway("Insight", emptyList()) { "$it" })
         assertEquals(
             "Minutes averaged 20 over 3 nights, from 10 to 30.",
@@ -283,16 +283,16 @@ class StatsModelTest {
         assertEquals("3", num(3f))
 
         val made = listOf(DreamReport(0, "WAKE", recording = "w_dream_064512.m4a"))
-        assertEquals("Recorded 6:45 AM, after the wake-up alarm", recordingLabel("w_dream_064512.m4a", made))
-        assertEquals("Recorded 11:59 PM", recordingLabel("w_dream_235901.m4a", made))
-        assertEquals("Recorded 12:15 AM", recordingLabel("w_dream_001500.m4a", made))
+        assertEquals("Recorded 6:45\u00A0AM, after the wake-up alarm", recordingLabel("w_dream_064512.m4a", made))
+        assertEquals("Recorded 11:59\u00A0PM", recordingLabel("w_dream_235901.m4a", made))
+        assertEquals("Recorded 12:15\u00A0AM", recordingLabel("w_dream_001500.m4a", made))
         assertEquals("odd.m4a", recordingLabel("odd.m4a", made))
     }
 
     @Test
     fun recordingLabel_aDreamSavedInTheNight() {
         val made = listOf(DreamReport(0, "NIGHT", recording = "w_dream_031500.m4a"))
-        assertEquals("Recorded 3:15 AM, in the night", recordingLabel("w_dream_031500.m4a", made))
+        assertEquals("Recorded 3:15\u00A0AM, in the night", recordingLabel("w_dream_031500.m4a", made))
         assertEquals("Dream saved in the night", questionsLabel("NIGHT"))
     }
 
