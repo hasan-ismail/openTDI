@@ -24,7 +24,7 @@ on its sensor-free version that speaks on a timer only
 ## How a night goes
 
 1. **Tap Start the night** on the phone. It opens OpenTDI on the watch (if the watch doesn't open it, open it there
-   yourself and the night still starts by itself). If anything needs
+   yourself; if the popup still lists something, tap Start anyway). If anything needs
    fixing first, such as getting the voice ready, a popup lists just that, each with a button to fix it. The watch
    starts tracking your sleep and you hear the voice: *"You are safe in bed. If you hear this voice in a dream,
    you'll know it's only a dream."*

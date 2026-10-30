@@ -9,6 +9,7 @@ import com.opentdi.mobile.cues.OWN_VOICE_RATE
 import com.opentdi.shared.model.AlarmTone
 import android.app.Application
 import android.app.NotificationManager
+import android.content.Intent
 import android.media.AudioManager
 import android.os.SystemClock
 import android.util.Log
@@ -61,6 +62,7 @@ import com.opentdi.shared.model.PromptCue
 import com.opentdi.shared.model.SessionConfig
 import java.io.File
 import java.io.IOException
+import java.util.Optional
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -92,11 +94,10 @@ data class UiState(
     val batteryUnrestricted: Boolean = true, // as checked at the last resume
     val batteryManual: Boolean = false, // no battery settings screen opened: show the path instead
     val alarmsNotSent: Boolean = false, // the watch hasn't answered the last alarm change yet; resent every 30 s
+    val guideSentFor: String? = null, // see loadGuideSentFor
 )
 
 const val PREPARING = "Getting the voice ready…"
-private const val GUIDE_NOT_SENT =
-    "The watch didn't get the sleep guide. Keep it near the phone and tap Get the voice ready again."
 internal const val WATCH_NO_ANSWER = "The watch didn't answer. On the watch: Details › End the night now."
 internal const val WATCH_NOT_STOPPED = "The watch didn't stop. On the watch: Details › End the night now."
 private const val UPDATE_WATCH_APP = "Update it in Settings › More › Install the watch app."
@@ -131,7 +132,12 @@ data class SessionItem(val id: String, val startMs: Long, val bytes: Long, val s
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
     private val mutableUi =
-        MutableStateFlow(UiState(loadConfig(app), loadCueSet(app), calibratedIndex = loadCalibratedIndex(app)))
+        MutableStateFlow(
+            UiState(
+                loadConfig(app), loadCueSet(app), calibratedIndex = loadCalibratedIndex(app),
+                guideSentFor = loadGuideSentFor(app),
+            ),
+        )
     val ui: StateFlow<UiState> = mutableUi.asStateFlow()
     private val mutableSessions = MutableStateFlow<List<SessionItem>?>(null) // null until listed
     val sessions: StateFlow<List<SessionItem>?> = mutableSessions.asStateFlow()
@@ -175,6 +181,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Until when [watchStatus] asks every second: the watch app was just opened, so Start goes on soon after. */
     @Volatile private var fastPollUntil = 0L
 
+    /** [watchStatus]'s last answer, and when (elapsedRealtime). */
+    @Volatile private var lastAnswer: Pair<Long, Optional<WatchStatus>>? = null
+
     /** The watch app's state and battery, asked every 5 s while the screen collects it; null when it does not answer. */
     val watchStatus: Flow<WatchStatus?> = flow {
         while (true) {
@@ -192,10 +201,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (status?.apk != null && status.apk == carriedApk.value) SessionMonitor.update { // updated since
                 if (it.error?.startsWith(NapSessionService.WATCH_OUTDATED) == true) it.copy(error = null) else it
             }
+            lastAnswer = SystemClock.elapsedRealtime() to Optional.ofNullable(status)
             emit(status)
             delay(if (SystemClock.elapsedRealtime() < fastPollUntil) 1000 else 5000)
         }
     }.distinctUntilChanged()
+
+    /**
+     * [watchStatus]'s last answer while still fresh (two polls): Tonight composed again after a tab switch starts from
+     * it, so a Start tapped at once still knows a night is underway. Null: not asked lately.
+     */
+    fun recentWatchAnswer(): Optional<WatchStatus>? =
+        lastAnswer?.takeIf { SystemClock.elapsedRealtime() - it.first < 10_000 }?.second
 
     /** Opens OpenTDI on the watch for Start the night; the watch's state then says whether it opened. */
     fun openWatchApp() {
@@ -203,8 +220,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { openWatchApp(app) }
     }
 
-    /** Ends the watch's night, which goes on after the voice ends; says so when the watch did not stop. */
+    /**
+     * Ends the watch's night, which goes on after the voice ends; says so when the watch did not stop. Stops the voice
+     * too, as the watch's End the night does: its resend loop would otherwise start a new night with its alarms.
+     */
     fun stopWatch() {
+        val s = SessionMonitor.status.value
+        if (s.running && !s.quickTest) {
+            app.startService(Intent(app, NapSessionService::class.java).setAction(NapSessionService.ACTION_STOP))
+        }
         viewModelScope.launch {
             val status = watchRequest(app, TdiCommand.AbortSession("watch", DeviceRole.PHONE, SessionEndReason.USER))
             Log.i(TAG_SESSION, logLine("WATCH_STOP", "state" to (status?.state ?: "NO_ANSWER")))
@@ -390,10 +414,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status("Getting the voice ready: $done of $total…")
                     }
                 }
-                val guideMissed = guideOn(config) && !sendGuide(config) { sent, total ->
-                    status("Sending the sleep guide to the watch: $sent of $total…")
+                // A guide that didn't reach the watch shows in the voice status and Start's popup (guideNotOnWatch).
+                if (guideOn(config)) {
+                    sendGuide(config) { sent, total -> status("Sending the sleep guide to the watch: $sent of $total…") }
                 }
-                listOfNotNull(fallback, GUIDE_NOT_SENT.takeIf { guideMissed }).joinToString(" ").ifEmpty { null }
+                fallback
             } catch (e: CueException) {
                 e.message
             } catch (e: IOException) {
@@ -407,17 +432,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Sends the guide's clips to the watch, faded in at the cue volume as a cue sent there would be (the watch plays
-     * them at full track volume); false as soon as the watch does not keep one.
+     * them at full track volume); stops as soon as the watch does not keep one. Only a full send marks the guide sent:
+     * one that fails partway leaves a mix of old and new clips on the watch.
      */
-    private suspend fun sendGuide(config: SessionConfig, onSent: (sent: Int, total: Int) -> Unit): Boolean {
+    private suspend fun sendGuide(config: SessionConfig, onSent: (sent: Int, total: Int) -> Unit) {
+        setGuideSent(null)
         val player = CuePlayer(app)
-        return GuideClip.entries.withIndex().all { (i, clip) ->
+        val all = GuideClip.entries.withIndex().all { (i, clip) ->
             onSent(i, GuideClip.entries.size)
             val clipAudio = withContext(Dispatchers.IO) { loadGuideClip(app, clip) }
             val faded = FadeEnvelope(clipAudio.sampleRate, config.audio.fadeInMs)
                 .applyTo(clipAudio.samples, config.audio.targetGain())
             player.storeOnWatch(WavAudio(faded, clipAudio.sampleRate), clip.file)
         }
+        if (all) setGuideSent(withContext(Dispatchers.IO) { loadCueSet(app) }?.fingerprint)
+    }
+
+    private fun setGuideSent(fingerprint: String?) {
+        saveGuideSentFor(app, fingerprint)
+        mutableUi.update { it.copy(guideSentFor = fingerprint) }
     }
 
     /**

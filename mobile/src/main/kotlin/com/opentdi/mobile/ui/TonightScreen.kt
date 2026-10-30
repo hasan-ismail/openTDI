@@ -66,13 +66,12 @@ import com.opentdi.mobile.markTipsSeen
 import com.opentdi.mobile.tipsSeen
 import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.cues.cueSetProblem
+import com.opentdi.mobile.cues.guideNotOnWatch
 import com.opentdi.mobile.link.WatchTelemetry
 import com.opentdi.mobile.session.SessionMonitor
 import com.opentdi.mobile.session.SessionStatus
-import com.opentdi.shared.audio.alarmsAhead
 import com.opentdi.shared.config.MAX_CUE_TEXT_CHARS
 import com.opentdi.shared.config.validate
-import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.Optional
 import kotlinx.coroutines.delay
@@ -121,18 +120,24 @@ fun TonightScreen(
     val errors = remember(config) { config.validate() }
     val cueProblem = remember(config, ui.cues) { cueSetProblem(ui.cues, config) }
     val streaming = live.receivedAtMs?.let { now - it <= STALE_MS } == true
-    // null until the watch's first answer (up to 5 s), so nothing says "Can't reach the watch" on opening.
+    // null until the watch's first answer (up to 5 s), so nothing says "Can't reach the watch" on opening; after a tab
+    // switch, the answer from just before.
     val watchAnswer by remember(viewModel) { viewModel.watchStatus.map { Optional.ofNullable(it) } }
-        .collectAsStateWithLifecycle(initialValue = null)
+        .collectAsStateWithLifecycle(initialValue = remember(viewModel) { viewModel.recentWatchAnswer() })
     val watchStatus = watchAnswer?.orElse(null)
     val checkingWatch = watchAnswer == null && !streaming
     val watch = if (streaming) WatchState.RECORDING else watchStatus?.state
     val onWatch = config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER
     val alarmsOn = config.alarms.wakeEnabled || config.alarms.wbtbEnabled
     val running = status.running
-    // Start opened the watch app (owner, 2026-10-30: one button at bedtime); after 20 s the popup says how by hand.
+    // The popup opened the watch app once (owner, 2026-10-30: one button at bedtime).
     var openedWatch by rememberSaveable { mutableStateOf(false) }
-    var openTimedOut by rememberSaveable { mutableStateOf(false) }
+    // When Start last opened it (elapsedRealtime), from the popup or at once: after 20 s the text says how by hand.
+    var openedAt by rememberSaveable { mutableStateOf<Long?>(null) }
+    fun openWatch() {
+        openedAt = SystemClock.elapsedRealtime()
+        viewModel.openWatchApp()
+    }
     val checks = checklist(
         volumeOff, dnd, ui.batteryUnrestricted, cueProblem,
         if (onWatch) ui.watchTested else ui.calibratedIndex != null, watch, onWatch,
@@ -143,7 +148,8 @@ fun TonightScreen(
         speakerOff = speakerOff,
         running = running && !status.quickTest,
         watchAppOutdated = watchAppOutdated(watchStatus, carriedApk),
-        openingWatch = openedWatch && !openTimedOut,
+        openingWatch = openedAt?.let { now - it < 20_000 } == true,
+        guideMissing = remember(config, ui.cues, ui.guideSentFor) { guideNotOnWatch(ui.cues, config, ui.guideSentFor) },
     )
     val idle = !status.running && !ui.preparing && !ui.testing
     fun waitsForWatch(quick: Boolean) = checkingWatch && (!quick || onWatch) // a phone-route Quick test never asks it
@@ -156,7 +162,7 @@ fun TonightScreen(
     val nightUnderway = watch == WatchState.RECORDING
     // From the watch, not this process's memory: by morning the app may have been closed since the voice ended.
     val nightDone = nightUnderway && !status.running && !status.quickTest
-    // Not held back by the watch's first answer (up to 5 s), so the headline does not flip on opening; Start still waits.
+    // Not held back by the watch's first answer (up to 5 s), so the headline does not flip on opening.
     val ready = errors.isEmpty() && problems(quick = false).isEmpty()
     // The pre-flight popup (owner, 2026-10-29: the checklist was "so ugly ... make it a one time popup"): Start opens
     // it only when something needs attention, listing just that. null = closed, else whether it is for a Quick test.
@@ -173,7 +179,7 @@ fun TonightScreen(
             Check.SPEAKER -> "Bluetooth" to onOpenBluetooth
             Check.DND -> "Open settings" to onOpenDnd
             Check.BATTERY -> if (ui.batteryManual) null else "Allow" to onAllowBattery
-            Check.CUES -> "Get the voice ready" to {
+            Check.CUES, Check.GUIDE -> "Get the voice ready" to {
                 oldMessage = null // so the popup shows this try's failure even when it repeats the old one
                 viewModel.prepareCues()
             }
@@ -188,7 +194,7 @@ fun TonightScreen(
             Check.WATCH, Check.WATCH_BATTERY -> null
         }
         val fixEnabled = when (check) {
-            Check.CUES -> idle && config.theme.isNotBlank() && config.theme.length <= 60
+            Check.CUES, Check.GUIDE -> idle && config.theme.isNotBlank() && config.theme.length <= 60
             Check.TEST_CUE -> idle && cueProblem == null && (onWatch || (!volumeOff && !speakerOff))
             else -> true
         }
@@ -198,13 +204,15 @@ fun TonightScreen(
     fun begin(quick: Boolean) = if (quick) onQuickTest() else onStart()
     // Only the watch app is closed, as at most bedtimes: a real Start opens it and goes on at once, since the voice's
     // service resends Start until the watch tracks. Waiting here for the watch to open hung whenever the phone's screen
-    // went off right after Start: no voice, no tracking and no alarms.
-    fun onlyWatchClosed() = watch == WatchState.IDLE && problems(false).all { it.check == Check.WATCH }
+    // went off right after Start: no voice, no tracking and no alarms. Likewise before the watch's first answer (up to
+    // 5 s after opening Tonight): opening an app already open is harmless.
+    fun onlyWatchClosed() =
+        (watch == WatchState.IDLE || checkingWatch) && problems(false).all { it.check == Check.WATCH }
     fun tryStart(quick: Boolean) {
         val opens = !quick && onlyWatchClosed()
-        val clear = errors.isEmpty() && !waitsForWatch(quick) && (problems(quick).isEmpty() || opens)
+        val clear = errors.isEmpty() && (opens || (!waitsForWatch(quick) && problems(quick).isEmpty()))
         if (clear && (quick || !nightUnderway)) {
-            if (opens) viewModel.openWatchApp()
+            if (opens) openWatch()
             begin(quick)
         } else {
             oldMessage = ui.cueMessage
@@ -215,21 +223,10 @@ fun TonightScreen(
     LaunchedEffect(startAsk, watch) {
         if (startAsk == false && watch == WatchState.IDLE && !openedWatch) {
             openedWatch = true
-            viewModel.openWatchApp()
+            openWatch()
         }
     }
-    LaunchedEffect(openedWatch) {
-        if (openedWatch) {
-            delay(20_000)
-            openTimedOut = true
-        }
-    }
-    LaunchedEffect(startAsk) {
-        if (startAsk == null) {
-            openedWatch = false
-            openTimedOut = false
-        }
-    }
+    LaunchedEffect(startAsk) { if (startAsk == null) openedWatch = false }
     // Goes on by itself once only the watch opening is left, as tryStart; anything else keeps the popup open.
     val goOn = startAsk == false && openedWatch && idle && errors.isEmpty() && !waitsForWatch(false) &&
         (problems(false).isEmpty() || onlyWatchClosed()) && !nightUnderway
@@ -254,13 +251,7 @@ fun TonightScreen(
 
     val sentence = when {
         // The watch's own list when it sends one: only it knows an early wake-up skipped or too soon to ring.
-        nightDone -> nightOnText(
-            when (val left = watchStatus?.alarmsLeft) {
-                null -> alarmsAhead(config.alarms, System.currentTimeMillis(), ZoneId.systemDefault())
-                else -> left.ifEmpty { null }
-            },
-            config.alarms.wakeEnabled,
-        )
+        nightDone -> nightOnText(alarmsLeftTonight(watchStatus, config.alarms), config.alarms.wakeEnabled)
         // Not after a phone-only night's voice: it describes a night started now.
         !running && (status.state != TdiState.SESSION_COMPLETE || status.quickTest) ->
             tonightSummary(config, ZonedDateTime.now())
@@ -291,8 +282,8 @@ fun TonightScreen(
             }
         } else {
             StartButton(enabled = idle, glow = idle && ready && !nightUnderway) { tryStart(quick = false) }
-            // Also what Get the voice ready said on leaving Settings, such as the sleep guide not reaching the watch:
-            // Start does not stop on it, so this is the only place it shows.
+            // Also what Get the voice ready said on leaving Settings, such as the voice it fell back to: Start does not
+            // stop on it, so this is the only place it shows.
             if (ui.preparing) {
                 Help(ui.prepareStatus)
             } else {
@@ -382,7 +373,7 @@ fun TonightScreen(
 }
 
 /** Checks a running session cannot act on, or that only matter before it starts. */
-private val NOT_WHILE_RUNNING = setOf(Check.TIMING, Check.TEST_CUE, Check.WATCH_BATTERY)
+private val NOT_WHILE_RUNNING = setOf(Check.TIMING, Check.TEST_CUE, Check.WATCH_BATTERY, Check.GUIDE)
 
 /** A settings error ([validate]) in plain words: the topic and the words a user can get wrong; Reset fixes the rest. */
 private fun settingsProblem(error: String) = when {

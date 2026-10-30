@@ -243,6 +243,21 @@ class TonightTest {
             assertTrue("press the Home button" in byHand.text && "starts by itself" in byHand.text)
             assertTrue(!byHand.ok && byHand.blocking == alarmsOn)
         }
+        // Another row left keeps the popup from going on by itself: the text must not promise it.
+        val dndOff = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE, dndOff = true)
+            .single { it.check == Check.WATCH }.text
+        assertTrue("starts by itself" !in dndOff && "tap Start anyway" in dndOff)
+        // While the voice runs it resends Start, so the night does start once the app is open.
+        val running = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE, dndOff = true, running = true)
+        assertTrue("starts by itself" in running.single { it.check == Check.WATCH }.text)
+    }
+
+    @Test
+    fun alarmsLeftTonight_trustsTheWatchsList_evenWhenEmpty() {
+        val alarms = AlarmConfig(wakeEnabled = true, wakeAtMin = 7 * 60)
+        val snoozed = WatchStatus(WatchState.RECORDING, alarmsLeft = "the wake-up alarm at 7:09 AM")
+        assertEquals("the wake-up alarm at 7:09 AM", alarmsLeftTonight(snoozed, alarms))
+        assertNull(alarmsLeftTonight(WatchStatus(WatchState.RECORDING, alarmsLeft = ""), alarms)) // none: no guess
     }
 
     @Test

@@ -125,7 +125,8 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(state.sessionId, state.running) {
                 val over = if (reportDir == null) state.sessionId == null else state.running
                 if (page == Page.REPORT && over) page = Page.MAIN
-                if (page == Page.AWAKE && !state.running) page = Page.MAIN // the night ended meanwhile
+                // The night ended meanwhile (by itself, or from the phone): nothing left to ask about.
+                if (!state.running && (page == Page.AWAKE || page == Page.END_NIGHT)) page = Page.MAIN
             }
             fun openReport(fromEnd: Boolean, lastNight: File? = null) {
                 reportFromEnd = fromEnd
@@ -546,8 +547,9 @@ private fun MainScreen(
                     Button(onClick = onReport, modifier = Modifier.fillMaxWidth(), label = { Text("Save my dream") })
                 }
             }
-            // A dream recalled after End the night still goes with that night, for Stats.
-            lastNight?.takeIf { !state.running && state.reportAfter == null }?.let { dir ->
+            // A dream recalled after End the night still goes with that night, for Stats. Not on Night saved: right
+            // after the morning's Save it read as if the save had failed, and the dream got saved twice.
+            lastNight?.takeIf { waitingOnly && state.reportAfter == null }?.let { dir ->
                 item {
                     Button(
                         onClick = { onLastNightReport(dir) },
@@ -624,7 +626,17 @@ private fun MainScreen(
                     )
                 }
             } else if (state.running) {
-                item { BigLine(if (state.status == null) "Starting…" else "Sleep well") }
+                // The wake-up rang (or the morning ended in its snooze) and its dream is not saved: it holds the night.
+                val morning = state.reportAfter == "WAKE"
+                item {
+                    BigLine(
+                        when {
+                            state.status == null -> "Starting…"
+                            morning -> "Good morning"
+                            else -> "Sleep well"
+                        },
+                    )
+                }
                 // Nothing when an alarm is on but more than 12 h away: it is set, just not tonight's to list.
                 val wbtbWontRing = wbtbAt == null || state.wbtbSkip != null
                 val now = System.currentTimeMillis()
@@ -658,7 +670,10 @@ private fun MainScreen(
                     val startMs = remember(state.startedElapsedMs) {
                         System.currentTimeMillis() - (SystemClock.elapsedRealtime() - state.startedElapsedMs)
                     }
-                    Line(nightEndLine(config.wakeEnabled, startMs), style = MaterialTheme.typography.labelSmall)
+                    Line(
+                        if (morning) "Save your dream to end the night." else nightEndLine(config.wakeEnabled, startMs),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
             } else if (needsSetup) {
                 item { BigLine("One-time setup") }
@@ -906,9 +921,10 @@ private fun EndNightScreen(
             if (wbtbAhead) {
                 item { Line("Only want to skip the early wake-up? Go back and tap Skip the early wake-up.") }
             }
-            // Ending the night saves an unfinished report as it stands; questions not reached stay unanswered.
+            // Ending the night saves an unfinished report as it stands; questions not reached stay unanswered. Worded for
+            // every report: a dream saved in the night has no questions, only its recording.
             if (reportDue) {
-                item { Line("Your dream questions aren't done yet.") }
+                item { Line("Your dream isn't saved yet.") }
                 item {
                     Button(
                         onClick = onReport,

@@ -198,4 +198,17 @@ class CueTextTest {
         val same = config.copy(audio = AudioConfig(cueTexts = mapOf(PromptCue.WAKE_PROMPT to "")))
         assertNull(cueSetProblem(prepared, same))
     }
+
+    @Test
+    fun guideNotOnWatch_untilTheWatchKeptThisRenderingsGuide() {
+        val config = SessionConfig(theme = "a tree", alarms = AlarmConfig(wbtbEnabled = true))
+        val set = CueSet("a tree", "engine", "v", emptyList(), cueFingerprint(config, "v"))
+        assertTrue(guideNotOnWatch(set, config, sentFor = null)) // never sent, or a send that failed partway
+        assertTrue(guideNotOnWatch(set, config, sentFor = "an older rendering")) // the old words still on the watch
+        assertFalse(guideNotOnWatch(set, config, sentFor = set.fingerprint))
+        assertFalse(guideNotOnWatch(null, config, sentFor = null)) // Get the voice ready shows for the voice itself
+        val off = config.copy(alarms = config.alarms.copy(wbtbGuide = false))
+        val offSet = set.copy(fingerprint = cueFingerprint(off, "v"))
+        assertFalse(guideNotOnWatch(offSet, off, sentFor = null))
+    }
 }

@@ -1,6 +1,7 @@
 package com.opentdi.mobile.ui
 
 import com.opentdi.mobile.audio.DndEffect
+import com.opentdi.mobile.cues.GUIDE_NOT_ON_WATCH
 import com.opentdi.mobile.cues.cueText
 import com.opentdi.shared.model.PromptCue
 import com.opentdi.mobile.session.SessionStatus
@@ -107,7 +108,7 @@ internal fun span(s: Int) = when {
     else -> "${s / 60}${NBSP}min ${s % 60}${NBSP}s"
 }
 
-enum class Check { TIMING, VOLUME, SPEAKER, DND, BATTERY, CUES, TEST_CUE, WATCH, WATCH_APP, WATCH_BATTERY }
+enum class Check { TIMING, VOLUME, SPEAKER, DND, BATTERY, CUES, GUIDE, TEST_CUE, WATCH, WATCH_APP, WATCH_BATTERY }
 
 /** The watch answered from an app other than the one this phone carries: older (no [WatchStatus.apk]) or newer. */
 fun watchAppOutdated(status: WatchStatus?, carriedApk: String?) =
@@ -148,6 +149,7 @@ fun checklist(
     running: Boolean = false, // a real night's voice is running (not a Quick test)
     watchAppOutdated: Boolean = false, // the watch runs another version of the app ([watchAppOutdated])
     openingWatch: Boolean = false, // Start just asked the watch to open OpenTDI, and it may still
+    guideMissing: Boolean = false, // the watch lacks this voice's sleep guide ([guideNotOnWatch])
 ): List<CheckItem> = buildList {
     if (firstCueMin != null) {
         val wait = if (firstCueMin == 1) "1 minute" else "$firstCueMin minutes"
@@ -203,6 +205,8 @@ fun checklist(
         CheckItem(Check.BATTERY, batteryUnrestricted, "Let OpenTDI run all night: tap Allow, then choose Unrestricted."),
     )
     add(CheckItem(Check.CUES, cueProblem == null, cueProblem.orEmpty(), blocking = true))
+    // Never blocking: the voice plays without it, and a watch out of reach at bedtime must not stop the night.
+    if (guideMissing) add(CheckItem(Check.GUIDE, false, GUIDE_NOT_ON_WATCH))
     add(
         if (onWatch) {
             CheckItem(
@@ -236,7 +240,14 @@ fun checklist(
                     "Opening OpenTDI on your watch…"
                 } else {
                     "Open OpenTDI on your watch: press the Home button, then tap OpenTDI. If it asks, tap Allow. " +
-                        "The night starts by itself once it's open.$why"
+                        // True only when Start goes on by itself (TonightScreen's goOn), or the voice resends Start.
+                        if (running || (this.none { !it.ok } && !watchAppOutdated &&
+                                (watchBatteryPct ?: NIGHT_BATTERY_PCT) >= NIGHT_BATTERY_PCT)
+                        ) {
+                            "The night starts by itself once it's open.$why"
+                        } else {
+                            "Then come back here and tap Start anyway.$why"
+                        }
                 },
                 blocking = needed,
             )
@@ -277,7 +288,7 @@ fun checklist(
  * only when it plays the voice, and then only if out of reach (its speaker service runs with the app closed).
  */
 fun quickTestSkips(item: CheckItem, onWatch: Boolean, watch: WatchState?) = when (item.check) {
-    Check.TIMING, Check.WATCH_BATTERY -> true
+    Check.TIMING, Check.WATCH_BATTERY, Check.GUIDE -> true
     Check.WATCH -> !onWatch || watch != null
     Check.WATCH_APP -> !onWatch // a Quick test uses the watch only to play the voice
     Check.DND -> !item.blocking // a daytime test needs no Do Not Disturb, unless it would mute the voice

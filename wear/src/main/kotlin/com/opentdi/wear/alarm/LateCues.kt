@@ -98,6 +98,9 @@ class LateCues(
 
     fun close() = sound.stop()
 
+    /** Armed and its window not over yet: the night must not end under the cues (the wake-up off). */
+    fun active(nowMs: Long) = endAtMs?.let { nowMs < it } == true
+
     /** [stillness] and [hr] are the newest packet's, for the log; [seconds] the stillness of each packet since. */
     fun tick(nowMs: Long, stillness: Float?, hr: Float?, seconds: List<Float?>) {
         if (endAtMs?.let { nowMs >= it } == true) disarm()

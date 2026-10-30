@@ -13,12 +13,10 @@ import android.content.Intent
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.Settings
-import com.opentdi.shared.audio.alarmsAhead
 import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.WatchStatus
 import com.opentdi.shared.time.clock12
 import java.io.File
-import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.Optional
 import kotlinx.coroutines.delay
@@ -74,8 +72,10 @@ import com.opentdi.mobile.cues.NEURAL_MODEL
 import com.opentdi.mobile.cues.NEURAL_VOICE_CHOICES
 import com.opentdi.mobile.cues.PHASE1_CUES
 import com.opentdi.mobile.cues.THEME_PLACEHOLDER
+import com.opentdi.mobile.cues.GUIDE_NOT_ON_WATCH
 import com.opentdi.mobile.cues.cueSetProblem
 import com.opentdi.mobile.cues.cueText
+import com.opentdi.mobile.cues.guideNotOnWatch
 import com.opentdi.mobile.cues.mitThemeCueText
 import com.opentdi.mobile.cues.speakerLabel
 import com.opentdi.mobile.session.SessionMonitor
@@ -215,7 +215,7 @@ fun SettingsScreen(viewModel: MainViewModel, onQuickTest: () -> Unit, showWatch:
     }
     if (confirmStopWatch) {
         // Ending also cancels the alarms, and the watch holds an unanswered dream report only in memory.
-        val ahead = alarmsAhead(ui.config.alarms, System.currentTimeMillis(), ZoneId.systemDefault())
+        val ahead = alarmsLeftTonight(watchAnswer?.orElse(null), ui.config.alarms) // a snooze too, as Tonight
         AlertDialog(
             onDismissRequest = { confirmStopWatch = false },
             confirmButton = {
@@ -228,7 +228,8 @@ fun SettingsScreen(viewModel: MainViewModel, onQuickTest: () -> Unit, showWatch:
             title = { Text("End the night?") },
             text = {
                 Text(
-                    "Answer the dream questions on the watch first. Then the watch stops tracking your sleep." +
+                    "Answer the dream questions on the watch first. Then the watch stops tracking your sleep" +
+                        (if (status.running && !status.quickTest) " and the voice stops." else ".") +
                         (ahead?.let { " ${it.replaceFirstChar(Char::uppercase)} won't ring." } ?: ""),
                 )
             },
@@ -330,6 +331,7 @@ internal fun VoiceCard(viewModel: MainViewModel, ui: UiState, idle: Boolean, vol
             when {
                 ui.preparing -> ui.prepareStatus
                 ui.testing -> "Testing the voice…"
+                guideNotOnWatch(ui.cues, config, ui.guideSentFor) -> GUIDE_NOT_ON_WATCH
                 cueProblem == null -> "The voice is ready."
                 else -> cueProblem
             },

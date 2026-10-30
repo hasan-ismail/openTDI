@@ -7,6 +7,16 @@ import com.opentdi.shared.model.SessionConfig
 fun guideOn(config: SessionConfig) = config.alarms.wbtbEnabled && config.alarms.wbtbGuide
 
 /**
+ * The guide is on and the voice [set] is ready, but the watch never confirmed keeping all of this rendering's guide
+ * clips ([sentFor]: the [CueSet.fingerprint] of the last full send): it would play an older guide, a mix, or none.
+ */
+fun guideNotOnWatch(set: CueSet?, config: SessionConfig, sentFor: String?) =
+    guideOn(config) && set != null && cueSetProblem(set, config) == null && set.fingerprint != sentFor
+
+const val GUIDE_NOT_ON_WATCH =
+    "The sleep guide isn't on the watch yet. Keep the watch near the phone and tap Get the voice ready."
+
+/**
  * The words of the guided back-to-sleep the watch plays after WBTB (owner, 2026-10-28), one text per [GuideClip]; the
  * order, the pauses and the cues between them are the watch's (GuideRoutine). Prepare cues renders them like the cues
  * (the natural voice when chosen, else the phone's own) and sends them to the watch over the Wear Data Layer, which may

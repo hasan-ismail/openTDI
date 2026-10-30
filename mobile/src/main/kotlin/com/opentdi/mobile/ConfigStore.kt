@@ -12,6 +12,7 @@ private const val KEY_CONFIG = "session_config"
 private const val KEY_WORDS_VERSION = "cue_words_version"
 private const val KEY_CALIBRATED_INDEX = "calibrated_stream_index"
 private const val KEY_ONBOARDED = "onboarded"
+private const val KEY_GUIDE_SENT = "guide_sent_for"
 
 /** Phase 1 runs TIMED_CUES only (spec §0); every other default is the spec's. */
 val PHASE1_DEFAULT_CONFIG = SessionConfig(mode = SessionMode.TIMED_CUES)
@@ -40,6 +41,13 @@ fun loadCalibratedIndex(context: Context): Int? = prefs(context).getInt(KEY_CALI
 
 fun saveCalibratedIndex(context: Context, index: Int) {
     prefs(context).edit().putInt(KEY_CALIBRATED_INDEX, index).apply()
+}
+
+/** The cue set fingerprint whose sleep guide the watch kept in full (guideNotOnWatch); null before any, or mid-send. */
+fun loadGuideSentFor(context: Context): String? = prefs(context).getString(KEY_GUIDE_SENT, null)
+
+fun saveGuideSentFor(context: Context, fingerprint: String?) {
+    prefs(context).edit().putString(KEY_GUIDE_SENT, fingerprint).apply()
 }
 
 /** True once the set-up guide was finished or skipped. */

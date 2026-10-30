@@ -594,6 +594,7 @@ class WakeAlarms(
             // While sleep timing waits to see you fall asleep, tonight's time is not decided yet: still ahead.
             wbtbAheadAtMs = if (wbtbTimed) wbtbAhead(wbtbAt, nowMs, recordingStartMs, unitMs) else wbtbAt,
             backToSleepAtMs = backToSleepAt, guide = guideOfferedAt != null || guide != null,
+            lateCues = lateCues?.active(nowMs) == true,
         ),
     )
 
@@ -703,13 +704,13 @@ class WakeAlarms(
 
         /**
          * Something can still ring or play tonight: a ring, a snoozed or rung-out wake-up, a wake-up within 12 h (once
-         * it rang, [wakeAtMs] is tomorrow's, about 24 h away), an early wake-up ahead, the back-to-sleep buzz or the
-         * guide.
+         * it rang, [wakeAtMs] is tomorrow's, about 24 h away), an early wake-up ahead, the back-to-sleep buzz, the
+         * guide or the late cues (armed, their window not over).
          */
         internal fun somethingLeftTonight(
             nowMs: Long, ringing: Boolean, snoozed: Boolean, wakeAtMs: Long?, wbtbAheadAtMs: Long?,
-            backToSleepAtMs: Long?, guide: Boolean,
-        ): Boolean = ringing || snoozed || guide || backToSleepAtMs != null || wbtbAheadAtMs != null ||
+            backToSleepAtMs: Long?, guide: Boolean, lateCues: Boolean,
+        ): Boolean = ringing || snoozed || guide || lateCues || backToSleepAtMs != null || wbtbAheadAtMs != null ||
             wakeAtMs?.let { it - nowMs <= NEW_NIGHT_MS } == true
 
         /**

@@ -205,8 +205,8 @@ class WakeAlarmsTest {
         val now = 30 * hour
         fun left(
             ringing: Boolean = false, snoozed: Boolean = false, wakeAt: Long? = null, wbtbAt: Long? = null,
-            buzzAt: Long? = null, guide: Boolean = false,
-        ) = WakeAlarms.somethingLeftTonight(now, ringing, snoozed, wakeAt, wbtbAt, buzzAt, guide)
+            buzzAt: Long? = null, guide: Boolean = false, lateCues: Boolean = false,
+        ) = WakeAlarms.somethingLeftTonight(now, ringing, snoozed, wakeAt, wbtbAt, buzzAt, guide, lateCues)
         assertTrue(left(wakeAt = now + hour))
         assertFalse(left(wakeAt = now + 23 * hour + 55 * min)) // tomorrow's, once today's rang
         assertFalse(left())
@@ -215,6 +215,7 @@ class WakeAlarmsTest {
         assertTrue(left(wbtbAt = now + hour))
         assertTrue(left(buzzAt = now + 10 * min))
         assertTrue(left(guide = true))
+        assertTrue(left(lateCues = true)) // the wake-up off: the 12 h rule must not cut the late cues short
     }
 
     @Test

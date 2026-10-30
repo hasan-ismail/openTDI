@@ -192,18 +192,20 @@ fun DreamReportScreen(
     var micFailed by remember { mutableStateOf(false) }
     var startedMs by remember { mutableLongStateOf(0L) }
     var nowMs by remember { mutableLongStateOf(0L) }
-    if (recorder != null) {
-        LaunchedEffect(startedMs) {
-            while (true) {
-                nowMs = SystemClock.elapsedRealtime()
-                delay(500)
-            }
-        }
-    }
     fun stopRecording() {
         stopRecorder(recorder ?: return)
         recorder = null
         draft.recordedMs = SystemClock.elapsedRealtime() - startedMs // the length shown on the Save page
+    }
+    if (recorder != null) {
+        LaunchedEffect(startedMs) {
+            while (true) {
+                nowMs = SystemClock.elapsedRealtime()
+                // Fell asleep before Stop: the take is kept, and the microphone and the lit screen go off.
+                if (nowMs - startedMs >= MAX_TAKE_MS) stopRecording()
+                delay(500)
+            }
+        }
     }
     // Left without Save (back, the app closing): the recording is kept, and the draft waits for the next opening.
     // Shown, not just composed: a report behind the watch face is written when the night ends, and leaving the app
@@ -225,6 +227,11 @@ fun DreamReportScreen(
     }
     BackHandler(enabled = draft.step > 0) { draft.step-- }
     BackHandler(enabled = recorder != null) { stopRecording() } // back while recording stops it and stays here
+    // Back before anything was said in the night is "Not now": no unsaved dream left behind to ask about.
+    BackHandler(enabled = after == "NIGHT" && draft.step == 0 && recorder == null && draft.recording == null) {
+        onSaved()
+        onDone()
+    }
     val listState = rememberTransformingLazyColumnState()
     LaunchedEffect(draft.step) { listState.scrollToItem(0) }
     ScreenScaffold(scrollState = listState) { contentPadding ->
@@ -425,6 +432,7 @@ fun DreamReportScreen(
 
 private val FILE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
 private const val WEEK_MS = 7 * 24 * 3_600_000L
+private const val MAX_TAKE_MS = 5 * 60_000L // GUESSED: a spoken dream report fits in 5 min
 
 private fun startRecorder(context: Context, file: File): MediaRecorder? {
     val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

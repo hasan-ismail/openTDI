@@ -12,11 +12,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.opentdi.shared.audio.alarmsAhead
 import com.opentdi.shared.audio.nextAlarmAt
 import com.opentdi.shared.audio.wbtbTooSoon
+import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.model.SessionConfig
+import com.opentdi.shared.model.WatchStatus
 import com.opentdi.shared.time.clock12
+import java.time.ZoneId
 import java.time.ZonedDateTime
 
 /** One part of tonight's plan, in minutes from now. */
@@ -77,6 +81,15 @@ fun nightOnText(ahead: String?, wakeEnabled: Boolean): String {
     } else {
         "The voice is done. Your alarms are on the watch: $ahead. The night ends by itself $end."
     }
+}
+
+/**
+ * The alarms still to ring tonight: the watch's own list when it sends one (only it knows a snooze, or an early wake-up
+ * skipped or too soon), else [alarmsAhead] from the settings (an older watch app, or no answer). Null when none.
+ */
+fun alarmsLeftTonight(watch: WatchStatus?, alarms: AlarmConfig): String? = when (val left = watch?.alarmsLeft) {
+    null -> alarmsAhead(alarms, System.currentTimeMillis(), ZoneId.systemDefault())
+    else -> left.ifEmpty { null }
 }
 
 private fun at(now: ZonedDateTime, min: Int) = now.plusMinutes(min.toLong()).let { clock12(it.hour * 60 + it.minute) }
