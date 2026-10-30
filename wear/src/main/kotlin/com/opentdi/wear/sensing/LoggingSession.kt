@@ -145,6 +145,7 @@ class LoggingSession(
                     guideOffered = it.guideOffered,
                     guideRunning = it.guideRunning,
                     reportAfter = it.reportAfter,
+                    backupAtMs = it.backupAtMs,
                 )
             }
         }

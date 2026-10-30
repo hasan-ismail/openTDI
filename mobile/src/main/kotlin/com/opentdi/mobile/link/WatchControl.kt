@@ -75,7 +75,7 @@ class WatchSyncListener : WearableListenerService() {
         if (info.nodes.isEmpty() || pendingWatchSync(this) == 0L) return
         val config = loadConfig(this)
         // Called on a background thread; blocking keeps the service alive until the watch answered (5 s at most).
-        if (runBlocking { watchRequest(this@WatchSyncListener, TdiCommand.ConfigSync(null, config)) } != null) {
+        if (runBlocking { watchRequest(this@WatchSyncListener, TdiCommand.ConfigSync(null, config)) }?.understood == true) {
             watchSyncAnswered(this, config.revision)
         }
     }

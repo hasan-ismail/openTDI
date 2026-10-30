@@ -45,6 +45,7 @@ import com.opentdi.shared.audio.targetGain
 import com.opentdi.mobile.session.NapSessionService
 import com.opentdi.mobile.session.SESSIONS_DIR
 import com.opentdi.mobile.session.SessionMonitor
+import com.opentdi.mobile.session.carriedWatchApk
 import com.opentdi.mobile.stats.NightsRepository
 import com.opentdi.shared.csv.CsvFiles
 import com.opentdi.shared.csv.PhoneSessionSummary
@@ -62,11 +63,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -92,6 +96,19 @@ private const val GUIDE_NOT_SENT =
     "The watch didn't get the sleep guide. Keep it near the phone and tap Get the voice ready again."
 private const val WATCH_NO_ANSWER = "The watch didn't answer. End the night on the watch itself."
 private const val WATCH_NOT_STOPPED = "The watch didn't stop. End the night on the watch itself."
+private const val UPDATE_WATCH_APP = "Update it on the Watch tab, under Install the watch app."
+
+/**
+ * Why a test on the watch did not play: no answer, or a watch app too old to read it; null when the watch took it.
+ * [carried] is the watch app this phone carries ([carriedWatchApk]).
+ */
+internal fun watchTestProblem(status: WatchStatus?, carried: String?): String? = when {
+    status == null -> "The watch did not answer: is it connected?"
+    !status.understood -> "${NapSessionService.WATCH_OUTDATED}, so it couldn't play this. $UPDATE_WATCH_APP"
+    // A watch app from before WatchStatus.understood answers "understood" even to a test it could not read.
+    status.apk == null && carried != null -> "If the watch didn't play it, its app is out of date. $UPDATE_WATCH_APP"
+    else -> null
+}
 
 /** Why Test the voice did not play, in plain words, from the [last] audio event it logged. */
 internal fun testFailure(last: AudioEvent?): String = when (last?.detail ?: last?.event) {
@@ -148,6 +165,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.distinctUntilChanged()
 
+    /** The watch app this phone carries ([carriedWatchApk]): null until hashed, or when it carries none. */
+    val carriedApk: StateFlow<String?> = flow { emit(carriedWatchApk(app)) }.flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     /** The watch app's state and battery, asked every 5 s while the screen collects it; null when it does not answer. */
     val watchStatus: Flow<WatchStatus?> = flow {
         while (true) {
@@ -155,6 +176,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (status?.state == WatchState.IDLE) clearWatchStopError() // ended on the watch itself
             if (status?.state == WatchState.RECORDING) SessionMonitor.update { // back in reach, or started on the watch
                 if (it.error?.startsWith(NapSessionService.WATCH_STOPPED) == true) it.copy(error = null) else it
+            }
+            if (status?.apk != null && status.apk == carriedApk.value) SessionMonitor.update { // updated since
+                if (it.error?.startsWith(NapSessionService.WATCH_OUTDATED) == true) it.copy(error = null) else it
             }
             emit(status)
             delay(5000)
@@ -209,8 +233,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun testLateCue(volume: Float) {
         viewModelScope.launch {
             val earbuds = ui.value.config.audio.watchOutput == WatchOutput.EARBUDS
-            if (watchRequest(app, TdiCommand.TestLateCue(volume, earbuds)) == null) {
-                mutableUi.update { it.copy(cueMessage = "The watch did not answer: is it connected?") }
+            watchTestProblem(watchRequest(app, TdiCommand.TestLateCue(volume, earbuds)), carriedApk.value)?.let { p ->
+                mutableUi.update { it.copy(cueMessage = p) }
             }
         }
     }
@@ -234,8 +258,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             val earbuds = ui.value.config.audio.watchOutput == WatchOutput.EARBUDS
-            val status = watchRequest(app, TdiCommand.TestAlarm(tone, earbuds))
-            if (status == null) mutableUi.update { it.copy(cueMessage = "The watch did not answer: is it connected?") }
+            watchTestProblem(watchRequest(app, TdiCommand.TestAlarm(tone, earbuds)), carriedApk.value)?.let { p ->
+                mutableUi.update { it.copy(cueMessage = p) }
+            }
         }
     }
 
@@ -279,7 +304,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         watchSync = viewModelScope.launch {
             delay(800)
             while (true) {
-                if (watchRequest(app, TdiCommand.ConfigSync(null, config)) != null) {
+                // Not just answered: a watch app that couldn't read it keeps its old alarms, maybe one turned off here.
+                if (watchRequest(app, TdiCommand.ConfigSync(null, config))?.understood == true) {
                     watchSyncAnswered(app, config.revision)
                     break
                 }

@@ -1070,7 +1070,7 @@ These are GUESSED but are not config values (label rule, top of document). The t
 
 Wire format: JSON, UTF-8, `Json { classDiscriminator = "type"; ignoreUnknownKeys = true; encodeDefaults = true;
 explicitNulls = false }`. Every timestamp is epoch ms. Units are in the field names' comments. `PROTOCOL_VERSION = 1`
-**[EXT]**: `StartSession` and `TelemetryBatch` carry it; a mismatch is answered `Ack(false, "PROTOCOL_MISMATCH")`.
+**[EXT]**: `StartSession` and `TelemetryBatch` carry it; the phone checks it on telemetry only. The watch answers every command with `WatchStatus.understood` (false when it could not read it) and `WatchStatus.apk` (its app's SHA-256), which the phone compares with the watch app it carries.
 
 ### 9.1 Enums
 
@@ -1382,7 +1382,7 @@ Consequences:
 
 | Path | Direction | API | Payload | Reply |
 |---|---|---|---|---|
-| `/opentdi/state_command` | both | `MessageClient.sendRequest` | `TdiCommand` | `Ack`; retry 3× at 2 s if no reply in 5 s; the receiver de-duplicates by (sessionId, type, cycle, stage). **Built so far [EXT]** (owner, 2026-10-28): phone → watch only, each answered with `WatchStatus` (IDLE, WAITING, RECORDING, battery %) within 5 s, no retry. `StatusRequest` every 5 s while Tonight is visible; `StartSession` at session start starts a watch that waits (opening the watch app starts its health FGS with the sensors off, so the later start from the background is allowed); `AbortSession` from "Stop watch recording". The watch keeps recording after the cues end. |
+| `/opentdi/state_command` | both | `MessageClient.sendRequest` | `TdiCommand` | `Ack`; retry 3× at 2 s if no reply in 5 s; the receiver de-duplicates by (sessionId, type, cycle, stage). **Built so far [EXT]** (owner, 2026-10-28): phone → watch only, each answered with `WatchStatus` (IDLE, WAITING, RECORDING, battery %, whether it could read the command, its APK's SHA-256) within 5 s, no retry. `StatusRequest` every 5 s while Tonight is visible; `StartSession` at session start starts a watch that waits (opening the watch app starts its health FGS with the sensors off, so the later start from the background is allowed); `AbortSession` from "Stop watch recording". The watch keeps recording after the cues end. |
 | `/opentdi/hypnagogia_trigger` | watch → phone | `MessageClient.sendRequest` | `HypnagogiaTrigger` | `Ack(ok, code)`: `Ack(true, ACCEPTED)`, `Ack(true, DUPLICATE)` (already accepted; the watch treats it as accepted), `Ack(false, MODE_TIMED)`, `Ack(false, NOT_AWAKE_INCUBATING)`. Attempts at +0, +2, +4, +8 s from the first send, each with a 2 s app-level reply timeout, stopping at the missed-cycle deadline. A new attempt does not cancel the earlier `sendRequest` Task (it cannot be cancelled); the first `Ack` from any attempt wins and later replies are logged and ignored. The phone de-duplicates by (sessionId, cycle, onsetTimestampMs) |
 | `/opentdi/sensor_stream` | watch → phone | batched `MessageClient`: `sendMessage` for routine batches (dropped on `TARGET_NODE_NOT_CONNECTED` = 4000), `sendRequest` + up to 3 retries for a batch that contains a state change **[EXT]** | `TelemetryBatch`, flushed every `telemetryFlushS` (2 s) and immediately on any state change | none / `Ack` |
 | `/opentdi/session_files` **[EXT]** | watch → phone | `ChannelClient.openChannel` + `sendFile` at session end (Phase 2) | each watch CSV of the session | channel close reason |

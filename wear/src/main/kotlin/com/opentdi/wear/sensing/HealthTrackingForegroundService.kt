@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -25,12 +26,15 @@ import com.opentdi.wear.MainActivity
 import com.opentdi.wear.R
 import com.opentdi.wear.ReportDraft
 import com.opentdi.wear.alarm.WakeAlarms
+import com.opentdi.wear.alarm.WakeBackup
 import com.opentdi.wear.link.TelemetrySender
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.android.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The watch's `health` foreground service (§14.3): one [LoggingSession] at a time, with an Ongoing Activity. All
@@ -44,7 +48,7 @@ class HealthTrackingForegroundService : LifecycleService() {
     private val sensing = handler.asCoroutineDispatcher()
     private var session: LoggingSession? = null // sensing thread only
     private var ticker: Job? = null
-    private var foreground = false
+    private var alarmOnly = false // the backup rings a morning whose recording died: no sensors, no recording
     private var alarms: WakeAlarms? = null // sensing thread only
     private var alarmsJson: String? = null
     private val telemetry by lazy { TelemetrySender(applicationContext, lifecycleScope) } // outlives a session
@@ -52,11 +56,31 @@ class HealthTrackingForegroundService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_STOP) {
+            // End the night (asked first while tracking), the phone's Stop, or stop(endNight): the wake-up's backup
+            // goes now, and again once the clock is closed. Close OpenTDI with no night tracked keeps the backup of a
+            // night whose recording died: it still wakes them.
+            val endNight = (ticker != null && !alarmOnly) || intent?.getBooleanExtra(EXTRA_END_NIGHT, false) == true
+            if (endNight) {
+                WakeBackup.set(applicationContext, null, "END_NIGHT")
+                WakeBackup.cancelFallback(applicationContext) // also one posted after the backup gave up
+            }
             writeLeftReport()
-            stopSession()
+            stopSession(clearBackup = endNight)
+            alarmOnly = false
             SensingStateHolder.update { it.copy(waiting = false) }
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            foreground = false
             stopSelf()
+        } else if (intent?.action == ACTION_BACKUP_RING) {
+            val due = intent?.getLongExtra(EXTRA_DUE, -1L) ?: -1L
+            if (!foreground && !startInForeground(ALARM_TEXT, backup = true)) {
+                // Android may end the app for the missing startForeground: the try armed before this fires again.
+                WakeBackup.notifyFallback(this)
+            } else if (ticker != null) {
+                handler.post { alarms?.backupFired(due, System.currentTimeMillis()) } // the night's own clock rings
+            } else {
+                startAlarmOnly(due)
+            }
         } else if (intent?.action == ACTION_STOP_ALARM) {
             handler.post {
                 val p = SensingStateHolder.state.value.lastPacket?.packet
@@ -89,7 +113,14 @@ class HealthTrackingForegroundService : LifecycleService() {
             }
         } else if (intent?.action == ACTION_WAIT) {
             if (!foreground) startInForeground(WAITING_TEXT)
-            if (ticker == null) SensingStateHolder.update { it.copy(waiting = true) }
+            if (ticker == null) {
+                SensingStateHolder.update { it.copy(waiting = true) }
+                // The app was opened: the backup of a night whose recording died shows, and one a force stop lost is
+                // put back.
+                WakeBackup.rearm(applicationContext, System.currentTimeMillis(), "OPEN")
+            }
+        } else if (alarmOnly) {
+            Unit // a recording waits for the backup's ring to end; the alarm screen hides Start meanwhile
         } else if (intent?.action == ACTION_START_FROM_PHONE && ticker != null &&
             SystemClock.elapsedRealtime() - SensingStateHolder.state.value.startedElapsedMs < WakeAlarms.NEW_NIGHT_MS
         ) {
@@ -115,7 +146,8 @@ class HealthTrackingForegroundService : LifecycleService() {
     }
 
     override fun onDestroy() {
-        stopSession()
+        stopSession() // the backup stays: a service ended without a stop is what it is for
+        foreground = false
         thread.quitSafely() // runs the posted session stop first
         super.onDestroy()
     }
@@ -173,8 +205,60 @@ class HealthTrackingForegroundService : LifecycleService() {
         alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr, s.drainStillness(), worn)
     }
 
-    /** Stops the sensors; [endNight] false keeps the night's alarms for the session that starts next. */
-    private fun stopSession(endNight: Boolean = true) {
+    /**
+     * The backup's ring for a night whose recording died (WakeBackup): the wake-up's clock rebuilt from the record and
+     * ticked without sensors while it rings. A snooze waits for the system's alarm, with nothing running meanwhile.
+     */
+    private fun startAlarmOnly(due: Long) {
+        alarmOnly = true
+        SensingStateHolder.update { it.copy(waiting = false) } // the phone sees IDLE: its Start waits for the ring
+        ticker = lifecycleScope.launch(sensing) {
+            val rec = WakeBackup.load(applicationContext)
+            // Still this try: nothing ended the night, turned the wake-up off or answered it since the alarm fired.
+            if (rec != null && rec.dueAt == due) {
+                val json = WakeAlarms.loadConfigJson(applicationContext)
+                val config = WakeAlarms.parse(json)
+                val dir = File(rec.dir)
+                val now = System.currentTimeMillis()
+                val a = WakeAlarms(applicationContext, dir, now, config, rec.nightStartMs, restored = rec)
+                alarms = a
+                alarmsJson = json
+                SensingStateHolder.update { it.copy(sessionId = dir.name) } // the dream questions join that night
+                val lock = getSystemService(PowerManager::class.java)
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "OpenTDI:alarm")
+                lock.acquire((config.maxRingMin + 1) * 60_000L) // the 1 Hz ramp and the ring's timeout need the CPU
+                try {
+                    do {
+                        val j = WakeAlarms.loadConfigJson(applicationContext)
+                        if (j != alarmsJson) a.update(WakeAlarms.parse(j), System.currentTimeMillis()) // Off stops it
+                        alarmsJson = j
+                        a.tick(System.currentTimeMillis(), null, null, emptyList(), worn = false)
+                        delay(1000)
+                    } while (a.isRinging())
+                } finally {
+                    if (lock.isHeld) lock.release()
+                }
+                alarms = null // not closed: that would end a snoozed morning, which the backup's record carries on
+                alarmsJson = null
+            }
+            val me = coroutineContext[Job]
+            withContext(Dispatchers.Main) { if (ticker === me) endAlarmOnly() }
+        }
+    }
+
+    private fun endAlarmOnly() {
+        ticker = null
+        alarmOnly = false
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        foreground = false
+        stopSelf()
+    }
+
+    /**
+     * Stops the sensors; [endNight] false keeps the night's alarms for the session that starts next. [clearBackup]: the
+     * night was ended on purpose, so its wake-up backup goes too, once the clock is closed and cannot re-arm it.
+     */
+    private fun stopSession(endNight: Boolean = true, clearBackup: Boolean = false) {
         ticker?.cancel()
         ticker = null
         handler.post {
@@ -183,6 +267,7 @@ class HealthTrackingForegroundService : LifecycleService() {
                 alarms = null
                 alarmsJson = null
             }
+            if (clearBackup) WakeBackup.set(applicationContext, null, "END_NIGHT")
             session?.stop()
             session = null
         }
@@ -215,17 +300,26 @@ class HealthTrackingForegroundService : LifecycleService() {
     private fun showNotification(text: String) =
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, ongoing(text))
 
-    private fun startInForeground(text: String) {
+    /** [backup]: the backup's ring, started from its alarm; refused, it is noted and gives false (WakeBackup). */
+    private fun startInForeground(text: String, backup: Boolean = false): Boolean {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Night tracking", NotificationManager.IMPORTANCE_LOW),
         )
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
-        } else {
-            0
+        val type = when {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> 0
+            // Open to apps holding USE_EXACT_ALARM; health would need a sensor permission in use, which an alarm lacks.
+            backup -> ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+            else -> ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, ongoing(text), type)
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, ongoing(text), type)
+        } catch (e: RuntimeException) { // ForegroundServiceTypeNotAllowed..., ForegroundServiceStartNotAllowedException
+            if (!backup) throw e
+            WakeBackup.note(WakeBackup.load(this)?.dir, "START_REFUSED", "reason=${e.javaClass.simpleName}")
+            return false
+        }
         foreground = true
+        return true
     }
 
     companion object {
@@ -238,13 +332,36 @@ class HealthTrackingForegroundService : LifecycleService() {
         private const val ACTION_SKIP_WBTB = "com.opentdi.wear.action.SKIP_WBTB"
         private const val ACTION_WBTB_NOW = "com.opentdi.wear.action.WBTB_NOW"
         private const val ACTION_START_FROM_PHONE = "com.opentdi.wear.action.START_FROM_PHONE"
+        private const val ACTION_BACKUP_RING = "com.opentdi.wear.action.BACKUP_RING"
         private const val WAITING_TEXT = "Ready. Tap Start the night on your phone."
         private const val RECORDING_TEXT = "Tracking your sleep. Tap to open."
+        private const val ALARM_TEXT = "Wake-up alarm. Tap to open."
         private const val EXTRA_LOG_RAW_ACCEL = "logRawAccel"
         private const val EXTRA_ANDROID_SENSORS = "androidSensorsOnly"
+        private const val EXTRA_DUE = "due"
+        private const val EXTRA_END_NIGHT = "endNight"
         private const val CHANNEL_ID = "sensing"
         private const val NOTIFICATION_ID = 1
         private const val FRESH_PACKET_MS = 30_000L // GUESSED: a few packet deadlines; an older packet is no data
+
+        /** The service is in the foreground; process-wide, so the backup's receiver knows how to reach it. */
+        @Volatile
+        private var foreground = false
+
+        /** The backup alarm fired (WakeBackupReceiver): a running service takes it, otherwise a fresh one rings it. */
+        fun backupFired(context: Context, due: Long) {
+            val intent = Intent(context, HealthTrackingForegroundService::class.java)
+                .setAction(ACTION_BACKUP_RING)
+                .putExtra(EXTRA_DUE, due)
+            try {
+                // In the foreground already: no second startForeground to promise. Otherwise the alarm clock's
+                // exemption lets a fresh one start in the foreground from the background.
+                if (foreground) context.startService(intent) else context.startForegroundService(intent)
+            } catch (e: IllegalStateException) { // ForegroundServiceStartNotAllowedException among them
+                WakeBackup.note(WakeBackup.load(context)?.dir, "START_REFUSED", "reason=${e.javaClass.simpleName}")
+                WakeBackup.notifyFallback(context) // and the try armed before this fires again
+            }
+        }
 
         /**
          * Starts a new logging session (stopping a running one). Call only from a visible activity once
@@ -322,8 +439,16 @@ class HealthTrackingForegroundService : LifecycleService() {
             )
         }
 
-        fun stop(context: Context) {
-            context.startService(Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_STOP))
+        /**
+         * Ends tracking. A night being tracked ends with its wake-up backup; with no night tracked (Close OpenTDI) the
+         * backup of a night whose recording died stays, unless [endNight] (End the night for that night).
+         */
+        fun stop(context: Context, endNight: Boolean = false) {
+            context.startService(
+                Intent(context, HealthTrackingForegroundService::class.java)
+                    .setAction(ACTION_STOP)
+                    .putExtra(EXTRA_END_NIGHT, endNight),
+            )
         }
     }
 }

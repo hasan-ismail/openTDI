@@ -8,6 +8,7 @@ import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SessionMode
 import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.WatchState
+import com.opentdi.shared.model.WatchStatus
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
@@ -218,6 +219,37 @@ class TonightTest {
             val line = nightPlanLine(c, at23.plusHours(2)) // 1 AM: 3.5 h before it, the watch skips it
             assertTrue(line, line.endsWith(" · no early wake-up tonight (less than 4½ hours after Start)"))
         }
+    }
+
+    @Test
+    fun watchAppOutdated_whenTheWatchAnswersFromAnotherApp() {
+        val carried = "c0ffee"
+        assertFalse(watchAppOutdated(null, carried)) // no answer: Check.WATCH says so
+        assertFalse(watchAppOutdated(WatchStatus(WatchState.WAITING, apk = carried), carried))
+        assertTrue(watchAppOutdated(WatchStatus(WatchState.WAITING, apk = "other"), carried))
+        assertTrue(watchAppOutdated(WatchStatus(WatchState.WAITING), carried)) // a watch app from before the field
+        assertFalse(watchAppOutdated(WatchStatus(WatchState.WAITING, apk = "other"), null)) // nothing to compare with
+    }
+
+    @Test
+    fun checklist_outdatedWatchApp_warnsWithoutBlocking_butNotWhileTheWatchTracks() {
+        fun row(watch: WatchState) = checklist(
+            false, DndEffect.PLAYS, true, null, true, watch, alarmsOn = true, watchAppOutdated = true,
+        ).singleOrNull { it.check == Check.WATCH_APP }
+        val item = row(WatchState.WAITING)!!
+        assertFalse(item.ok)
+        assertFalse(item.blocking)
+        assertTrue("alarms" in item.text)
+        assertNull(row(WatchState.RECORDING)) // updating would end the night it tracks
+        assertTrue(quickTestSkips(item, onWatch = false, watch = WatchState.WAITING))
+        assertFalse(quickTestSkips(item, onWatch = true, watch = WatchState.WAITING))
+        val same = checklist(false, DndEffect.PLAYS, true, null, true, WatchState.WAITING)
+        assertTrue(same.none { it.check == Check.WATCH_APP })
+        // The closed-app row keeps blocking a night with alarms; the update row only adds to it.
+        val idle = checklist(
+            false, DndEffect.PLAYS, true, null, true, WatchState.IDLE, alarmsOn = true, watchAppOutdated = true,
+        )
+        assertTrue(idle.single { it.check == Check.WATCH }.blocking)
     }
 
     @Test

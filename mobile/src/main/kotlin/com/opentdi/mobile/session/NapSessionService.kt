@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
@@ -25,6 +26,8 @@ import com.opentdi.shared.model.OpenTdiJson
 import com.opentdi.shared.model.TdiCommand
 import com.opentdi.shared.model.DeviceRole
 import com.opentdi.shared.model.WatchState
+import com.opentdi.shared.model.WatchStatus
+import com.opentdi.shared.model.apkSha256
 import com.opentdi.mobile.link.watchRequest
 import com.opentdi.mobile.MainActivity
 import com.opentdi.mobile.R
@@ -74,12 +77,47 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Tonight's red line for a cue the night skipped at [clock], with the plain-word reason; null when [e] is no skip. */
 internal fun skippedCueError(e: AudioEvent, clock: String): String? {
     if (e.event != "CUE_SKIPPED" && e.event != "VOLUME_ZERO") return null
     val why = testFailure(e).takeIf { it != testFailure(null) } // no "Try again" for a cue that is already gone
     return listOfNotNull("The voice didn't play at $clock.", why).joinToString(" ")
+}
+
+private const val WATCH_MISSES = 3 // Start requests without a tracking watch before Tonight says so
+
+/**
+ * Tonight's error after a Start request: [outdated] at once when the watch app could not read Start, or is older than
+ * [WatchStatus.apk] and not tracking; [missing] after WATCH_MISSES replies without tracking; cleared by a later reply.
+ * No answer changes nothing. [carried] is [carriedWatchApk].
+ */
+internal fun watchStartError(
+    error: String?,
+    answer: WatchStatus?,
+    misses: Int,
+    carried: String?,
+    missing: String,
+    outdated: String,
+) = when {
+    answer == null -> error
+    !answer.understood -> outdated
+    // A watch app from before WatchStatus.understood answers "understood" even to a Start it could not read.
+    answer.apk == null && carried != null && answer.state != WatchState.RECORDING -> outdated
+    misses >= WATCH_MISSES -> missing
+    error == missing || error == outdated -> null
+    else -> error
+}
+
+@Volatile private var carriedHash: String? = null
+
+/** The [apkSha256] of the watch app this phone carries (WatchInstaller's watch.apk), once per process; null without. */
+internal fun carriedWatchApk(context: Context): String? = carriedHash ?: try {
+    context.assets.open("watch.apk").use(::apkSha256).also { carriedHash = it }
+} catch (e: Exception) { // a version check must never stop the voice
+    Log.w(TAG_SESSION, "WATCH_APK_UNREADABLE", e)
+    null
 }
 
 /**
@@ -235,6 +273,9 @@ class NapSessionService : LifecycleService() {
         // Nothing sends Start after the voice; the watch's "Start without the phone" uses the alarms Start saved there.
         private val watchStopped = WATCH_STOPPED + (if (alarmsOn) ", so your alarms may not ring" else "") +
             ". On the watch: Details > Start without the phone."
+        private val watchOutdated = WATCH_OUTDATED + " and couldn't start tracking your sleep" +
+            (if (alarmsOn) ", so your alarms won't ring" else "") +
+            ". Update it on the Watch tab, under Install the watch app."
 
         fun begin() {
             wakeLock.acquire((config.sessionMaxMin + 10) * 60_000L) // §14.4
@@ -252,28 +293,34 @@ class NapSessionService : LifecycleService() {
                 var last: String? = null
                 var misses = 0
                 var tracking = false
+                val carried = withContext(Dispatchers.IO) { carriedWatchApk(this@NapSessionService) }
                 // A lost answer, a watch opened after Start or a restarted watch leaves it waiting: no tracking, no
                 // alarms. So Start repeats until the watch tracks. Once it does, the phone only asks: a resent Start
                 // re-runs the watch's 12 h "last night's recording" check, which can split the night at 12 h.
                 while (isActive && !ending) {
                     val command = if (tracking) TdiCommand.StatusRequest(DeviceRole.PHONE) else start
-                    val state = watchRequest(this@NapSessionService, command)?.state
-                    // An answered Start brought the watch this config's alarms: an edit still waiting has arrived.
-                    if (state != null && command === start) watchSyncAnswered(this@NapSessionService, config.revision)
-                    val shown = state?.name ?: "NO_ANSWER"
+                    val answer = watchRequest(this@NapSessionService, command)
+                    val state = answer?.state
+                    // A read Start brought the watch this config's alarms: an edit still waiting has arrived.
+                    if (answer?.understood == true && command === start) {
+                        watchSyncAnswered(this@NapSessionService, config.revision)
+                    }
+                    val shown = when {
+                        answer == null -> "NO_ANSWER"
+                        !answer.understood -> "NOT_UNDERSTOOD"
+                        else -> answer.state.name
+                    }
                     if (shown != last) sessionEvent(logLine("WATCH_START", "state" to shown)) // changes only
                     last = shown
-                    // No answer (out of reach, or no watch) says nothing about tracking, so it changes neither.
-                    if (state != null) {
-                        tracking = state == WatchState.RECORDING
+                    // No answer (out of reach, or no watch) says nothing about tracking, so it changes neither. A watch
+                    // that could not read Start has none of tonight's alarms, even when it tracks (started on the
+                    // watch), so Start is resent until it is read.
+                    if (answer != null) {
+                        tracking = state == WatchState.RECORDING && answer.understood
                         misses = if (tracking) 0 else misses + 1
                     }
                     SessionMonitor.update {
-                        when {
-                            misses >= WATCH_MISSES -> it.copy(error = watchMissing)
-                            it.error == watchMissing -> it.copy(error = null)
-                            else -> it
-                        }
+                        it.copy(error = watchStartError(it.error, answer, misses, carried, watchMissing, watchOutdated))
                     }
                     if (state != null && voice != null) {
                         sessionEvent(logLine("WAKE_VOICE_SENT", "stored" to player.storeOnWatch(voice)))
@@ -469,12 +516,13 @@ class NapSessionService : LifecycleService() {
         const val QUICK_TEST_ROW = "session.quickTest"
         /** How the error starts once the voice ended without a tracking watch; the UI clears it when the watch tracks. */
         const val WATCH_STOPPED = "The watch stopped tracking your sleep"
+        /** How the error starts when the watch app couldn't read Start; the UI clears it once the watch app matches. */
+        const val WATCH_OUTDATED = "The watch app is out of date"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "session"
         private const val TICK_MS = 250L
         private const val FLUSH_MS = 5000L // §12.1
         private const val WATCH_RETRY_MS = 20_000L
-        private const val WATCH_MISSES = 3 // Start requests without a tracking watch before Tonight says so
         private val COMMAND_URI = "wear://*${DataLayerPaths.STATE_COMMAND}".toUri()
         private val CLOCK = DateTimeFormatter.ofPattern("h:mm:ss a", Locale.US)
         private val SHORT_CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)

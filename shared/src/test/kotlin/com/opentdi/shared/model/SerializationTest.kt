@@ -1,11 +1,14 @@
 package com.opentdi.shared.model
 
+import java.security.MessageDigest
 import kotlin.random.Random
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -185,6 +188,37 @@ class SerializationTest {
         val json = OpenTdiJson.encodeToString(on)
         assertTrue("\"wbtbAfterSleepMin\":405" in json)
         assertEquals(on, OpenTdiJson.decodeFromString<AlarmConfig>(json))
+    }
+
+    @Test
+    fun watchStatus_fromAnOlderWatch_countsAsUnderstood_withoutAnApk() {
+        // An older watch app sends neither key: apk = null never matches the app the phone carries.
+        val older = OpenTdiJson.decodeFromString<WatchStatus>("""{"state":"WAITING","batteryPct":80}""")
+        assertEquals(WatchStatus(WatchState.WAITING, batteryPct = 80), older)
+        assertTrue(older.understood)
+        assertNull(older.apk)
+        roundTrip(WatchStatus(WatchState.WAITING, understood = false, apk = "ab12"))
+    }
+
+    @Test
+    fun aCommandFromANewerPhone_doesNotDecode() { // what PhoneCommandService answers with understood = false
+        val tone = OpenTdiJson.encodeToString<TdiCommand>(TdiCommand.TestAlarm(AlarmTone.MELODY))
+            .replace("MELODY", "ADDED_LATER")
+        assertThrows(IllegalArgumentException::class.java) { OpenTdiJson.decodeFromString<TdiCommand>(tone) }
+        assertThrows(IllegalArgumentException::class.java) {
+            OpenTdiJson.decodeFromString<TdiCommand>("""{"type":"added_later"}""")
+        }
+    }
+
+    @Test
+    fun apkSha256_isTheFileDigest_acrossBlocks() {
+        assertEquals(
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", // FIPS 180-2 "abc"
+            apkSha256("abc".byteInputStream()),
+        )
+        val big = ByteArray(200_000) { it.toByte() } // over three 64 KB blocks
+        val whole = MessageDigest.getInstance("SHA-256").digest(big).joinToString("") { "%02x".format(it) }
+        assertEquals(whole, apkSha256(big.inputStream()))
     }
 
     @Test

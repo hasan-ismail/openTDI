@@ -3,8 +3,11 @@ package com.opentdi.mobile
 import com.opentdi.mobile.audio.AudioEvent
 import com.opentdi.mobile.session.skippedCueError
 import com.opentdi.shared.model.PromptCue
+import com.opentdi.shared.model.WatchState
+import com.opentdi.shared.model.WatchStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TestFailureTest {
@@ -47,5 +50,18 @@ class TestFailureTest {
         )
         assertNull(skippedCueError(AudioEvent("CUE_END", cue), "1:10 AM"))
         assertNull(skippedCueError(AudioEvent("DND_STATE", cue), "1:10 AM"))
+    }
+
+    @Test
+    fun aWatchTest_saysWhyItDidNotPlay() {
+        val carried = "c0ffee"
+        assertEquals("The watch did not answer: is it connected?", watchTestProblem(null, carried))
+        val unread = WatchStatus(WatchState.WAITING, understood = false, apk = "other")
+        assertTrue(watchTestProblem(unread, carried)!!.startsWith("The watch app is out of date"))
+        // A watch app from before the version fields can't say whether it read the test.
+        assertTrue(watchTestProblem(WatchStatus(WatchState.WAITING), carried)!!.startsWith("If the watch didn't play"))
+        assertNull(watchTestProblem(WatchStatus(WatchState.WAITING, apk = carried), carried))
+        assertNull(watchTestProblem(WatchStatus(WatchState.WAITING, apk = "other"), carried)) // newer, but it read it
+        assertNull(watchTestProblem(WatchStatus(WatchState.WAITING), null)) // nothing to compare with
     }
 }

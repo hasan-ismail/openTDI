@@ -21,6 +21,14 @@
     <!-- The morning dream report, recorded on the watch. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- The wake-up alarm's system-owned backup (WakeBackup): an alarm clock that still rings when the app's process is
+         gone. Granted at install to alarm-clock apps and not revocable (API 33+); Wear OS 3 (API 30) needs none. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- A restart clears every alarm: the backup is put back from its saved record. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- The backup rings from a systemExempted foreground service: open to apps holding USE_EXACT_ALARM, and unlike
+         health it needs no sensor permission when an alarm starts it from the background. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- add only if spec §15 #4 shows PERMISSION_ERROR with the screen off:
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" /> -->
@@ -61,7 +69,27 @@
         <service
             android:name=".sensing.HealthTrackingForegroundService"
             android:exported="false"
-            android:foregroundServiceType="health" />
+            android:foregroundServiceType="health|systemExempted" />
+
+        <!-- The wake-up alarm's backup firing: only this app's own alarm sends it. Direct boot aware, with its record
+             in device-protected storage, so before the first unlock after a restart it still rings as a notification. -->
+        <receiver
+            android:name=".alarm.WakeBackupReceiver"
+            android:directBootAware="true"
+            android:exported="false" />
+
+        <!-- Puts the backup back after a restart (which clears every alarm) or an update. Exported because the system
+             sends these; only it can, and nothing else is acted on. -->
+        <receiver
+            android:name=".alarm.WakeBackupBootReceiver"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- The user's own Samsung kit, converted and sent by the phone (bring your own kit). -->
         <service

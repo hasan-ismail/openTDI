@@ -92,8 +92,10 @@ fun TonightScreen(
     onRaiseVolume: () -> Unit,
     onOpenDnd: () -> Unit,
     onOpenBluetooth: () -> Unit,
+    onOpenWatch: () -> Unit, // the Watch tab, which installs the watch app
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
+    val carriedApk by viewModel.carriedApk.collectAsStateWithLifecycle()
     val status by SessionMonitor.status.collectAsStateWithLifecycle()
     val volumeOff by viewModel.mediaVolumeOff.collectAsStateWithLifecycle(initialValue = false)
     val speakerOff by viewModel.speakerOff.collectAsStateWithLifecycle(initialValue = false)
@@ -132,6 +134,7 @@ fun TonightScreen(
         dndOff = dndOff,
         speakerOff = speakerOff,
         running = running && !status.quickTest,
+        watchAppOutdated = watchAppOutdated(watchStatus, carriedApk),
     )
     val idle = !status.running && !ui.preparing && !ui.testing
     fun waitsForWatch(quick: Boolean) = checkingWatch && (!quick || onWatch) // a phone-route Quick test never asks it
@@ -169,6 +172,10 @@ fun TonightScreen(
             Check.TEST_CUE -> "Test the voice" to {
                 oldMessage = null
                 viewModel.testCue()
+            }
+            Check.WATCH_APP -> "Update the watch app" to {
+                startAsk = null
+                onOpenWatch()
             }
             Check.WATCH, Check.WATCH_BATTERY -> null
         }

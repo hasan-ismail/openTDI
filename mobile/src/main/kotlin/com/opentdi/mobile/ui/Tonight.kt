@@ -7,6 +7,7 @@ import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.WatchState
+import com.opentdi.shared.model.WatchStatus
 import java.util.Locale
 
 /** Only the falling-asleep cue loops are over, not the night: "Session complete" read as the watch's end too. */
@@ -107,7 +108,11 @@ internal fun span(s: Int) = when {
     else -> "${s / 60} min ${s % 60} s"
 }
 
-enum class Check { TIMING, VOLUME, SPEAKER, DND, BATTERY, CUES, TEST_CUE, WATCH, WATCH_BATTERY }
+enum class Check { TIMING, VOLUME, SPEAKER, DND, BATTERY, CUES, TEST_CUE, WATCH, WATCH_APP, WATCH_BATTERY }
+
+/** The watch answered from an app other than the one this phone carries: older (no [WatchStatus.apk]) or newer. */
+fun watchAppOutdated(status: WatchStatus?, carriedApk: String?) =
+    status != null && carriedApk != null && status.apk != carriedApk
 
 /**
  * Test timing: the first cue would come before anyone could be asleep. The owner's first two nights both ran on
@@ -142,6 +147,7 @@ fun checklist(
     dndOff: Boolean = false, // Do Not Disturb is off, so notifications can wake the sleeper
     speakerOff: Boolean = false, // the phone's media output is not its own speaker (earbuds, headphones)
     running: Boolean = false, // a real night's voice is running (not a Quick test)
+    watchAppOutdated: Boolean = false, // the watch runs another version of the app ([watchAppOutdated])
 ): List<CheckItem> = buildList {
     if (firstCueMin != null) {
         val wait = if (firstCueMin == 1) "1 minute" else "$firstCueMin minutes"
@@ -237,6 +243,18 @@ fun checklist(
             )
         },
     )
+    // Never blocking: most phone updates keep what the watch reads. Hidden while the watch tracks, since installing the
+    // update would end tonight's tracking and alarms.
+    if (watchAppOutdated && watch != WatchState.RECORDING) {
+        add(
+            CheckItem(
+                Check.WATCH_APP,
+                false,
+                "The watch app is out of date, so your sleep tracking might not work tonight" +
+                    (if (alarmsOn) " and your alarms might not ring." else "."),
+            ),
+        )
+    }
     if (watchBatteryPct != null) {
         add(
             CheckItem(
@@ -255,6 +273,7 @@ fun checklist(
 fun quickTestSkips(item: CheckItem, onWatch: Boolean, watch: WatchState?) = when (item.check) {
     Check.TIMING, Check.WATCH_BATTERY -> true
     Check.WATCH -> !onWatch || watch != null
+    Check.WATCH_APP -> !onWatch // a Quick test uses the watch only to play the voice
     Check.DND -> !item.blocking // a daytime test needs no Do Not Disturb, unless it would mute the voice
     else -> false
 }

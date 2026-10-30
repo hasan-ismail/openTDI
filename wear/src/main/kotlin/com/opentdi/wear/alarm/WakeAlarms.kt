@@ -44,11 +44,17 @@ class WakeAlarms(
     private var config: AlarmConfig,
     private val recordingStartMs: Long = startMs, // the night's start (nightStart)
     private val testNight: Boolean = false, // debug: sleep timing counts seconds for minutes (takeTestNight)
+    // The backup ringing a morning whose recording died (WakeBackup): the wake-up only, now, with that morning's count.
+    private val restored: WakeBackup.Record? = null,
 ) {
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private var zone = ZoneId.systemDefault()
-    private var wakeAt = if (config.wakeEnabled) nextAlarmAt(config.wakeAtMin, startMs, zone) else null
-    private var firstRingAt: Long? = null // the first ring of a snoozed wake-up
+    private var wakeAt = when {
+        restored != null -> startMs
+        config.wakeEnabled -> nextAlarmAt(config.wakeAtMin, startMs, zone)
+        else -> null
+    }
+    private var firstRingAt: Long? = restored?.firstRingAt // the first ring of a snoozed wake-up
     // Tonight's early wake-up is over: it rang, was skipped or started early, or the wake-up rang. Saved, so a
     // recording started again tonight (the app died, End the night and a new Start) does not ring it again.
     private var wbtbDoneAt: Long? = prefs.getLong(KEY_WBTB_DONE, -1).takeIf { it >= recordingStartMs }
@@ -65,8 +71,10 @@ class WakeAlarms(
     private val player = AlarmPlayer(context)
     private var ringing: Ringing? = null
     private var backToSleepAt: Long? = null
-    private var snoozes = 0
-    private var tappedSnoozes = 0 // Snooze taps only: Stats count those, not the re-rings of a ring-out
+    private var snoozes = restored?.snoozes ?: 0
+    private var tappedSnoozes = restored?.tappedSnoozes ?: 0 // Snooze taps only: Stats count those, not ring-outs
+    private var unanswered = restored?.unanswered ?: 0 // the backup's tries since a clock last rang or snoozed it
+    private var morningDone = false // the wake-up was answered or ended: no backup for the rest of this recording
     private var lateCues = makeLateCues()
     private var guideOfferedAt: Long? = null // the back-to-sleep buzz, while "I'm in bed" waits for a tap
     private var guide: GuideRoutine? = null // the guided back-to-sleep, while it plays
@@ -75,9 +83,16 @@ class WakeAlarms(
         // From the night's start, so a time that went by while the app was off shows as PASSED instead of silently
         // moving to tomorrow.
         planWbtb(startMs, clockFromMs = recordingStartMs)
+        if (restored == null) {
+            syncBackup("START", startMs) // also replaces, or with the wake-up off clears, last night's
+        } else {
+            log(startMs, "BACKUP", "RESTORED", null, null, "due=${restored.dueAt};tries=${restored.unanswered}")
+        }
     }
 
-    private fun makeLateCues(): LateCues? = if (config.wbtbEnabled && config.lateCues != LateCueMode.OFF) {
+    private fun makeLateCues(): LateCues? = if (restored == null && config.wbtbEnabled &&
+        config.lateCues != LateCueMode.OFF
+    ) {
         LateCues(context, { config }) { event, still, hr, detail ->
             log(System.currentTimeMillis(), "CUES", event, still, hr, detail)
         }
@@ -132,6 +147,7 @@ class WakeAlarms(
             lateCues = makeLateCues()
         }
         log(nowMs, "CONFIG", "UPDATED", null, null, null)
+        syncBackup("CONFIG", nowMs)
     }
 
     private class Ringing(
@@ -149,8 +165,9 @@ class WakeAlarms(
      */
     fun tick(nowMs: Long, stillness: Float?, hr: Float?, seconds: List<Float?>, worn: Boolean) {
         // Alive: a recording whose process dies without close() still leaves a stop time for nightStart. A test night
-        // never does: the real night after it must not inherit its onset or its early wake-up.
-        if (!testNight && nowMs - aliveSavedAt >= ALIVE_SAVE_MS) {
+        // never does: the real night after it must not inherit its onset or its early wake-up. Nor a backup's morning,
+        // whose night already stopped.
+        if (!testNight && restored == null && nowMs - aliveSavedAt >= ALIVE_SAVE_MS) {
             aliveSavedAt = nowMs
             prefs.edit().putLong(KEY_STOPPED, nowMs).putString(KEY_LAST_DIR, dir.path).apply()
         }
@@ -159,6 +176,7 @@ class WakeAlarms(
             if (firstRingAt == null) wakeAt = wakeAt?.let { sameClockTime(it, zone, z) } // a snooze is a timer
             wbtbAt = wbtbAt?.let { sameClockTime(it, zone, z) }
             zone = z
+            syncBackup("ZONE", nowMs)
         }
         // Tonight's sleep onset, every night (Stats), until found or the deadline; before the ring's early return.
         val deadline = recordingStartMs + ONSET_DEADLINE_MIN * unitMs
@@ -247,10 +265,13 @@ class WakeAlarms(
         ringing = null
         player.stop()
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+        WakeBackup.cancelFallback(context) // a real ring was answered or ended: the last resort goes with it
         log(nowMs, r.kind, event, stillness, hr, "after_ms=${nowMs - r.startMs};snooze=$snoozes")
         wakeAt = nowMs + config.snoozeMin * 60_000L
         firstRingAt = firstRingAt ?: r.startMs
+        unanswered = 0
         SensingStateHolder.update { it.copy(alarmRinging = null, snoozesLeft = 0, wakeAgainAtMs = wakeAt) }
+        syncBackup(event, nowMs)
     }
 
     /** "I'm awake" ([how] STOPPED), or the ring time ran out (TIMED_OUT). */
@@ -259,6 +280,7 @@ class WakeAlarms(
         ringing = null
         player.stop()
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+        WakeBackup.cancelFallback(context) // a real ring was answered or ended: the last resort goes with it
         val moved = r.movedAtMs?.let { it - r.startMs }
         log(nowMs, r.kind, how, stillness, hr, "after_ms=${nowMs - r.startMs};first_movement_ms=${moved ?: ""}")
         val total = nowMs - (firstRingAt ?: r.startMs) // snoozes count as part of waking up
@@ -270,7 +292,7 @@ class WakeAlarms(
                 else -> " ($tappedSnoozes snoozes)."
             }
             else -> "The wake-up alarm stopped by itself after ${clock(total)}."
-        }
+        }?.let { if (restored != null) "$it Tracking stopped during the night." else it }
         // With the guide the cue is trained in bed instead, not now while the sleeper is groggy.
         val trains = r.kind == "WBTB" && how == "STOPPED" && lateCues != null && !guideReady()
         if (r.kind == "WBTB" && how == "STOPPED") {
@@ -281,6 +303,7 @@ class WakeAlarms(
             snoozes = 0
             tappedSnoozes = 0
             firstRingAt = null
+            morningDone = true
         }
         SensingStateHolder.update {
             it.copy(
@@ -293,6 +316,7 @@ class WakeAlarms(
                 reportAfter = if (how == "STOPPED" || r.kind == "WAKE") r.kind else it.reportAfter,
             )
         }
+        syncBackup(how, nowMs)
     }
 
     /** "I'm in bed" after the buzz: the guided back-to-sleep plays, and its end or a stop arms the late cues. */
@@ -347,10 +371,13 @@ class WakeAlarms(
         // Ended during the morning's ring or snooze: that morning is over, and its dream questions are still due.
         (firstRingAt ?: ringing?.takeIf { it.kind == "WAKE" }?.startMs)?.let { endMorning(now, it, "NIGHT_ENDED") }
         // The exact stop time, over the last alive one: a recording started again soon after keeps the night's start.
-        // A test night never does: the real night after it must not inherit its onset or its early wake-up.
-        prefs.edit {
-            if (testNight) remove(KEY_STOPPED) else putLong(KEY_STOPPED, now)
-            putString(KEY_LAST_DIR, dir.path)
+        // A test night never does: the real night after it must not inherit its onset or its early wake-up. A backup's
+        // morning leaves the stop time its died night left.
+        if (restored == null) {
+            prefs.edit {
+                if (testNight) remove(KEY_STOPPED) else putLong(KEY_STOPPED, now)
+                putString(KEY_LAST_DIR, dir.path)
+            }
         }
         player.stop()
         if (ringing != null) context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
@@ -378,6 +405,7 @@ class WakeAlarms(
      * dream questions are due unless a report was saved since.
      */
     private fun endMorning(nowMs: Long, firstRingMs: Long, how: String) {
+        morningDone = true
         log(nowMs, "WAKE", "STOPPED", null, null, "how=$how")
         // shortcut: an early wake-up report saved during the snooze counts too; read the rows' "after" if that matters.
         if (File(dir, CsvFiles.W_MORNING.name).lastModified() < firstRingMs) {
@@ -394,6 +422,7 @@ class WakeAlarms(
      * time while it waits to see you fall asleep. A time already gone is not rung late: it is skipped, shown, logged.
      */
     private fun planWbtb(nowMs: Long, clockFromMs: Long) {
+        if (restored != null) return // a backup's morning rings the wake-up only
         val c = config
         val done = wbtbDoneAt
         val clockAt = if (c.wbtbEnabled) nextWbtbAt(c.wbtbAtMin, clockFromMs, done, zone) else null
@@ -455,6 +484,9 @@ class WakeAlarms(
     ) {
         ringing = Ringing(kind, tone, nowMs) // first: a guide stopped below sees the wake-up and arms no cues
         wbtbDone(nowMs)
+        // Before the sound starts: a ring that crashes is rung again by the backup, and counted (WakeBackup.retry).
+        syncBackup("RING", nowMs)
+        WakeBackup.cancelFallback(context)
         // The morning: no guide, no back-to-sleep buzz and no lucidity cue during the ring, the replay or the report,
         // even when the wake-up comes within the WBTB's time awake.
         if (kind == "WAKE") {
@@ -479,6 +511,10 @@ class WakeAlarms(
             )
         }
         notifyRinging(kind, left > 0)
+        if (unanswered != 0) { // the ring started without a crash: the backup's tries are answered
+            unanswered = 0
+            syncBackup("RINGING", nowMs)
+        }
     }
 
     private fun notifyRinging(kind: String, canSnooze: Boolean) {
@@ -493,7 +529,10 @@ class WakeAlarms(
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_ongoing)
             .setContentTitle(if (kind == "WAKE") "Good morning" else "Early wake-up")
-            .setContentText("Tap I'm awake to stop the alarm.")
+            .setContentText(
+                "Tap I'm awake to stop the alarm." +
+                    if (restored != null) " Tracking stopped during the night." else "",
+            )
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setContentIntent(open)
@@ -512,22 +551,45 @@ class WakeAlarms(
         nm.notify(NOTIFICATION_ID, notification)
     }
 
-    /** One w_alarm.csv row, appended at once: a handful a night, each must survive a battery that dies at dawn. */
-    private fun log(nowMs: Long, kind: String, event: String, stillness: Float?, hr: Float?, detail: String?) {
-        val row = listOf<Any?>(nowMs, kind, event, stillness, hr, detail)
-        val file = File(dir.apply { mkdirs() }, CsvFiles.W_ALARM.name)
-        try {
-            if (file.exists()) {
-                file.appendText(csvLine(row))
-            } else {
-                CsvWriter(file.bufferedWriter(), CsvFiles.W_ALARM.columns).use { it.row(*row.toTypedArray<Any?>()) }
-            }
-        } catch (e: IOException) { // a full watch: the alarm must ring on without its row
-            logEvent("ALARM_LOG_FAILED", "event" to event, "error" to e.message)
+    private fun log(nowMs: Long, kind: String, event: String, stillness: Float?, hr: Float?, detail: String?) =
+        appendRow(dir, listOf(nowMs, kind, event, stillness, hr, detail))
+
+    /** Keeps the system's backup at the next moment this clock must act on the wake-up (WakeBackup). */
+    private fun syncBackup(why: String, nowMs: Long) {
+        val r = ringing
+        val due = WakeBackup.dueAt(wakeAt, r?.kind, r?.startMs, config.maxRingMin, morningDone, nowMs)
+        val rec = due?.let {
+            val firstRing = firstRingAt ?: r?.takeIf { it.kind == "WAKE" }?.startMs // a crash mid-ring keeps the total
+            WakeBackup.Record(
+                it, config.wakeAtMin, recordingStartMs, dir.path, snoozes, tappedSnoozes, firstRing, unanswered,
+            )
         }
+        WakeBackup.set(context, rec, why, logDir = dir.path)
     }
 
+    /** The backup fired while this clock runs: it rings on its next tick, or already rings; the try is replaced. */
+    fun backupFired(due: Long, nowMs: Long) {
+        log(nowMs, "BACKUP", "HANDED_TO_LIVE", null, null, "due=$due;ringing=${ringing?.kind.orEmpty()}")
+        syncBackup("LIVE", nowMs)
+    }
+
+    fun isRinging() = ringing != null
+
     companion object {
+        /** One w_alarm.csv row, appended at once: a handful a night, each must survive a battery that dies at dawn. */
+        internal fun appendRow(dir: File, row: List<Any?>) {
+            val file = File(dir.apply { mkdirs() }, CsvFiles.W_ALARM.name)
+            try {
+                if (file.exists()) {
+                    file.appendText(csvLine(row))
+                } else {
+                    CsvWriter(file.bufferedWriter(), CsvFiles.W_ALARM.columns).use { it.row(*row.toTypedArray<Any?>()) }
+                }
+            } catch (e: IOException) { // a full watch, or storage still locked after a restart: the alarm rings on
+                logEvent("ALARM_LOG_FAILED", "event" to row[2], "error" to e.message)
+            }
+        }
+
         private const val MOVING = 0.5f // AccelConfig.moveStillness: below it a second counts as moving
         private const val ESCALATE_MS = 120_000L
         private const val GUIDE_OFFER_MS = 30 * 60_000L // GUESSED: how long after the buzz "I'm in bed" stays
@@ -674,6 +736,8 @@ class WakeAlarms(
         fun saveConfig(context: Context, config: AlarmConfig) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(KEY_CONFIG, OpenTdiJson.encodeToString(AlarmConfig.serializer(), config)).apply()
+            // In any watch state: the backup of a night whose recording died follows the phone's Off and new time too.
+            WakeBackup.onPhoneConfig(context, config, System.currentTimeMillis())
         }
 
         /** "7 AM" in the watch's time zone, for the screen. */

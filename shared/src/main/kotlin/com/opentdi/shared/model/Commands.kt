@@ -82,4 +82,6 @@ data class WatchStatus(
     val batteryPct: Int? = null,
     val samsungKit: String? = null, // "built in", "your kit", or null: basic sensors only
     val earbuds: String? = null, // the earbuds connected to the watch, by name, or null
+    val understood: Boolean = true, // false: the watch app could not read the command (another version), so did nothing
+    val apk: String? = null, // the installed watch app's apkSha256; null from a watch app older than this field
 )

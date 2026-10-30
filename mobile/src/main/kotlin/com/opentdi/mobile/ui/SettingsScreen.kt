@@ -856,7 +856,8 @@ private const val MIN_GAIN = 0.15f // a voice at 0 % would make the night silent
 
 /** While [com.opentdi.mobile.UiState.alarmsNotSent]: the phone resends the change every 30 s until the watch answers. */
 internal const val ALARMS_NOT_SENT =
-    "The watch doesn't have your alarm change yet. Keep it near the phone: the phone keeps sending it."
+    "The watch doesn't have your alarm change yet. Keep it near the phone: the phone keeps sending it. " +
+        "If this stays, update the watch app on the Watch tab."
 
 // §17.4, which includes the FS24 screening advice.
 private const val WELLNESS_STATEMENT =

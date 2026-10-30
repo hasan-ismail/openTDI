@@ -105,6 +105,7 @@ class MainActivity : ComponentActivity() {
                                     onRaiseVolume = ::raiseVolume,
                                     onOpenDnd = ::openDndSettings,
                                     onOpenBluetooth = { openFirst(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) },
+                                    onOpenWatch = { tab = 1 },
                                 )
                                 1 -> WatchScreen()
                                 2 -> StatsScreen(stats)
