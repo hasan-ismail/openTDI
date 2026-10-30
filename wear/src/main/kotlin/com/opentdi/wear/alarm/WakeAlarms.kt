@@ -586,6 +586,17 @@ class WakeAlarms(
 
     fun isRinging() = ringing != null
 
+    /** The night ends by itself now (owner, 2026-10-30): see the companion's nightOver. Sensing thread only. */
+    fun nightOver(nowMs: Long, reportDue: Boolean, reportOnScreen: Boolean): Boolean = WakeAlarms.nightOver(
+        nowMs, recordingStartMs, morningDone, reportDue, reportOnScreen,
+        somethingLeftTonight(
+            nowMs, ringing = ringing != null, snoozed = firstRingAt != null, wakeAtMs = wakeAt,
+            // While sleep timing waits to see you fall asleep, tonight's time is not decided yet: still ahead.
+            wbtbAheadAtMs = if (wbtbTimed) wbtbAhead(wbtbAt, nowMs, recordingStartMs, unitMs) else wbtbAt,
+            backToSleepAtMs = backToSleepAt, guide = guideOfferedAt != null || guide != null,
+        ),
+    )
+
     companion object {
         /** One w_alarm.csv row, appended at once: a handful a night, each must survive a battery that dies at dawn. */
         internal fun appendRow(dir: File, row: List<Any?>) {
@@ -689,6 +700,28 @@ class WakeAlarms(
         /** The early wake-up at [atMs] when it is tonight's and will ring: within 12 h, and not too soon to ring. */
         internal fun wbtbAhead(atMs: Long?, nowMs: Long, nightStartMs: Long, unitMs: Long = 60_000L): Long? =
             atMs?.takeIf { it - nowMs <= NEW_NIGHT_MS && !wbtbTooSoon(it, nightStartMs, unitMs) }
+
+        /**
+         * Something can still ring or play tonight: a ring, a snoozed or rung-out wake-up, a wake-up within 12 h (once
+         * it rang, [wakeAtMs] is tomorrow's, about 24 h away), an early wake-up ahead, the back-to-sleep buzz or the
+         * guide.
+         */
+        internal fun somethingLeftTonight(
+            nowMs: Long, ringing: Boolean, snoozed: Boolean, wakeAtMs: Long?, wbtbAheadAtMs: Long?,
+            backToSleepAtMs: Long?, guide: Boolean,
+        ): Boolean = ringing || snoozed || guide || backToSleepAtMs != null || wbtbAheadAtMs != null ||
+            wakeAtMs?.let { it - nowMs <= NEW_NIGHT_MS } == true
+
+        /**
+         * Nothing is left tonight and the dream questions are not on screen, and either the morning's wake-up was
+         * answered or ended ([morningDone]) with no report due, or the night is [NEW_NIGHT_MS] old: the wake-up off,
+         * questions never saved, or nothing done at all. A wake-up still due always holds the night ([somethingLeft]).
+         */
+        internal fun nightOver(
+            nowMs: Long, nightStartMs: Long, morningDone: Boolean, reportDue: Boolean, reportOnScreen: Boolean,
+            somethingLeft: Boolean,
+        ): Boolean = !somethingLeft && !reportOnScreen &&
+            ((morningDone && !reportDue) || nowMs - nightStartMs >= NEW_NIGHT_MS)
 
         /**
          * The night that ended last, for "Record a dream": its session folder and when it stopped (or was last alive,

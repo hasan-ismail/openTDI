@@ -51,6 +51,7 @@ class HealthTrackingForegroundService : LifecycleService() {
     private var alarmOnly = false // the backup rings a morning whose recording died: no sensors, no recording
     private var alarms: WakeAlarms? = null // sensing thread only
     private var alarmsJson: String? = null
+    @Volatile private var ending = false // the night ended by itself: no second stop before the ticker is cancelled
     private val telemetry by lazy { TelemetrySender(applicationContext, lifecycleScope) } // outlives a session
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -162,6 +163,7 @@ class HealthTrackingForegroundService : LifecycleService() {
     }
 
     private fun startSession(config: SessionConfig, androidSensorsOnly: Boolean, keepNight: Boolean = false) {
+        ending = false
         ticker = lifecycleScope.launch(sensing) {
             val s = LoggingSession(applicationContext, handler, config, androidSensorsOnly, telemetry)
             session = s
@@ -203,6 +205,14 @@ class HealthTrackingForegroundService : LifecycleService() {
             e.packet.source == SensorSource.SAMSUNG_SDK &&
             e.packet.hrStatus != HR_STATUS_DETACHED && e.packet.edaStatus != EDA_STATUS_DETACHED
         alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr, s.drainStillness(), worn)
+        // The night ends by itself once nothing is left to ring (WakeAlarms.nightOver), by End the night's own path.
+        val st = SensingStateHolder.state.value
+        val over = alarms?.nightOver(System.currentTimeMillis(), st.reportAfter != null, ReportDraft.onScreen) == true
+        if (over && !ending) {
+            ending = true
+            logEvent("NIGHT_ENDED_BY_ITSELF", "morning" to (st.lastWakeText != null))
+            stop(applicationContext) // ACTION_STOP: writes a left report, closes the alarms, clears the backup
+        }
     }
 
     /**

@@ -35,8 +35,8 @@ on its sensor-free version that speaks on a timer only
 5. **This round repeats up to 4 times**, about 7 minutes apart. The voice then ends, with a soft goodnight chime if you
    want one. The watch keeps tracking your sleep and runs your alarms all night.
 6. **In the morning** the wake-up alarm rings on the watch (it is on unless you turn it off). Tap **I'm awake** and the
-   watch asks the dream questions: record your dream, then a few one-tap questions. Then tap **End the night** on the
-   phone or the watch. Remember a dream later? Tap **Record a dream** on the watch, up to 14 hours after the night,
+   watch asks the dream questions: record your dream, then a few one-tap questions. Tap **Save** and the night ends by
+   itself. Remember a dream later? Tap **Record a dream** on the watch, up to 14 hours after the night,
    and it is saved with that night.
 
 **The early wake-up** (off unless you turn it on in Settings) wakes you in the middle of the night, keeps you up for a

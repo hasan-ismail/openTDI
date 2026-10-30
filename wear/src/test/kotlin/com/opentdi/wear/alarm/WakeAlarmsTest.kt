@@ -161,4 +161,57 @@ class WakeAlarmsTest {
         WakeAlarms.armTestNight(hour)
         assertFalse(WakeAlarms.takeTestNight(hour + 11 * min))
     }
+
+    private val bed = 23 * hour
+
+    private fun over(
+        afterMs: Long, morningDone: Boolean = false, reportDue: Boolean = false, onScreen: Boolean = false,
+        left: Boolean = false,
+    ) = WakeAlarms.nightOver(bed + afterMs, bed, morningDone, reportDue, onScreen, left)
+
+    @Test
+    fun nightOver_afterTheMorningAlarm_onceItsQuestionsAreSaved() {
+        assertTrue(over(8 * hour, morningDone = true))
+        assertFalse(over(8 * hour, morningDone = true, reportDue = true))
+        assertFalse(over(8 * hour)) // the morning not over yet
+    }
+
+    @Test
+    fun nightOver_waitsForUnsavedQuestions_until12HoursAfterTheStart() {
+        assertFalse(over(12 * hour - min, morningDone = true, reportDue = true))
+        assertTrue(over(12 * hour, morningDone = true, reportDue = true))
+    }
+
+    @Test
+    fun nightOver_neverWithAnythingLeftTonight() {
+        assertFalse(over(20 * hour, morningDone = true, left = true))
+    }
+
+    @Test
+    fun nightOver_neverWhileTheQuestionsAreOnScreen() {
+        assertFalse(over(20 * hour, morningDone = true, onScreen = true))
+    }
+
+    @Test
+    fun nightOver_withoutAnyAlarm_after12Hours() {
+        assertFalse(over(12 * hour - 1000))
+        assertTrue(over(12 * hour))
+    }
+
+    @Test
+    fun somethingLeftTonight_coversRingSnoozeWakeUpEarlyWakeUpBuzzAndGuide() {
+        val now = 30 * hour
+        fun left(
+            ringing: Boolean = false, snoozed: Boolean = false, wakeAt: Long? = null, wbtbAt: Long? = null,
+            buzzAt: Long? = null, guide: Boolean = false,
+        ) = WakeAlarms.somethingLeftTonight(now, ringing, snoozed, wakeAt, wbtbAt, buzzAt, guide)
+        assertTrue(left(wakeAt = now + hour))
+        assertFalse(left(wakeAt = now + 23 * hour + 55 * min)) // tomorrow's, once today's rang
+        assertFalse(left())
+        assertTrue(left(ringing = true))
+        assertTrue(left(snoozed = true))
+        assertTrue(left(wbtbAt = now + hour))
+        assertTrue(left(buzzAt = now + 10 * min))
+        assertTrue(left(guide = true))
+    }
 }

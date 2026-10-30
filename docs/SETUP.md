@@ -306,7 +306,7 @@ the tracking service. Each step is a `BACKUP` row in the night's `w_alarm.csv` (
 **Early wake-up options (watch).** While tracking, the main screen offers **Skip the early wake-up** (tonight only; the
 wake-up alarm and tracking go on) and, from 4½ hours into the night, **I'm up now**, which starts the early wake-up
 without ringing. Both ask first, and either one, like a ring, settles the early wake-up for that night, even after a
-restart or a time change. After End the night, **Record a dream** saves a dream report into the last night's folder
+restart or a time change. After the night ends, **Record a dream** saves a dream report into the last night's folder
 for up to 14 hours after that night; Stats labels it "Dream questions" and keeps it out of the soft-sound experiment.
 
 **Time it from when you fall asleep (phone Settings, Early wake-up).** The early wake-up then rings 4½ to 7 hours
