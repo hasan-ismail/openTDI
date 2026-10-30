@@ -9,6 +9,7 @@ import com.opentdi.shared.config.StructuralConstants.MAJOR_MOVEMENT_WINDOW_S
 import com.opentdi.shared.config.StructuralConstants.RE_ONSET_MS
 import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.wear.ReportDraft
+import com.opentdi.wear.sensing.SensingStateHolder
 import kotlin.random.Random
 
 /**
@@ -81,6 +82,7 @@ class LateCues(
         armedAtMs = nowMs
         startAtMs = null
         endAtMs = nowMs + LATE_CUE_WINDOW_MS
+        SensingStateHolder.update { it.copy(lateCuesEndAtMs = endAtMs) } // the night page's end time
         trainingLeft = 0 // back in bed: training still held behind the dream questions would wake the sleeper
         val night = if (cueNight) "CUE" else "NO_CUE"
         log("ARMED", null, null, "night=$night$pair;start_after_onset_min=${c.lateCueAfterOnsetMin}")
@@ -89,6 +91,7 @@ class LateCues(
     /** The wake-up alarm, or [LATE_CUE_WINDOW_MS] after the arm: no lucidity cue while the sleeper is up. */
     fun disarm() {
         endAtMs = null
+        SensingStateHolder.update { it.copy(lateCuesEndAtMs = null) }
         if (startAtMs == null && armedAtMs == null && trainingLeft == 0) return
         armedAtMs = null
         startAtMs = null
@@ -96,7 +99,10 @@ class LateCues(
         log("ENDED", null, null, null)
     }
 
-    fun close() = sound.stop()
+    fun close() {
+        sound.stop()
+        SensingStateHolder.update { it.copy(lateCuesEndAtMs = null) } // the night ended, or late cues were turned off
+    }
 
     /** Armed and its window not over yet: the night must not end under the cues (the wake-up off). */
     fun active(nowMs: Long) = endAtMs?.let { nowMs < it } == true

@@ -110,6 +110,8 @@ class WakeAlarms(
         config = next
         if (next.wakeEnabled != old.wakeEnabled || next.wakeAtMin != old.wakeAtMin) {
             wakeAt = if (next.wakeEnabled) nextAlarmAt(next.wakeAtMin, nowMs, zone) else null
+            // Set after this morning's rang, a time still within 12 h rings as both screens list it: with its backup.
+            if (wakeAt?.let { it - nowMs <= NEW_NIGHT_MS } == true) morningDone = false
             SensingStateHolder.update { it.copy(wakeAgainAtMs = null) } // a new wake time drops a pending snooze
             // A dropped snooze's count would use up the new time's re-rings, so a slept-through ring would not repeat.
             if (ringing?.kind != "WAKE") {
@@ -284,7 +286,8 @@ class WakeAlarms(
         WakeBackup.cancelFallback(context) // a real ring was answered or ended: the last resort goes with it
         val moved = r.movedAtMs?.let { it - r.startMs }
         log(nowMs, r.kind, how, stillness, hr, "after_ms=${nowMs - r.startMs};first_movement_ms=${moved ?: ""}")
-        val total = nowMs - (firstRingAt ?: r.startMs) // snoozes count as part of waking up
+        val firstRing = firstRingAt ?: r.startMs
+        val total = nowMs - firstRing // snoozes count as part of waking up
         val summary = when {
             r.kind != "WAKE" -> null
             how == "STOPPED" -> "Woke up in ${minSec(total)}" + when (tappedSnoozes) {
@@ -313,8 +316,13 @@ class WakeAlarms(
                 wbtbBackToSleepAtMs = backToSleepAt,
                 lateCuesTraining = trains,
                 lastWakeText = summary ?: it.lastWakeText,
-                // A morning that rang out still gets its dream questions; a WBTB slept through does not.
-                reportAfter = if (how == "STOPPED" || r.kind == "WAKE") r.kind else it.reportAfter,
+                // A morning that rang out still gets its dream questions; a WBTB slept through does not; nor a
+                // morning whose dream was saved during its snooze (End the night › Save my dream).
+                reportAfter = when {
+                    r.kind == "WAKE" && morningSaved(firstRing) -> it.reportAfter
+                    how == "STOPPED" || r.kind == "WAKE" -> r.kind
+                    else -> it.reportAfter
+                },
             )
         }
         syncBackup(how, nowMs)
@@ -414,11 +422,14 @@ class WakeAlarms(
     private fun endMorning(nowMs: Long, firstRingMs: Long, how: String) {
         morningDone = true
         log(nowMs, "WAKE", "STOPPED", null, null, "how=$how")
-        // shortcut: an early wake-up report saved during the snooze counts too; read the rows' "after" if that matters.
-        if (File(dir, CsvFiles.W_MORNING.name).lastModified() < firstRingMs) {
-            SensingStateHolder.update { it.copy(reportAfter = "WAKE") }
-        }
+        if (!morningSaved(firstRingMs)) SensingStateHolder.update { it.copy(reportAfter = "WAKE") }
     }
+
+    /**
+     * A dream report was saved since the morning's first ring at [firstRingMs], such as during its snooze.
+     * shortcut: an early wake-up report saved then counts too; read the rows' "after" if that matters.
+     */
+    private fun morningSaved(firstRingMs: Long) = File(dir, CsvFiles.W_MORNING.name).lastModified() >= firstRingMs
 
     /** The guide is on and every clip of it is on the watch; otherwise WBTB runs as it did before the guide. */
     private fun guideReady() = config.wbtbGuide && guideClipsPresent(context)

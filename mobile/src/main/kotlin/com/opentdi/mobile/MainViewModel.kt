@@ -190,8 +190,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val status = watchRequest(app, TdiCommand.StatusRequest(DeviceRole.PHONE))
             if (status?.state == WatchState.IDLE) clearWatchStopError() // ended on the watch itself
             // A watch not tracking once the voice is done: the night is over, so Tonight is ready for the next one
-            // instead of saying "Sleep well" until this process dies.
-            if (status != null && status.state != WatchState.RECORDING) SessionMonitor.update {
+            // instead of saying "Sleep well" until this process dies. Without a watch answer, 12 h after the night
+            // began: a phone-only night, or a watch out of reach.
+            val old = SessionMonitor.status.value.sessionId?.let(::sessionStartMs)
+                ?.let { System.currentTimeMillis() - it > 12 * 3_600_000L } == true
+            if (status?.state != WatchState.RECORDING && (status != null || old)) SessionMonitor.update {
                 val done = !it.running && it.state == TdiState.SESSION_COMPLETE && !it.quickTest
                 if (done) it.copy(state = TdiState.IDLE) else it
             }

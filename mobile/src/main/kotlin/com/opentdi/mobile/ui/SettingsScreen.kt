@@ -501,7 +501,7 @@ private fun OwnVoiceRow(
     }
     if (recordingCue == cue) Help("Say the words slowly and calmly, then tap Stop (at most 20 s).")
     if (cue in config.audio.ownVoice && recordingCue != cue) {
-        Help("Your own recording plays here. Tap Get the voice ready.")
+        Help("Your own recording plays here. The voice is made again when you leave Settings.")
     }
 }
 

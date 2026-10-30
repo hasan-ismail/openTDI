@@ -35,7 +35,11 @@ class NightPageTest {
     @Test
     fun nightEndLine_afterTheWakeUp_orByATime() {
         val start = LocalDate.of(2026, 10, 29).atTime(23, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        assertEquals("The night ends by itself after your wake-up alarm.", nightEndLine(wakeEnabled = true, start))
-        assertEquals("The night ends by itself by 11\u00A0AM.", nightEndLine(wakeEnabled = false, start))
+        assertEquals("The night ends by itself after your wake-up alarm.", nightEndLine(true, start, null))
+        assertEquals("The night ends by itself by 11\u00A0AM.", nightEndLine(false, start, null))
+        // Late cues armed late hold the night past the 12 h; ending sooner, they change nothing.
+        val cuesEnd = start + 12 * 3_600_000L + 20 * 60_000L
+        assertEquals("The night ends by itself by 11:20\u00A0AM.", nightEndLine(false, start, cuesEnd))
+        assertEquals("The night ends by itself by 11\u00A0AM.", nightEndLine(false, start, start + 10 * 3_600_000L))
     }
 }

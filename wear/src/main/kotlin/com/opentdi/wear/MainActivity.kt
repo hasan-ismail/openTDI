@@ -120,6 +120,8 @@ class MainActivity : ComponentActivity() {
             var page by rememberSaveable { mutableStateOf(Page.MAIN) }
             var reportFromEnd by rememberSaveable { mutableStateOf(false) } // opened from End the night
             var reportDir by rememberSaveable { mutableStateOf<String?>(null) } // last night's, after it ended
+            // The snoozed morning's dream was saved (WakeAlarms.morningSaved): End the night stops asking for it.
+            var savedInSnooze by rememberSaveable(state.sessionId) { mutableStateOf(false) }
             // A report page restored after the app was killed has no night behind it, nor any folder the phone copies.
             // Last night's has its folder, but a new night starting ends it: tonight's alarms open their own.
             LaunchedEffect(state.sessionId, state.running) {
@@ -226,7 +228,10 @@ class MainActivity : ComponentActivity() {
                                     dir = reportDir?.let(::File)
                                         ?: File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
                                     requestMic = ::requestMic,
-                                    onSaved = { SensingStateHolder.update { it.copy(reportAfter = null) } },
+                                    onSaved = {
+                                        if (SensingStateHolder.state.value.wakeAgainAtMs != null) savedInSnooze = true
+                                        SensingStateHolder.update { it.copy(reportAfter = null) }
+                                    },
                                     // Read now, not when composed: a night ended from the phone has no End the night.
                                     onDone = {
                                         page = if (SensingStateHolder.state.value.running) backTo else Page.MAIN
@@ -234,7 +239,8 @@ class MainActivity : ComponentActivity() {
                                 )
                                 Page.END_NIGHT -> EndNightScreen(
                                     // During a snooze too: ended now, the wake-up never rings again to ask them.
-                                    reportDue = state.reportAfter != null || state.wakeAgainAtMs != null,
+                                    reportDue = state.reportAfter != null ||
+                                        (state.wakeAgainAtMs != null && !savedInSnooze),
                                     onReport = { openReport(fromEnd = true) },
                                     alarmsAhead = remember {
                                         val alarms = WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity))
@@ -251,6 +257,7 @@ class MainActivity : ComponentActivity() {
                                         WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity)).wakeEnabled,
                                         System.currentTimeMillis() -
                                             (SystemClock.elapsedRealtime() - state.startedElapsedMs),
+                                        state.lateCuesEndAtMs,
                                     ),
                                     onEnd = {
                                         // Only here: Close OpenTDI while waiting must not stop a phone's Quick test.
@@ -628,15 +635,12 @@ private fun MainScreen(
             } else if (state.running) {
                 // The wake-up rang (or the morning ended in its snooze) and its dream is not saved: it holds the night.
                 val morning = state.reportAfter == "WAKE"
-                item {
-                    BigLine(
-                        when {
-                            state.status == null -> "Starting…"
-                            morning -> "Good morning"
-                            else -> "Sleep well"
-                        },
-                    )
-                }
+                when {
+                    state.wbtbBackToSleepAtMs != null || state.guideOffered -> null // "Up until …" or "Back to bed"
+                    state.status == null -> "Starting…"
+                    morning -> "Good morning"
+                    else -> "Sleep well"
+                }?.let { item { BigLine(it) } }
                 // Nothing when an alarm is on but more than 12 h away: it is set, just not tonight's to list.
                 val wbtbWontRing = wbtbAt == null || state.wbtbSkip != null
                 val now = System.currentTimeMillis()
@@ -671,7 +675,11 @@ private fun MainScreen(
                         System.currentTimeMillis() - (SystemClock.elapsedRealtime() - state.startedElapsedMs)
                     }
                     Line(
-                        if (morning) "Save your dream to end the night." else nightEndLine(config.wakeEnabled, startMs),
+                        if (morning) {
+                            "Save your dream to end the night."
+                        } else {
+                            nightEndLine(config.wakeEnabled, startMs, state.lateCuesEndAtMs)
+                        },
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -1099,13 +1107,14 @@ internal fun wbtbNowAt(state: SensingState, nowMs: Long): Long? =
 
 /**
  * When the night ends by itself (WakeAlarms.nightOver): after the wake-up alarm, or else 12 h after this recording
- * began ([startMs]); after a restart in the night that reads a little late, never early.
+ * began ([startMs]), or when armed late cues end ([cuesEndMs]) if later; after a restart in the night that reads a
+ * little late, never early.
  */
-internal fun nightEndLine(wakeEnabled: Boolean, startMs: Long): String =
+internal fun nightEndLine(wakeEnabled: Boolean, startMs: Long, cuesEndMs: Long?): String =
     if (wakeEnabled) {
         "The night ends by itself after your wake-up alarm."
     } else {
-        "The night ends by itself by ${WakeAlarms.hhmm(startMs + WakeAlarms.NEW_NIGHT_MS)}."
+        "The night ends by itself by ${WakeAlarms.hhmm(maxOf(startMs + WakeAlarms.NEW_NIGHT_MS, cuesEndMs ?: 0L))}."
     }
 
 /** The watch's display settings, where Always On Display is switched off; a watch without that screen does nothing. */

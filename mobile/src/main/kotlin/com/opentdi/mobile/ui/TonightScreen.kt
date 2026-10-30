@@ -202,13 +202,23 @@ fun TonightScreen(
     }
 
     fun begin(quick: Boolean) = if (quick) onQuickTest() else onStart()
+    // No answer from the watch yet (up to 5 s after opening Tonight), or none since the screen came back on: the last
+    // one can be hours old, such as "not tracking" from just before a night started.
+    val unsure = checkingWatch || (!streaming && viewModel.recentWatchAnswer() == null)
+    // A real Start tapped then waits for the answer, so a night already tracked still asks before replaying the voice,
+    // and a low watch battery still shows.
+    var startOnAnswer by rememberSaveable { mutableStateOf(false) }
     // Only the watch app is closed, as at most bedtimes: a real Start opens it and goes on at once, since the voice's
     // service resends Start until the watch tracks. Waiting here for the watch to open hung whenever the phone's screen
-    // went off right after Start: no voice, no tracking and no alarms. Likewise before the watch's first answer (up to
-    // 5 s after opening Tonight): opening an app already open is harmless.
+    // went off right after Start: no voice, no tracking and no alarms. Likewise when the screen goes off before the
+    // watch's first answer: opening an app already open is harmless.
     fun onlyWatchClosed() =
         (watch == WatchState.IDLE || checkingWatch) && problems(false).all { it.check == Check.WATCH }
-    fun tryStart(quick: Boolean) {
+    fun tryStart(quick: Boolean, screenOff: Boolean = false) {
+        if (!quick && unsure && !screenOff) {
+            startOnAnswer = true
+            return
+        }
         val opens = !quick && onlyWatchClosed()
         val clear = errors.isEmpty() && (opens || (!waitsForWatch(quick) && problems(quick).isEmpty()))
         if (clear && (quick || !nightUnderway)) {
@@ -217,6 +227,12 @@ fun TonightScreen(
         } else {
             oldMessage = ui.cueMessage
             startAsk = quick
+        }
+    }
+    LaunchedEffect(startOnAnswer, unsure) {
+        if (startOnAnswer && !unsure) {
+            startOnAnswer = false
+            if (idle) tryStart(quick = false)
         }
     }
     // Only a real Start opens the watch app, never a Quick test. It only opens: the watch then waits for this Start.
@@ -239,7 +255,14 @@ fun TonightScreen(
     // With the screen off the watch's answers stop arriving: a popup left open must not start the night at the next
     // unlock, maybe in the morning. A rotation is not leaving.
     val activity = LocalActivity.current
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (activity?.isChangingConfigurations != true) startAsk = null }
+    // A Start still waiting for the watch goes on as before the wait: the user thinks the night has started.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (activity?.isChangingConfigurations != true) {
+            if (startOnAnswer && idle) tryStart(quick = false, screenOff = true)
+            startOnAnswer = false
+            startAsk = null
+        }
+    }
     // Always through the popup: on arriving here the volume, speaker and Do Not Disturb checks have not been read yet.
     LaunchedEffect(quickAsk) {
         if (quickAsk) {
@@ -282,6 +305,7 @@ fun TonightScreen(
             }
         } else {
             StartButton(enabled = idle, glow = idle && ready && !nightUnderway) { tryStart(quick = false) }
+            if (startOnAnswer) Help("Checking the watch…")
             // Also what Get the voice ready said on leaving Settings, such as the voice it fell back to: Start does not
             // stop on it, so this is the only place it shows.
             if (ui.preparing) {
