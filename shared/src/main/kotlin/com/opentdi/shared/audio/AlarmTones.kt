@@ -1,5 +1,6 @@
 package com.opentdi.shared.audio
 
+import com.opentdi.shared.config.MIN_SLEEP_BEFORE_WBTB_MIN
 import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.AlarmTone
 import com.opentdi.shared.time.clock12
@@ -93,21 +94,27 @@ fun nextAlarmAt(minuteOfDay: Int, fromMs: Long, zone: ZoneId): Long {
     return at.toInstant().toEpochMilli()
 }
 
-/** The least sleep before a WBTB alarm: the watch skips one sooner after the night's start. */
-const val MIN_SLEEP_BEFORE_WBTB_MS = 270 * 60_000L // 4.5 h
-
-/** Too early a WBTB cuts the first, deep half of the night and did worse (4.5 h vs 6 h, Erlacher 2022). */
-fun wbtbTooSoon(atMs: Long, nightStartMs: Long) = atMs - nightStartMs < MIN_SLEEP_BEFORE_WBTB_MS
+/** Too early a WBTB cuts the first, deep half of the night (MIN_SLEEP_BEFORE_WBTB_MIN): the watch skips it. */
+fun wbtbTooSoon(atMs: Long, nightStartMs: Long) = atMs - nightStartMs < MIN_SLEEP_BEFORE_WBTB_MIN * 60_000L
 
 /**
  * The alarms of [config] still to ring tonight, soonest first, e.g. "the early wake-up at 4:30 AM and the wake-up
  * alarm at 7 AM"; null when none. One more than 12 h away has already rung this night, or belongs to the next one.
+ * [wbtbAtMs]: the watch's decided early wake-up; without it, one timed from falling asleep is "by" its set time.
  */
-fun alarmsAhead(config: AlarmConfig, nowMs: Long, zone: ZoneId): String? = listOfNotNull(
-    config.wbtbAtMin.takeIf { config.wbtbEnabled }?.let { it to "the early wake-up" },
-    config.wakeAtMin.takeIf { config.wakeEnabled }?.let { it to "the wake-up alarm" },
-).map { (minute, name) -> nextAlarmAt(minute, nowMs, zone) to "$name at ${clock12(minute)}" }
-    .filter { (at, _) -> at - nowMs <= 12 * 3_600_000L }
+fun alarmsAhead(config: AlarmConfig, nowMs: Long, zone: ZoneId, wbtbAtMs: Long? = null): String? = listOfNotNull(
+    when {
+        !config.wbtbEnabled -> null
+        // The sleep-timed one, or after tonight's rang, tomorrow's (dropped below).
+        wbtbAtMs != null -> wbtbAtMs to "the early wake-up at ${clock12(minuteOfDay(wbtbAtMs, zone))}"
+        else -> nextAlarmAt(config.wbtbAtMin, nowMs, zone) to
+            "the early wake-up ${if (config.wbtbAfterSleepMin != null) "by" else "at"} ${clock12(config.wbtbAtMin)}"
+    },
+    config.wakeAtMin.takeIf { config.wakeEnabled }
+        ?.let { nextAlarmAt(it, nowMs, zone) to "the wake-up alarm at ${clock12(it)}" },
+).filter { (at, _) -> at > nowMs && at - nowMs <= 12 * 3_600_000L }
     .sortedBy { it.first }
     .joinToString(" and ") { it.second }
     .ifEmpty { null }
+
+private fun minuteOfDay(ms: Long, zone: ZoneId) = Instant.ofEpochMilli(ms).atZone(zone).let { it.hour * 60 + it.minute }

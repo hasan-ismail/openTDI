@@ -31,7 +31,9 @@ fun nightPlan(c: SessionConfig, now: ZonedDateTime): List<PlanMark> {
     val wbtbRings = !wbtbTooSoon(nextAlarmAt(c.alarms.wbtbAtMin, nowMs, now.zone), nowMs)
     return listOfNotNull(
         PlanMark(CUES, minOf(c.timed.firstSleepMinMin, c.sessionMaxMin), c.sessionMaxMin),
-        PlanMark(WBTB, ahead(c.alarms.wbtbAtMin)).takeIf { c.alarms.wbtbEnabled && wbtbRings },
+        // Timed from falling asleep, it rings at the set time or before (WakeAlarms.wbtbTime).
+        PlanMark(if (c.alarms.wbtbAfterSleepMin != null) WBTB_BY else WBTB, ahead(c.alarms.wbtbAtMin))
+            .takeIf { c.alarms.wbtbEnabled && wbtbRings },
         PlanMark(WAKE, ahead(c.alarms.wakeAtMin)).takeIf { c.alarms.wakeEnabled },
     )
 }
@@ -47,7 +49,7 @@ fun nightPlanLine(c: SessionConfig, now: ZonedDateTime): String {
             else -> "${it.label} ${at(it.fromMin)}"
         }
     }
-    val skipped = c.alarms.wbtbEnabled && marks.none { it.label == WBTB }
+    val skipped = c.alarms.wbtbEnabled && marks.none { it.label == WBTB || it.label == WBTB_BY }
     return if (skipped) "$line · no early wake-up tonight (less than 4½ hours after Start)" else line
 }
 
@@ -72,7 +74,7 @@ fun NightPlanCard(config: SessionConfig, now: ZonedDateTime) {
                     Size(x(m.toMin) - x(m.fromMin), 8.dp.toPx()),
                     CornerRadius(4.dp.toPx()),
                 )
-                WBTB -> drawCircle(colors.primary, r, Offset(x(m.fromMin), y))
+                WBTB, WBTB_BY -> drawCircle(colors.primary, r, Offset(x(m.fromMin), y))
                 else -> drawCircle(colors.tertiary, r, Offset(x(m.fromMin), y))
             }
             drawCircle(colors.background, r, Offset(x(0), y))
@@ -84,4 +86,5 @@ fun NightPlanCard(config: SessionConfig, now: ZonedDateTime) {
 
 private const val CUES = "Voice"
 private const val WBTB = "early wake-up"
+private const val WBTB_BY = "early wake-up by"
 private const val WAKE = "wake-up"

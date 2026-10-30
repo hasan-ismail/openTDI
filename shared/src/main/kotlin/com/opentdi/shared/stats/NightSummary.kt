@@ -30,6 +30,11 @@ data class NightSummary(
     val reports: List<DreamReport> = emptyList(),
     /** Dormio prompts that woke the sleeper during the recording: the phone's p_transitions.csv WAKING_USER rows. */
     val promptedWakings: Int = 0,
+    /**
+     * When the watch saw you fall asleep, live (SLEEP ONSET, or the onset_ms an early wake-up carries in a folder
+     * without it); null before it was logged, or none seen.
+     */
+    val liveOnsetMs: Long? = null,
 )
 
 /** Estimated sleep for one night, in the consensus sleep diary's terms (TST, SOL, WASO, SE). */
@@ -91,8 +96,13 @@ data class WbtbOutcome(
     val reOnsetMs: Long? = null,
     /** [reOnsetMs] minus [backToSleepAtMs], whole minutes. */
     val reOnsetLatencyMin: Int? = null,
-    /** Why it did not ring, e.g. too little sleep recorded before it. */
+    /** Why it did not ring: MIN_SLEEP_BEFORE_WBTB (too little sleep recorded before it), USER or PASSED. */
     val skipped: String? = null,
+    /**
+     * What timed it: SLEEP, or the set time (CLOCK; LATE, NO_ONSET or EARLY_START with sleep timing on); null in older
+     * files.
+     */
+    val timedFrom: String? = null,
 )
 
 /** The late-night cues after WBTB (w_alarm.csv, alarm CUES). */
@@ -144,7 +154,7 @@ data class DreamReport(
 )
 
 /** Bump whenever [summarizeNight]'s output changes for the same files. */
-const val SUMMARY_VERSION = 5
+const val SUMMARY_VERSION = 6
 
 /** The evening a time belongs to: noon to noon, so an evening and the night after it share one date. */
 fun nightDate(epochMs: Long, zone: ZoneId): LocalDate =

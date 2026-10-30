@@ -279,6 +279,36 @@ class NightSummariesTest {
     }
 
     @Test
+    fun liveOnset_andWhatTimedTheEarlyWakeUp() {
+        val onset = at(20)
+        val ring = listOf(at(380), "WBTB", "RING", null, null, "tone=VIBRATE_ONLY;alarm_volume=5;from=SLEEP;onset_ms=$onset")
+        val logged = listOf(at(30), "SLEEP", "ONSET", 1f, 60f, "onset_ms=$onset;night_start_ms=$start")
+        val s = summarize(night() + alarms(logged, ring))!!
+        assertEquals(onset, s.liveOnsetMs)
+        assertEquals(WbtbOutcome(ringAtMs = at(380), timedFrom = "SLEEP"), s.wbtb)
+        // A restart's folder without the ONSET row: the ring carries it.
+        assertEquals(onset, summarize(night() + alarms(ring))!!.liveOnsetMs)
+        val none = alarms(listOf(at(330), "WBTB", "RING", null, null, "tone=MELODY;alarm_volume=5;from=NO_ONSET;onset_ms="))
+        val noOnset = summarize(night() + none)!!
+        assertNull(noOnset.liveOnsetMs)
+        assertEquals("NO_ONSET", noOnset.wbtb!!.timedFrom)
+    }
+
+    @Test
+    fun skipped_readsItsReasonAndWhatTimedIt() { // rows from before reason=: wbtbSkipped_orRungOut
+        val passed = alarms(
+            listOf(at(400), "WBTB", "SKIPPED", null, null, "reason=PASSED;at_ms=${at(330)};from=SLEEP;onset_ms=${at(20)}"),
+        )
+        val s = summarize(night() + passed)!!
+        assertEquals(WbtbOutcome(skipped = "PASSED", timedFrom = "SLEEP"), s.wbtb)
+        assertEquals(at(20), s.liveOnsetMs)
+        val tooSoon = alarms(
+            listOf(at(120), "WBTB", "SKIPPED", 1f, 60f, "reason=MIN_SLEEP_BEFORE_WBTB;recording_ms=7200000;from=CLOCK;onset_ms="),
+        )
+        assertEquals(WbtbOutcome(skipped = "MIN_SLEEP_BEFORE_WBTB", timedFrom = "CLOCK"), summarize(night() + tooSoon)!!.wbtb)
+    }
+
+    @Test
     fun wakeAlarm_snoozes_stop_laterRingIgnored_orRungOut() {
         val stopped = alarms(
             listOf(at(380), "WAKE", "RING", null, null, null),

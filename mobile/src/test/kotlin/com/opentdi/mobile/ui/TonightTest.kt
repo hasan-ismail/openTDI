@@ -206,6 +206,28 @@ class TonightTest {
         assertFalse("no early wake-up" in nightPlanLine(cfg, midnight))
     }
 
+    @Test
+    fun nightPlan_sleepTimingSaysBy_andASkipStaysASkip() {
+        val alarms = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270, wbtbAfterSleepMin = 360)
+        val zone = ZoneId.of("America/New_York")
+        val at23 = ZonedDateTime.of(2026, 10, 28, 23, 0, 0, 0, zone)
+        val cfg = SessionConfig(alarms = alarms)
+        assertEquals(PlanMark("early wake-up by", 330), nightPlan(cfg, at23)[1])
+        assertTrue("· early wake-up by 4:30 AM ·" in nightPlanLine(cfg, at23))
+        for (c in listOf(cfg, SessionConfig(alarms = alarms.copy(wbtbAfterSleepMin = null)))) {
+            val line = nightPlanLine(c, at23.plusHours(2)) // 1 AM: 3.5 h before it, the watch skips it
+            assertTrue(line, line.endsWith(" · no early wake-up tonight (less than 4½ hours after Start)"))
+        }
+    }
+
+    @Test
+    fun hoursText_quarterHours() {
+        assertEquals(
+            listOf("4½ hours", "6 hours", "6¼ hours", "6¾ hours", "7 hours"),
+            listOf(270, 360, 375, 405, 420).map(::hoursText),
+        )
+    }
+
     private companion object {
         const val NOW = 1_000_000L
     }

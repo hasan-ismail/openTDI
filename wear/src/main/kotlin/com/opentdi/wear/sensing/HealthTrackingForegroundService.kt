@@ -17,6 +17,9 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import androidx.wear.ongoing.OngoingActivity
 import com.opentdi.shared.model.AccelConfig
+import com.opentdi.shared.model.EDA_STATUS_DETACHED
+import com.opentdi.shared.model.HR_STATUS_DETACHED
+import com.opentdi.shared.model.SensorSource
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.wear.MainActivity
 import com.opentdi.wear.R
@@ -152,15 +155,22 @@ class HealthTrackingForegroundService : LifecycleService() {
         val dir = File(filesDir, "sessions/${s.sessionId}")
         if (current == null) {
             val recordingStart = now - (SystemClock.elapsedRealtime() - SensingStateHolder.state.value.startedElapsedMs)
-            val nightStart = WakeAlarms.nightStart(applicationContext, recordingStart)
-            alarms = WakeAlarms(applicationContext, dir, now, WakeAlarms.parse(json), nightStart)
+            val test = WakeAlarms.takeTestNight(now)
+            // A test night is its own night, even right after a real one ended.
+            val nightStart = if (test) recordingStart else WakeAlarms.nightStart(applicationContext, recordingStart)
+            alarms = WakeAlarms(applicationContext, dir, now, WakeAlarms.parse(json), nightStart, testNight = test)
         } else {
             current.dir = dir // after a sensor restart the night's log follows the new session folder
             if (json != alarmsJson) current.update(WakeAlarms.parse(json), now) // keeps the night's state
         }
         alarmsJson = json
-        val p = SensingStateHolder.state.value.lastPacket?.packet
-        alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr, s.drainStillness())
+        val e = SensingStateHolder.state.value.lastPacket
+        val p = e?.packet
+        // Fresh, on the wrist and from sensors that can tell: anything else never looks like sleep (SleepOnset).
+        val worn = e != null && now - e.emittedWallMs <= FRESH_PACKET_MS &&
+            e.packet.source == SensorSource.SAMSUNG_SDK &&
+            e.packet.hrStatus != HR_STATUS_DETACHED && e.packet.edaStatus != EDA_STATUS_DETACHED
+        alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr, s.drainStillness(), worn)
     }
 
     /** Stops the sensors; [endNight] false keeps the night's alarms for the session that starts next. */
@@ -234,6 +244,7 @@ class HealthTrackingForegroundService : LifecycleService() {
         private const val EXTRA_ANDROID_SENSORS = "androidSensorsOnly"
         private const val CHANNEL_ID = "sensing"
         private const val NOTIFICATION_ID = 1
+        private const val FRESH_PACKET_MS = 30_000L // GUESSED: a few packet deadlines; an older packet is no data
 
         /**
          * Starts a new logging session (stopping a running one). Call only from a visible activity once

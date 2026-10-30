@@ -171,6 +171,23 @@ class SerializationTest {
     }
 
     @Test
+    fun alarmConfigSavedBeforeSleepTiming_readsAsTheSetTime() {
+        val alarms = OpenTdiJson.decodeFromString<AlarmConfig>("""{"wbtbEnabled":true,"wbtbAtMin":300}""")
+        assertEquals(null, alarms.wbtbAfterSleepMin)
+        assertEquals(300, alarms.wbtbAtMin)
+    }
+
+    @Test
+    fun alarmConfigWithoutSleepTiming_writesNoNewKey() {
+        // Off, the JSON is today's: an older watch or phone reads it unchanged.
+        assertFalse("wbtbAfterSleepMin" in OpenTdiJson.encodeToString(AlarmConfig()))
+        val on = AlarmConfig(wbtbEnabled = true, wbtbAfterSleepMin = 405)
+        val json = OpenTdiJson.encodeToString(on)
+        assertTrue("\"wbtbAfterSleepMin\":405" in json)
+        assertEquals(on, OpenTdiJson.decodeFromString<AlarmConfig>(json))
+    }
+
+    @Test
     fun sessionId_format() {
         val id = newSessionId(0L, Random(7))
         assertTrue(id, id.matches(Regex("""19700101T000000Z-[0-9a-f]{4}""")))

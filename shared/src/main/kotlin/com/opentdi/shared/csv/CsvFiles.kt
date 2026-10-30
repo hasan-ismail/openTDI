@@ -31,7 +31,7 @@ object CsvFiles {
         "w_skin_temp.csv",
         "arrival_wall_ms,sdk_ts_ms,object_temp_c,ambient_temp_c,status,batch_size",
     )
-    val W_ALARM = file("w_alarm.csv", "wall_ms,alarm(WAKE/WBTB/CUES),event,stillness,hr_bpm,detail")
+    val W_ALARM = file("w_alarm.csv", "wall_ms,alarm(WAKE/WBTB/CUES/SLEEP),event,stillness,hr_bpm,detail")
     // 2026-10-28: recalled VAGUE became WHITE, lucid became insight and control, nightmare was added
     // (sleep_and_dreams.md §3, §4, §6). No rows to map: the report shipped after the only recorded night.
     // Owner, 2026-10-28: the guided back-to-sleep and dream-sign answers go last, so older columns keep their places.

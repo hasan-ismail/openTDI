@@ -1,10 +1,13 @@
 package com.opentdi.wear.alarm
 
+import com.opentdi.shared.config.MIN_SLEEP_BEFORE_WBTB_MIN
+import com.opentdi.shared.model.AlarmConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
@@ -74,5 +77,79 @@ class WakeAlarmsTest {
         val wbtb = 28 * hour + 30 * 60_000 // 4:30 AM
         assertTrue(WakeAlarms.wbtbTooSoon(wbtb, 25 * hour)) // to bed at 1 AM: 3.5 h, skipped
         assertFalse(WakeAlarms.wbtbTooSoon(wbtb, 24 * hour)) // to bed at midnight: 4.5 h, rings
+    }
+
+    private val min = 60_000L
+    private val setAt = 28 * hour + 30 * min // the set time, 4:30 AM
+    private val cfg = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270, wbtbAfterSleepMin = 360)
+
+    @Test
+    fun wbtbTime_sleepTimedOnlyWhenItComesBeforeTheSetTime() {
+        val start = 21 * hour + 30 * min
+        assertEquals(28 * hour to "SLEEP", WakeAlarms.wbtbTime(cfg, start, 22 * hour, setAt, 22 * hour + 10 * min))
+        // Asleep at 22:30: 6 h later is the set time itself, not before it.
+        assertEquals(setAt to "LATE", WakeAlarms.wbtbTime(cfg, start, 22 * hour + 30 * min, setAt, 23 * hour))
+        assertEquals(setAt to "LATE", WakeAlarms.wbtbTime(cfg, start, 22 * hour + 31 * min, setAt, 23 * hour))
+    }
+
+    @Test
+    fun wbtbTime_decidedAtBedtime_whenEvenFallingAsleepAtStartIsTooLate() {
+        // No wait: the skip line shows at bedtime.
+        assertEquals(setAt to "LATE", WakeAlarms.wbtbTime(cfg, 23 * hour, null, setAt, 23 * hour))
+        val late = 22 * hour + 30 * min
+        assertEquals(setAt to "LATE", WakeAlarms.wbtbTime(cfg, late, null, setAt, late))
+        val start = 22 * hour + 29 * min
+        assertNull(WakeAlarms.wbtbTime(cfg, start, null, setAt, start)) // it waits to see you fall asleep
+    }
+
+    @Test
+    fun wbtbTime_waitsForTheOnset_untilTheDeadline() {
+        val start = 21 * hour
+        assertNull(WakeAlarms.wbtbTime(cfg, start, null, setAt, 24 * hour - 1000))
+        assertEquals(setAt to "NO_ONSET", WakeAlarms.wbtbTime(cfg, start, null, setAt, 24 * hour))
+        assertEquals(28 * hour to "SLEEP", WakeAlarms.wbtbTime(cfg, start, 22 * hour, setAt, 22 * hour + 10 * min))
+        // Waiting never delays a ring: the deadline ends before the earliest one.
+        assertTrue(WakeAlarms.ONSET_DEADLINE_MIN < MIN_SLEEP_BEFORE_WBTB_MIN)
+    }
+
+    @Test
+    fun wbtbTime_aStartOver12HoursBeforeIsTheSetTime_exceptOnATestNight() {
+        assertEquals(setAt to "EARLY_START", WakeAlarms.wbtbTime(cfg, 16 * hour + 29 * min, null, setAt, 17 * hour))
+        val start = 16 * hour + 30 * min // exactly 12 h before
+        assertNull(WakeAlarms.wbtbTime(cfg, start, null, setAt, start))
+        val onset = 15 * hour + 20_000
+        val test = WakeAlarms.wbtbTime(cfg.copy(wbtbAfterSleepMin = 270), 15 * hour, onset, setAt, onset, test = true)
+        assertEquals(onset + 270_000 to "SLEEP", test) // seconds for minutes
+    }
+
+    @Test
+    fun wbtbTime_neverUnder4_5HoursAfterTheOnset() {
+        val tooSoon = cfg.copy(wbtbAfterSleepMin = 60) // a value no phone should send
+        val timed = WakeAlarms.wbtbTime(tooSoon, 21 * hour, 22 * hour, setAt, 23 * hour)
+        assertEquals(26 * hour + 30 * min to "SLEEP", timed) // 4.5 h after the onset at 22:00
+    }
+
+    @Test
+    fun nextWbtbAt_afterTonightsRang_onlyTomorrows() {
+        val ny = ZoneId.of("America/New_York")
+        fun ms(text: String) = LocalDateTime.parse(text).atZone(ny).toInstant().toEpochMilli()
+        assertEquals(ms("2026-10-29T04:30"), WakeAlarms.nextWbtbAt(270, ms("2026-10-28T23:00"), null, ny))
+        // Sleep-timed at 3:40: tonight's set time never rings as a second one.
+        val rang = ms("2026-10-29T03:40")
+        assertEquals(ms("2026-10-30T04:30"), WakeAlarms.nextWbtbAt(270, ms("2026-10-29T03:50"), rang, ny))
+        // A crash restart planned from the night's start, after tonight's rang at 4:30.
+        val rangAtSet = ms("2026-10-29T04:30")
+        assertEquals(ms("2026-10-30T04:30"), WakeAlarms.nextWbtbAt(270, ms("2026-10-28T23:00"), rangAtSet, ny))
+        // The recording ran on into the evening: the next night still rings.
+        assertEquals(ms("2026-10-30T04:30"), WakeAlarms.nextWbtbAt(270, ms("2026-10-29T20:00"), rang, ny))
+    }
+
+    @Test
+    fun takeTestNight_onceAndOnlyWithin10Min() {
+        WakeAlarms.armTestNight(hour)
+        assertTrue(WakeAlarms.takeTestNight(hour + 9 * min))
+        assertFalse(WakeAlarms.takeTestNight(hour + 9 * min)) // the next night is a real one
+        WakeAlarms.armTestNight(hour)
+        assertFalse(WakeAlarms.takeTestNight(hour + 11 * min))
     }
 }

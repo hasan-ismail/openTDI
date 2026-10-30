@@ -25,6 +25,9 @@ data class BiosignalPacket(
     val spo2: Int? = null, // %, the last completed SpO2 spot check, held until the next check could have completed
 )
 
+const val HR_STATUS_DETACHED = -3 // HEART_RATE_STATUS: the watch is off the wrist
+const val EDA_STATUS_DETACHED = -5 // EdaSet.STATUS: the watch is off the wrist
+
 /** Gate status plus the detection confidence, emitted every frame (§8.9). */
 @Serializable
 data class DetectionScore(

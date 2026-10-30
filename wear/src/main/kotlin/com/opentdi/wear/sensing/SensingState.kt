@@ -17,8 +17,12 @@ data class SensingState(
     val waiting: Boolean = false, // the service runs with the sensors off until the phone's Start session
     val alarmRinging: String? = null, // "WAKE" or "WBTB" while an alarm rings (WakeAlarms)
     val wakeAgainAtMs: Long? = null, // a snoozed or rung-out wake-up rings again then, epoch ms
-    val wbtbSkipTonight: Boolean = false, // tonight's early wake-up is on, but too soon after the night began to ring
-    val wbtbAheadAtMs: Long? = null, // tonight's early wake-up still to ring, epoch ms; null: none, done, skipped
+    val wbtbSkip: String? = null, // why tonight's early wake-up won't ring: MIN_SLEEP_BEFORE_WBTB or PASSED
+    // Tonight's early wake-up once decided, epoch ms; null while the watch waits to see you fall asleep, or it is off.
+    val wbtbAtMs: Long? = null,
+    // Tonight's early wake-up still to ring, epoch ms (while the watch waits: the set time, the latest it rings); null:
+    // none, done, skipped.
+    val wbtbAheadAtMs: Long? = null,
     val wbtbSkippedTonight: Boolean = false, // "Skip the early wake-up" was tapped tonight
     val wbtbBackToSleepAtMs: Long? = null, // after a WBTB alarm: when the back-to-sleep buzz comes, epoch ms
     val lastWakeText: String? = null, // how long the last morning wake-up took

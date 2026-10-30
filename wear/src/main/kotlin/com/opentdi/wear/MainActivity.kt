@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        armTestNight(intent)
         // Always-on: in ambient the app stays on the dim screen instead of the watch taking it back to the watch face.
         lifecycle.addObserver(AmbientLifecycleObserver(this, object : AmbientLifecycleObserver.AmbientLifecycleCallback {}))
         setContent {
@@ -215,8 +216,9 @@ class MainActivity : ComponentActivity() {
                                         alarmsLeft(
                                             alarms,
                                             state.wakeAgainAtMs,
-                                            wbtbWontRing = state.wbtbAheadAtMs == null,
+                                            wbtbWontRing = state.wbtbAheadAtMs == null || state.wbtbSkip != null,
                                             System.currentTimeMillis(),
+                                            state.wbtbAtMs,
                                         )
                                     },
                                     wbtbAhead = state.wbtbAheadAtMs != null,
@@ -251,6 +253,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) { // singleTop: an open app gets the adb start here
+        super.onNewIntent(intent)
+        armTestNight(intent)
+    }
+
+    /** Device test (debug builds): `am start ... --ez com.opentdi.TEST_NIGHT true`; see WakeAlarms.takeTestNight. */
+    private fun armTestNight(intent: Intent?) {
+        if (BuildConfig.DEBUG && intent?.getBooleanExtra(EXTRA_TEST_NIGHT, false) == true) {
+            WakeAlarms.armTestNight(System.currentTimeMillis())
         }
     }
 
@@ -402,6 +416,8 @@ class MainActivity : ComponentActivity() {
 
 private enum class Page { MAIN, DETAILS, SESSIONS, REPORT, END_NIGHT }
 
+private const val EXTRA_TEST_NIGHT = "com.opentdi.TEST_NIGHT"
+
 // Near-black and dim with a muted indigo-lavender accent: the always-on screen stays lit beside the pillow (§14.6).
 private val NightColors = ColorScheme(
     primary = Color(0xFF8E8BC6),
@@ -551,12 +567,16 @@ private fun MainScreen(
             } else if (state.running) {
                 item { BigLine(if (state.status == null) "Starting…" else "Tracking your sleep") }
                 // Nothing when an alarm is on but more than 12 h away: it is set, just not tonight's to list.
-                val alarms = alarmsLeft(config, state.wakeAgainAtMs, wbtbAt == null, System.currentTimeMillis())
+                val wbtbWontRing = wbtbAt == null || state.wbtbSkip != null
+                val now = System.currentTimeMillis()
+                val alarms = alarmsLeft(config, state.wakeAgainAtMs, wbtbWontRing, now, state.wbtbAtMs)
                     ?.let { "${it.replaceFirstChar(Char::uppercase)}." }
                     ?: "No alarm set on the watch".takeIf { !config.wakeEnabled && !config.wbtbEnabled }
                 alarms?.let { item { Line(it) } }
-                if (state.wbtbSkipTonight) {
-                    item { Line("No early wake-up tonight: it's less than 4½ hours after you went to bed.") }
+                when (state.wbtbSkip) {
+                    "MIN_SLEEP_BEFORE_WBTB" ->
+                        item { Line("No early wake-up tonight: it's less than 4½ hours after you went to bed.") }
+                    "PASSED" -> item { Line("No early wake-up tonight: its time had already passed.") }
                 }
                 if (state.wbtbSkippedTonight) item { Line("Early wake-up skipped tonight.") }
                 // Awake before it: End the night was the only way to stop it, and it cancelled the wake-up alarm too.
@@ -635,6 +655,8 @@ private fun MainScreen(
     // Asked first: tonight's early wake-up cannot be brought back once skipped or started.
     if (wbtbAt != null) {
         val at = WakeAlarms.hhmm(wbtbAt)
+        // Timed from falling asleep and not yet decided: it rings by then, maybe sooner.
+        val skipWhen = if (state.wbtbAtMs == null && config.wbtbAfterSleepMin != null) "by $at" else "at $at"
         AskFirst(
             visible = askNow,
             title = "Start the early wake-up now?",
@@ -644,7 +666,7 @@ private fun MainScreen(
         )
         AskFirst(
             visible = askSkip,
-            title = "Skip tonight's early wake-up at $at?",
+            title = "Skip tonight's early wake-up $skipWhen?",
             text = config.wakeAtMin.takeIf { config.wakeEnabled }
                 ?.let { "Your wake-up alarm at ${clock12(it)} still rings." },
             onDismiss = { askSkip = false },
@@ -920,9 +942,15 @@ private fun format(pattern: String, value: Float?) = value?.let { String.format(
  * ([wakeAgainAtMs]), and no early wake-up that won't ring tonight ([wbtbWontRing]: too soon after bedtime, rung,
  * skipped or started early).
  */
-internal fun alarmsLeft(config: AlarmConfig, wakeAgainAtMs: Long?, wbtbWontRing: Boolean, nowMs: Long): String? =
-    wakeAgainAtMs?.let { "the wake-up alarm at ${WakeAlarms.hhmm(it)}" }
-        ?: alarmsAhead(config.copy(wbtbEnabled = config.wbtbEnabled && !wbtbWontRing), nowMs, ZoneId.systemDefault())
+internal fun alarmsLeft(
+    config: AlarmConfig,
+    wakeAgainAtMs: Long?,
+    wbtbWontRing: Boolean,
+    nowMs: Long,
+    wbtbAtMs: Long? = null, // the watch's decided early wake-up (alarmsAhead)
+): String? = wakeAgainAtMs?.let { "the wake-up alarm at ${WakeAlarms.hhmm(it)}" } ?: alarmsAhead(
+    config.copy(wbtbEnabled = config.wbtbEnabled && !wbtbWontRing), nowMs, ZoneId.systemDefault(), wbtbAtMs,
+)
 
 /** "2 h 5 min": in words, so the dim screen's once-a-minute update never reads like the clock. */
 private fun elapsed(ms: Long): String {

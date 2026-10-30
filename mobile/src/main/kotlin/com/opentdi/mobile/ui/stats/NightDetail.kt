@@ -122,16 +122,27 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
                 s?.wbtb?.let { w ->
                     if (w.skipped != null) {
                         add(
-                            if (w.skipped == "MIN_SLEEP_BEFORE_WBTB") {
-                                "Early wake-up skipped: the watch had been tracking your sleep for less than 4½ hours"
-                            } else {
-                                "Early wake-up skipped"
+                            "Early wake-up skipped" + when (w.skipped) {
+                                "MIN_SLEEP_BEFORE_WBTB" -> ": the watch had been tracking your sleep for less than 4½ hours"
+                                "PASSED" -> ": its time had already passed (the watch app was off, or the setting changed)"
+                                else -> ""
                             },
                         )
                     } else {
                         val steps = listOfNotNull(
-                            w.ringAtMs?.let {
-                                if (w.byUser) "you got up on your own at ${at(it)}" else "alarm ${at(it)}"
+                            w.ringAtMs?.let { ring ->
+                                // On set-time nights too: how long after falling asleep the set time came.
+                                val since = s.liveOnsetMs?.takeIf { it < ring }?.let {
+                                    ", ${hm(((ring - it) / 60_000).toInt())} after the watch saw you fall asleep"
+                                }.orEmpty()
+                                val why = when (w.timedFrom.takeUnless { w.byUser }) {
+                                    "NO_ONSET" -> " (your set time: the watch didn't see you fall asleep)"
+                                    "LATE" -> " (your set time: you fell asleep too late to ring earlier)"
+                                    "EARLY_START" -> " (your set time: the night started over 12 hours before it)"
+                                    else -> ""
+                                }
+                                val what = if (w.byUser) "you got up on your own at" else "alarm"
+                                "$what ${at(ring)}$since$why"
                             },
                             w.upAtMs?.takeUnless { w.byUser }?.let { "up ${at(it)}" },
                             w.backToSleepAtMs?.let { "back to bed ${at(it)}" },

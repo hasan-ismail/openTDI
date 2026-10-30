@@ -48,4 +48,31 @@ class AlarmTonesTest {
         assertNull(alarmsAhead(both, ms("2026-10-29T07:30"), zone)) // the morning: both have rung
         assertNull(alarmsAhead(both.copy(wakeEnabled = false, wbtbEnabled = false), ms("2026-10-29T03:06"), zone))
     }
+
+    @Test
+    fun alarmsAhead_sleepTimingSaysByUntilTheWatchHasTheTime() {
+        val zone = ZoneId.of("America/New_York")
+        fun ms(text: String) = LocalDateTime.parse(text).atZone(zone).toInstant().toEpochMilli()
+        val cfg = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270, wbtbAfterSleepMin = 360)
+        val bed = ms("2026-10-28T23:00")
+        assertEquals("the early wake-up by 4:30 AM and the wake-up alarm at 7 AM", alarmsAhead(cfg, bed, zone))
+        assertEquals(
+            "the early wake-up at 3:40 AM and the wake-up alarm at 7 AM",
+            alarmsAhead(cfg, bed, zone, wbtbAtMs = ms("2026-10-29T03:40")),
+        )
+        // Tonight's rang: the watch holds tomorrow's.
+        assertEquals(
+            "the wake-up alarm at 7 AM",
+            alarmsAhead(cfg, ms("2026-10-29T03:50"), zone, wbtbAtMs = ms("2026-10-30T04:30")),
+        )
+        assertEquals("the wake-up alarm at 7 AM", alarmsAhead(cfg, ms("2026-10-29T05:00"), zone))
+        assertEquals(
+            "the early wake-up at 4:30 AM and the wake-up alarm at 7 AM",
+            alarmsAhead(cfg.copy(wbtbAfterSleepMin = null), bed, zone, wbtbAtMs = ms("2026-10-29T04:30")),
+        )
+        assertEquals(
+            "the wake-up alarm at 7 AM",
+            alarmsAhead(cfg.copy(wbtbEnabled = false), bed, zone, wbtbAtMs = ms("2026-10-29T03:40")),
+        )
+    }
 }

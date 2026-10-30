@@ -150,6 +150,12 @@ data class AlarmConfig(
     // 0..1439 (04:30; owner, 2026-10-28: "do earlier wbtb"), GUESSED: with 30 min awake it leaves 2 h before a 07:00
     // wake-up (wakeTooSoonAfterWbtb); about 5 h after a 23:30 sleep onset, inside lucid_induction.md §5.2's 4.5–6.5 h
     val wbtbAtMin: Int = 270,
+    // Owner, 2026-10-29: when set, the early wake-up rings this long after the watch sees you fall asleep, never later
+    // than wbtbAtMin, which is also the time used when it can't be (WakeAlarms.wbtbTime). null = at wbtbAtMin, as
+    // before. 270..420 step 15; WBTB_AFTER_SLEEP_MIN (6 h) when switched on: lucid_induction.md §5.2 (6.0 h after
+    // onset, range 4.5–6.5); above 6.5 h GUESSED, untested. A nullable Int and never an enum: an AlarmConfig the other
+    // app can't decode fails the whole Start command (PhoneCommandService) and resets the watch's alarms (parse).
+    val wbtbAfterSleepMin: Int? = null,
     val wbtbTone: AlarmTone = AlarmTone.VIBRATE_ONLY, // rarely wakes anyone else; adds sound after 2 min
     val wbtbAwakeMin: Int = 30, // 5..60: 30+ min awake predicted success (LaBerge 2018); then a buzz says sleep
     val rampS: Int = 30, // 0..300: the tone rises from quiet to the watch's alarm volume

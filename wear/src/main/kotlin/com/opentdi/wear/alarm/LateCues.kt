@@ -174,7 +174,7 @@ internal fun ArrayDeque<Boolean>.addSecond(stillness: Float?): Boolean {
 
 /**
  * The estimated re-onset once the still stretch that began at [stillSinceMs] (null while moving) has lasted
- * [RE_ONSET_MS] from the buzz at [armedAtMs] or later; stillness before the buzz counts from the buzz. Null until then.
+ * [stretchMs] from the buzz at [armedAtMs] or later; stillness before the buzz counts from the buzz. Null until then.
  */
-internal fun reOnsetAt(armedAtMs: Long, stillSinceMs: Long?, nowMs: Long): Long? =
-    stillSinceMs?.let { maxOf(it, armedAtMs) }?.takeIf { nowMs - it >= RE_ONSET_MS }
+internal fun reOnsetAt(armedAtMs: Long, stillSinceMs: Long?, nowMs: Long, stretchMs: Long = RE_ONSET_MS): Long? =
+    stillSinceMs?.let { maxOf(it, armedAtMs) }?.takeIf { nowMs - it >= stretchMs }

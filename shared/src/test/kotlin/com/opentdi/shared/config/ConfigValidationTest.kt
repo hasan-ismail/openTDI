@@ -223,6 +223,19 @@ class ConfigValidationTest {
     }
 
     @Test
+    fun wbtbAfterSleepMin_4_5To7HoursIn15MinSteps() {
+        fun alarms(min: Int?) = SessionConfig(alarms = AlarmConfig(wbtbEnabled = true, wbtbAfterSleepMin = min))
+        for (min in listOf(null, 270, 360, 405, 420)) assertValid(alarms(min))
+        for (min in listOf(255, 435, 280)) {
+            val errors = alarms(min).validate()
+            assertEquals("$min: $errors", 1, errors.size)
+            assertTrue(errors.single().startsWith("alarms.wbtbAfterSleepMin "))
+        }
+        assertTrue("outside" in alarms(255).validate().single())
+        assertTrue("multiple of 15" in alarms(280).validate().single())
+    }
+
+    @Test
     fun theWbtbFix_leaves2hFromBackToBedToTheWakeUp() {
         val late = AlarmConfig(wakeEnabled = true, wbtbEnabled = true, wbtbAtMin = 330)
         assertEquals(270, late.wbtbAtMinBeforeWake())
@@ -328,10 +341,11 @@ class ConfigValidationTest {
         assertEquals("60", map["sensors.spo2TimeoutS"])
         assertEquals("", map["simulation"])
         assertEquals("1", map["alarms.wbtbGuide"])
+        assertEquals("", map["alarms.wbtbAfterSleepMin"]) // off: the set time, as before
         assertEquals("", map["alarms.dreamSigns"]) // no signs: one empty row
         // One row per leaf: 7 top-level, 21 detection, 12 accel, 8 timed, 17 audio (2 caps), 12 recording, 3 link,
-        // 6 sensors, 17 alarms; audio.ownVoice is one empty row, plus audio.watchOutput.
-        assertEquals(105, rows.size)
+        // 6 sensors, 18 alarms; audio.ownVoice is one empty row, plus audio.watchOutput.
+        assertEquals(106, rows.size)
 
         val words = "You are dreaming. You are in control."
         val custom = SessionConfig(audio = AudioConfig(cueTexts = mapOf(PromptCue.INITIAL_INCUBATION to words)))

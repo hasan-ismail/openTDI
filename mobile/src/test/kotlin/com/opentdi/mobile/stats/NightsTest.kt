@@ -149,6 +149,17 @@ class NightsTest {
     }
 
     @Test
+    fun nights_keepTheLiveOnsetFromAnyPart() {
+        val oct27 = LocalDate.of(2026, 10, 27)
+        val onset = ms("2026-10-27T23:20")
+        // A crash and restart: the onset was logged in the shorter first folder only.
+        val first = summary("a", "2026-10-27T23:00", "2026-10-28T00:30").copy(liveOnsetMs = onset)
+        val longer = summary("b", "2026-10-28T00:40", "2026-10-28T07:30")
+        val copies = listOf(WatchNight(oct27, longer, emptyList()), WatchNight(oct27, first, emptyList()))
+        assertEquals(onset, joinNights(copies, emptyList(), zone).single().watch!!.liveOnsetMs)
+    }
+
+    @Test
     fun phoneSessions_keepThoseWhoseFolderIsGone() = withDir { filesDir ->
         val id = "20261028T030000Z-0001"
         val dir = File(filesDir, "$SESSIONS_DIR/$id").apply { mkdirs() }

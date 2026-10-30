@@ -66,6 +66,8 @@ import com.opentdi.mobile.cues.mitThemeCueText
 import com.opentdi.mobile.cues.speakerLabel
 import com.opentdi.mobile.session.SessionMonitor
 import com.opentdi.shared.config.MAX_CUE_TEXT_CHARS
+import com.opentdi.shared.config.MIN_SLEEP_BEFORE_WBTB_MIN
+import com.opentdi.shared.config.WBTB_AFTER_SLEEP_MIN
 import com.opentdi.shared.config.lateCueAfterOnsetMinThatFits
 import com.opentdi.shared.config.lateCuesAfterWake
 import com.opentdi.shared.config.wakeBeforeWbtb
@@ -158,6 +160,7 @@ fun withDefaultNumbers(config: SessionConfig): SessionConfig {
             maxSnoozes = d.alarms.maxSnoozes,
             snoozeMin = d.alarms.snoozeMin,
             lateCueAfterOnsetMin = d.alarms.lateCueAfterOnsetMin,
+            wbtbAfterSleepMin = config.alarms.wbtbAfterSleepMin?.let { WBTB_AFTER_SLEEP_MIN }, // the switch stays
         ),
     )
 }
@@ -536,10 +539,29 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
             change { it.copy(wbtbEnabled = on, lateCues = if (on) it.lateCues else LateCueMode.OFF) }
         }
         if (alarms.wbtbEnabled) {
-            TimeRow("Early wake-up at", alarms.wbtbAtMin, enabled) { m -> change { it.copy(wbtbAtMin = m) } }
+            val after = alarms.wbtbAfterSleepMin
+            SwitchRow("Time it from when you fall asleep", after != null, enabled) { on ->
+                change { it.copy(wbtbAfterSleepMin = if (on) WBTB_AFTER_SLEEP_MIN else null) }
+            }
+            // With sleep timing the set time is the latest it rings, and the time used when the watch can't tell.
+            val timeLabel = if (after == null) "Early wake-up at" else "No later than"
+            TimeRow(timeLabel, alarms.wbtbAtMin, enabled) { m -> change { it.copy(wbtbAtMin = m) } }
+            if (after != null) {
+                Help(
+                    "The watch wakes you ${hoursText(after)} after it sees you fall asleep. If you fall asleep after " +
+                        "${clock12(alarms.wbtbAtMin - after)}, or it can't tell, it wakes you at " +
+                        "${clock12(alarms.wbtbAtMin)} instead, even with less sleep.",
+                )
+                IntSetting(
+                    "Wake me after falling asleep",
+                    "${hoursText(after)}. The studies used 4½ to 6½ hours, most often 6.",
+                    after, MIN_SLEEP_BEFORE_WBTB_MIN..420, 15, "min", enabled,
+                ) { v -> change { it.copy(wbtbAfterSleepMin = v) } }
+            }
             Help(
-                "About 5 to 6 hours after you fall asleep. Stay up a while and think about your last dream; a buzz " +
-                    "tells you when to go back to bed. Best on 1 to 3 nights a week. (This is called WBTB.)",
+                (if (after == null) "About 5 to 6 hours after you fall asleep. " else "") + "Stay up a while and " +
+                    "think about your last dream; a buzz tells you when to go back to bed. Best on 1 to 3 nights a " +
+                    "week. (This is called WBTB.)",
             )
             IntSetting(
                 "Stay up for", "Before the back-to-sleep buzz.", alarms.wbtbAwakeMin, 5..60, 5, "min", enabled,
@@ -553,7 +575,7 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 TextButton(
                     onClick = { change { it.copy(wbtbAtMin = it.wbtbAtMinBeforeWake()) } },
                     enabled = enabled,
-                ) { Text("Early wake-up at ${clock12(alarms.wbtbAtMinBeforeWake())} instead") }
+                ) { Text("$timeLabel ${clock12(alarms.wbtbAtMinBeforeWake())} instead") }
             } else if (alarms.wakeBeforeWbtb()) {
                 Text(
                     "Your wake-up alarm is before your early wake-up, so the early wake-up won't ring.",
@@ -582,6 +604,9 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
         }
     }
 }
+
+/** "6 hours", "4½ hours", "6¾ hours": a whole number of quarter hours in words. */
+internal fun hoursText(min: Int): String = "${min / 60}${listOf("", "¼", "½", "¾")[min % 60 / 15]} hours"
 
 /** Late-night cues after WBTB (lucid_induction.md §5): off, on, or a blinded experiment. */
 @Composable

@@ -95,6 +95,7 @@ internal fun joinNights(watch: List<WatchNight>, phone: List<PhoneSession>, zone
                 wake = s.wake ?: parts.mapNotNull { it.wake }.minByOrNull { it.ringAtMs },
                 wbtb = s.wbtb ?: parts.firstNotNullOfOrNull { it.wbtb },
                 lateCues = s.lateCues ?: parts.firstNotNullOfOrNull { it.lateCues },
+                liveOnsetMs = s.liveOnsetMs ?: parts.firstNotNullOfOrNull { it.liveOnsetMs },
             )
         }
         val recordings = copies.flatMap { it.recordings }.sortedBy { fromNoon(it.name) }

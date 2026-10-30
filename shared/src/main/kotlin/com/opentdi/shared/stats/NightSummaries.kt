@@ -3,6 +3,8 @@ package com.opentdi.shared.stats
 import com.opentdi.shared.config.StructuralConstants
 import com.opentdi.shared.csv.CsvFiles
 import com.opentdi.shared.csv.readCsv
+import com.opentdi.shared.model.EDA_STATUS_DETACHED
+import com.opentdi.shared.model.HR_STATUS_DETACHED
 import com.opentdi.shared.model.LateCueMode
 import com.opentdi.shared.model.TdiState
 import java.io.Reader
@@ -12,10 +14,9 @@ import java.time.ZoneId
 private const val WAKE = "WAKE"
 private const val WBTB = "WBTB"
 private const val CUES = "CUES"
+private const val SLEEP = "SLEEP"
 private const val REPORT_MS = 5 * 60_000L // GUESSED (§B7 F5): awake for this long before saving a morning report
-private const val HR_DETACHED = -3 // Samsung SDK HEART_RATE_STATUS: off the wrist (samsung_health_sensor_sdk.md)
 private const val HR_GOOD = 1 // HEART_RATE_STATUS: a successful measurement
-private const val EDA_DETACHED = -5 // Samsung SDK EdaSet STATUS: off the wrist
 private const val EDA_NORMAL = 0 // EdaSet STATUS: normal
 // shortcut: a recording spanning over 3 days (a clock jump: no watch battery lasts that long) is not summarised;
 // split it at the jump if that ever happens.
@@ -61,6 +62,7 @@ fun summarizeNight(sessionId: String, zone: ZoneId, open: (fileName: String) -> 
         lateCues = lateCueOutcome(alarms),
         reports = reports,
         promptedWakings = prompted.size,
+        liveOnsetMs = liveOnset(alarms),
     )
 }
 
@@ -104,7 +106,7 @@ private fun readPackets(reader: Reader): Seconds? {
         packets += Packet(
             tsMs = tsMs,
             hr = bpm,
-            detached = hrStat == HR_DETACHED || edaStat == EDA_DETACHED,
+            detached = hrStat == HR_STATUS_DETACHED || edaStat == EDA_STATUS_DETACHED,
             stillness = f.float(stillness),
             angle = f.float(angle),
             hrGood = bpm.takeIf { hrStat == null || hrStat == HR_GOOD },
@@ -193,9 +195,12 @@ private fun wakeOutcome(alarms: List<AlarmRow>): AlarmOutcome? {
  */
 private fun wbtbOutcome(alarms: List<AlarmRow>): WbtbOutcome? {
     val first = alarms.next(0) { it.alarm == WBTB && (it.event == "RING" || it.event == "SKIPPED") } ?: return null
-    // Too little sleep recorded before it, or "Skip the early wake-up" (how=USER).
+    val d = alarms[first].detail
+    // reason= (MIN_SLEEP_BEFORE_WBTB or PASSED), or "Skip the early wake-up" (how=USER); before reason=, only too
+    // little sleep recorded before it.
     if (alarms[first].event == "SKIPPED") {
-        return WbtbOutcome(skipped = if (alarms[first].detail["how"] == "USER") "USER" else "MIN_SLEEP_BEFORE_WBTB")
+        val why = d["reason"] ?: if (d["how"] == "USER") "USER" else "MIN_SLEEP_BEFORE_WBTB"
+        return WbtbOutcome(skipped = why, timedFrom = d["from"])
     }
     val end = alarms.next(first + 1) { it.alarm == WBTB && (it.event == "STOPPED" || it.event == "TIMED_OUT") }
     val up = end?.takeIf { alarms[it].event == "STOPPED" }
@@ -211,8 +216,14 @@ private fun wbtbOutcome(alarms: List<AlarmRow>): WbtbOutcome? {
         reOnsetMs = reOnsetMs,
         // From the buzz, not the row's latency_min: on a guided night the watch counts from the guide's end.
         reOnsetLatencyMin = if (buzzMs != null && reOnsetMs != null) ((reOnsetMs - buzzMs) / 60_000).toInt() else null,
+        timedFrom = d["from"],
     )
 }
+
+/** SLEEP ONSET, or the onset an early wake-up was timed from when this folder lacks that row (a restart). */
+private fun liveOnset(alarms: List<AlarmRow>): Long? =
+    alarms.firstOrNull { it.alarm == SLEEP && it.event == "ONSET" }?.detail?.get("onset_ms")?.toLongOrNull()
+        ?: alarms.firstNotNullOfOrNull { r -> r.detail["onset_ms"]?.toLongOrNull()?.takeIf { r.alarm == WBTB } }
 
 /** The late cues' first arming (§B4) and its cues until they ended. */
 private fun lateCueOutcome(alarms: List<AlarmRow>): LateCueOutcome? {

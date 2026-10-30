@@ -141,6 +141,7 @@ fun SessionConfig.validate(): List<String> {
     with(alarms) {
         int("alarms.wakeAtMin", wakeAtMin, 0..1439)
         int("alarms.wbtbAtMin", wbtbAtMin, 0..1439)
+        wbtbAfterSleepMin?.let { int("alarms.wbtbAfterSleepMin", it, MIN_SLEEP_BEFORE_WBTB_MIN..420, step = 15) }
         int("alarms.wbtbAwakeMin", wbtbAwakeMin, 5..60)
         int("alarms.rampS", rampS, 0..300)
         int("alarms.maxRingMin", maxRingMin, 1..30)
@@ -164,6 +165,12 @@ fun SessionConfig.validate(): List<String> {
  * bed (31.5 min to fall asleep + 42.1 min, §1 [12]), and late-night REM episodes run up to 30–40 min (§1 [4]).
  */
 const val MIN_WAKE_AFTER_BACK_TO_BED_MIN = 120
+
+/** Too early a WBTB cuts the first, deep half of the night and did worse (4.5 h vs 6 h, Erlacher 2022). */
+const val MIN_SLEEP_BEFORE_WBTB_MIN = 270
+
+/** The early wake-up's time after falling asleep when it is first switched on (lucid_induction.md §5.2). */
+const val WBTB_AFTER_SLEEP_MIN = 360
 
 /**
  * Both alarms on, and the wake-up comes less than wbtbAwakeMin + [MIN_WAKE_AFTER_BACK_TO_BED_MIN] after the WBTB alarm

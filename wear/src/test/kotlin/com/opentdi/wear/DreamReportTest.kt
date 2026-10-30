@@ -142,6 +142,22 @@ class DreamReportTest {
     }
 
     @Test
+    fun alarmsLeft_sleepTimingSaysByUntilDecided_thenTheTime() {
+        val zone = ZoneId.systemDefault()
+        fun at(hour: Int, minute: Int) = LocalDate.of(2026, 10, 29).atTime(hour, minute).atZone(zone).toInstant()
+            .toEpochMilli()
+        val config = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270, wbtbAfterSleepMin = 360)
+        assertEquals(
+            "the early wake-up by 4:30 AM and the wake-up alarm at 7 AM", // still waiting to see you fall asleep
+            alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = false, nowMs = at(1, 0)),
+        )
+        assertEquals(
+            "the early wake-up at 3:40 AM and the wake-up alarm at 7 AM",
+            alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = false, nowMs = at(1, 0), wbtbAtMs = at(3, 40)),
+        )
+    }
+
+    @Test
     fun guideStarted_readsTheNightsAlarmLog() {
         val night = tmp.newFolder("night")
         assertFalse(guideStarted(night)) // no alarm rang
