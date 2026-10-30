@@ -48,6 +48,7 @@ object WakeBackup {
 
     const val ACTION_FIRE = "com.opentdi.wear.action.BACKUP_ALARM"
     const val EXTRA_DUE = "due"
+    const val EXTRA_ANSWERED = "com.opentdi.wear.BACKUP_ANSWERED" // the last resort's night (nightStartMs), tapped
 
     /** GUESSED: a wake-up missed by more than this (the watch was off) is not rung late; a restart takes minutes. */
     private const val LATE_LIMIT_MS = 60 * 60_000L
@@ -216,8 +217,11 @@ object WakeBackup {
                 vibrationPattern = longArrayOf(0, 500, 700, 500, 700, 500)
             },
         )
+        // A tap answers it (MainActivity: [answered]); the night tells a stale or replayed tap from a later night's.
+        val night = load(context)?.nightStartMs ?: -1L
         val open = PendingIntent.getActivity(
-            context, 5, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
+            context, 5, Intent(context, MainActivity::class.java).putExtra(EXTRA_ANSWERED, night),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val n = NotificationCompat.Builder(context, FALLBACK_CHANNEL)
             .setSmallIcon(R.drawable.ic_ongoing)
@@ -230,6 +234,16 @@ object WakeBackup {
             .build()
             .apply { flags = flags or Notification.FLAG_INSISTENT }
         nm.notify(FALLBACK_ID, n)
+    }
+
+    /**
+     * The last resort for the night that began at [nightStartMs] was tapped: its wake-up is answered, so the try armed
+     * before it does not ring the full alarm a minute later. Opening the app any other way keeps the wake-up.
+     */
+    fun answered(context: Context, nightStartMs: Long) {
+        synchronized(lock) {
+            if (load(context)?.nightStartMs == nightStartMs) set(context, null, "FALLBACK_TAPPED")
+        }
     }
 
     /** A real ring, or the backup cleared: the last resort must not sound over it or after it. */

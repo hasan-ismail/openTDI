@@ -77,6 +77,7 @@ import com.opentdi.shared.model.SensorStatus
 import com.opentdi.shared.sensing.AccelProcessor
 import com.opentdi.shared.time.clock12
 import com.opentdi.wear.alarm.WakeAlarms
+import com.opentdi.wear.alarm.WakeBackup
 import com.opentdi.wear.link.PhoneLink
 import com.opentdi.wear.sensing.HealthTrackingForegroundService
 import com.opentdi.wear.sensing.SensingState
@@ -108,6 +109,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         armTestNight(intent)
+        answerBackup(intent)
         // Always-on: in ambient the app stays on the dim screen instead of the watch taking it back to the watch face.
         lifecycle.addObserver(AmbientLifecycleObserver(this, object : AmbientLifecycleObserver.AmbientLifecycleCallback {}))
         setContent {
@@ -197,7 +199,8 @@ class MainActivity : ComponentActivity() {
                                 )
                                 Page.SESSIONS -> SessionsScreen(runningId = state.sessionId.takeIf { state.running })
                                 Page.REPORT -> DreamReportScreen(
-                                    after = state.reportAfter ?: "WAKE",
+                                    // Last night's, by hand: not a morning report, so it stays out of the experiment.
+                                    after = if (reportDir != null) "LATER" else state.reportAfter ?: "WAKE",
                                     dir = reportDir?.let(::File)
                                         ?: File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
                                     requestMic = ::requestMic,
@@ -259,6 +262,13 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) { // singleTop: an open app gets the adb start here
         super.onNewIntent(intent)
         armTestNight(intent)
+        answerBackup(intent)
+    }
+
+    /** Opened from the backup's last-resort "Good morning" notification: that tap answers the wake-up. */
+    private fun answerBackup(intent: Intent?) {
+        val night = intent?.getLongExtra(WakeBackup.EXTRA_ANSWERED, -1L) ?: -1L
+        if (night >= 0) WakeBackup.answered(this, night)
     }
 
     /** Device test (debug builds): `am start ... --ez com.opentdi.TEST_NIGHT true`; see WakeAlarms.takeTestNight. */
@@ -481,6 +491,11 @@ private fun MainScreen(
     // Keyed on it: a question left open as the early wake-up rang or moved must not come back for another one.
     var askSkip by remember(wbtbAt) { mutableStateOf(false) }
     var askNow by remember(wbtbAt) { mutableStateOf(false) }
+    // Not at bedtime, when "I'm up now" reads as "I'm still up": from when a ringing one could (WakeAlarms.startWbtbNow).
+    val upNowOffered = state.wbtbNowFromMs?.let { System.currentTimeMillis() >= it } == true
+    // A night whose tracking died keeps its wake-up (WakeBackup): shown and offered off, as nothing else can stop it.
+    val backupAt = state.backupAtMs.takeIf { !state.running }
+    var askBackupOff by remember(backupAt) { mutableStateOf(false) }
     ScreenScaffold(scrollState = listState) { contentPadding ->
         if (awake) WatchStars()
         if (awake && waitingOnly) BreathingRing(MaterialTheme.colorScheme.primary)
@@ -547,6 +562,17 @@ private fun MainScreen(
                 }
             }
             state.lastWakeText?.let { item { Line(it) } }
+            backupAt?.let { at ->
+                item { Line("Your wake-up alarm still rings at ${WakeAlarms.hhmm(at)}.") }
+                item {
+                    Button(
+                        onClick = { askBackupOff = true },
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Turn it off for this morning") },
+                    )
+                }
+            }
             if (waitingOnly) {
                 item { Canvas(Modifier.fillMaxWidth().height(56.dp)) { drawMoon(moon) } } // tonight's real moon phase
                 item { BigLine("Ready for tonight") }
@@ -581,14 +607,16 @@ private fun MainScreen(
                 if (state.wbtbSkippedTonight) item { Line("Early wake-up skipped tonight.") }
                 // Awake before it: End the night was the only way to stop it, and it cancelled the wake-up alarm too.
                 if (wbtbAt != null) {
-                    item {
-                        Button(
-                            onClick = { askNow = true },
-                            colors = ButtonDefaults.filledTonalButtonColors(),
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("I'm up now") },
-                            secondaryLabel = { Text("Start the early wake-up now") },
-                        )
+                    if (upNowOffered) {
+                        item {
+                            Button(
+                                onClick = { askNow = true },
+                                colors = ButtonDefaults.filledTonalButtonColors(),
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("I'm up now") },
+                                secondaryLabel = { Text("Start the early wake-up now") },
+                            )
+                        }
                     }
                     item {
                         Button(
@@ -671,6 +699,16 @@ private fun MainScreen(
                 ?.let { "Your wake-up alarm at ${clock12(it)} still rings." },
             onDismiss = { askSkip = false },
             onConfirm = onSkipWbtb,
+        )
+    }
+    // Clears the record, its system alarm and any last-resort notification; the app goes on waiting for tonight.
+    backupAt?.let { at ->
+        AskFirst(
+            visible = askBackupOff,
+            title = "Turn off the wake-up alarm at ${WakeAlarms.hhmm(at)}?",
+            text = "It won't ring this morning.",
+            onDismiss = { askBackupOff = false },
+            onConfirm = { WakeBackup.set(context, null, "USER_OFF") },
         )
     }
 }

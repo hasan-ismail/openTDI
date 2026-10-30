@@ -50,5 +50,11 @@
                 <data android:scheme="wear" android:host="*" android:path="/opentdi_watch" />
             </intent-filter>
         </service>
+
+        <!-- Resends an alarm change the watch hasn't answered, with the app closed, until it does. -->
+        <service
+            android:name=".link.WatchSyncJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>

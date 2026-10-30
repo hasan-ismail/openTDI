@@ -123,6 +123,15 @@ class WakeAlarmsTest {
     }
 
     @Test
+    fun wbtbTime_aWakeUpBeforeTheSetTime_ringsFirst_soTheEarlyWakeUpIsNotSleepTimed() {
+        // Wake-up at 6:00, early wake-up no later than 6:30: Settings says the early wake-up won't ring.
+        val c = cfg.copy(wakeAtMin = 360, wbtbAtMin = 390)
+        val sixThirty = 30 * hour + 30 * min
+        val onset = 23 * hour + 45 * min // 6 h later would be 5:45, before the wake-up
+        assertEquals(sixThirty to "CLOCK", WakeAlarms.wbtbTime(c, 23 * hour, onset, sixThirty, onset + min))
+    }
+
+    @Test
     fun wbtbTime_neverUnder4_5HoursAfterTheOnset() {
         val tooSoon = cfg.copy(wbtbAfterSleepMin = 60) // a value no phone should send
         val timed = WakeAlarms.wbtbTime(tooSoon, 21 * hour, 22 * hour, setAt, 23 * hour)

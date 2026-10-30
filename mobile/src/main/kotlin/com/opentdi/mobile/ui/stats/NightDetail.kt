@@ -93,7 +93,7 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
             Section("The night") { Timeline(s, row.phone, row.night, zone) }
         }
         s?.reports?.forEach { r ->
-            Section("${if (r.after == "WBTB") "Early wake-up questions" else "Morning questions"}, ${at(r.atMs)}") {
+            Section("${questionsLabel(r.after)}, ${at(r.atMs)}") {
                 answers(r).forEach { (question, answer) ->
                     Row(Modifier.fillMaxWidth()) {
                         Text(

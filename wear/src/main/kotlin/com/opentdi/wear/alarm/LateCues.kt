@@ -122,7 +122,8 @@ class LateCues(
             armedAtMs = null
             startAtMs = onset + config().lateCueAfterOnsetMin * 60_000L
             // Asleep within 10 min went with more lucid nights (sleep_and_dreams.md §5 [67]): worth keeping.
-            log("RE_ONSET", stillness, hr, "latency_min=${(onset - armed) / 60_000}")
+            // onset_ms: an arm set in the past (from the buzz) logs this row late, so its time alone misleads Stats.
+            log("RE_ONSET", stillness, hr, "onset_ms=$onset;latency_min=${(onset - armed) / 60_000}")
         }
         val start = startAtMs ?: return
         val still = stillSinceMs ?: return

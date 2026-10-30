@@ -233,6 +233,19 @@ class StatsModelTest {
     }
 
     @Test
+    fun aDreamRecordedLaterByHand_isNoMorningReport_forTheArmOrTheExperiment() {
+        // Recorded from last night after the arm could be seen: it must not show the arm or decide the night.
+        assertFalse(armShown(arm(0, false, "1/2", 5, after = "LATER"), today))
+        val later = listOf(arm(4, true, "1/2", 5, after = "LATER"), arm(3, false, "2/2", 0))
+        assertEquals(0, experiment(later, today).pairs)
+        assertEquals("Dream questions", questionsLabel("LATER"))
+        assertEquals("Morning questions", questionsLabel("WAKE"))
+        assertEquals("Early wake-up questions", questionsLabel("WBTB"))
+        val made = listOf(DreamReport(0, "LATER", recording = "w_dream_151500.m4a"))
+        assertEquals("Recorded 3:15 PM", recordingLabel("w_dream_151500.m4a", made)) // no alarm named
+    }
+
+    @Test
     fun signTest_isTheExactTwoSidedBinomial() {
         assertEquals(1.0, signTestP(0, 0), 0.0)
         assertEquals(0.03125, signTestP(6, 0), 1e-12)

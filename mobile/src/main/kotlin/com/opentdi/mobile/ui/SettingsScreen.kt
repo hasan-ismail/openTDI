@@ -446,7 +446,11 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
             timed.firstSleepMinMin, 1..60, 1, "min", enabled,
         ) { v ->
             edit {
-                it.copy(timed = it.timed.copy(firstSleepMinMin = v, firstSleepMaxMin = maxOf(v, it.timed.firstSleepMaxMin)))
+                val latest = maxOf(v, it.timed.firstSleepMaxMin)
+                it.copy(
+                    sessionMaxMin = maxOf(it.sessionMaxMin, latest / 5 * 5 + 5),
+                    timed = it.timed.copy(firstSleepMinMin = v, firstSleepMaxMin = latest),
+                )
             }
         }
         IntSetting(
@@ -552,6 +556,16 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                         "${clock12(alarms.wbtbAtMin - after)}, or it can't tell, it wakes you at " +
                         "${clock12(alarms.wbtbAtMin)} instead, even with less sleep.",
                 )
+                // Only Samsung's kit tells the watch it is worn, which seeing you fall asleep needs (tickAlarms' worn).
+                val watchAnswer by remember(viewModel) { viewModel.watchStatus.map { Optional.ofNullable(it) } }
+                    .collectAsStateWithLifecycle(initialValue = null)
+                if (watchAnswer?.orElse(null)?.let { it.samsungKit == null } == true) { // no answer: unknown, say nothing
+                    Text(
+                        "Your watch needs Samsung's sensor kit for this (Watch tab). Without it, the early wake-up " +
+                            "rings at the set time.",
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
                 IntSetting(
                     "Wake me after falling asleep",
                     "${hoursText(after)}. The studies used 4½ to 6½ hours, most often 6.",
@@ -854,7 +868,10 @@ private fun AboutCard() {
 
 private const val MIN_GAIN = 0.15f // a voice at 0 % would make the night silent
 
-/** While [com.opentdi.mobile.UiState.alarmsNotSent]: the phone resends the change every 30 s until the watch answers. */
+/**
+ * While [com.opentdi.mobile.UiState.alarmsNotSent]: the phone resends the change until the watch answers, with the app
+ * closed too (WatchSyncJob).
+ */
 internal const val ALARMS_NOT_SENT =
     "The watch doesn't have your alarm change yet. Keep it near the phone: the phone keeps sending it. " +
         "If this stays, update the watch app on the Watch tab."

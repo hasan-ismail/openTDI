@@ -86,6 +86,13 @@ internal fun skippedCueError(e: AudioEvent, clock: String): String? {
     return listOfNotNull("The voice didn't play at $clock.", why).joinToString(" ")
 }
 
+/**
+ * Tonight's error once a cue was [skipped]: a watch warning ([missing], [outdated]) stays, as the only sign the alarms
+ * won't ring; the end of the night turns [missing] into its "stopped" line, which a skipped last cue must not hide.
+ */
+internal fun afterSkippedCue(error: String?, skipped: String, missing: String, outdated: String) =
+    if (error == missing || error == outdated) error else skipped
+
 private const val WATCH_MISSES = 3 // Start requests without a tracking watch before Tonight says so
 
 /**
@@ -453,7 +460,7 @@ class NapSessionService : LifecycleService() {
             show(TAG_AUDIO, e.toLogLine(config.audio.route, cycle))
             // Otherwise only in p_audio.csv: a night silenced by a DND schedule, earbuds or a lost watch read as done.
             skippedCueError(e, LocalTime.now().format(SHORT_CLOCK))?.let { error ->
-                SessionMonitor.update { it.copy(error = error) }
+                SessionMonitor.update { it.copy(error = afterSkippedCue(it.error, error, watchMissing, watchOutdated)) }
             }
         }
 

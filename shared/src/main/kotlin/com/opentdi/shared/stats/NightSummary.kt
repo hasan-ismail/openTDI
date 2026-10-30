@@ -123,11 +123,11 @@ data class LateCueOutcome(
     val blockId: Long? = null,
 )
 
-/** One w_morning.csv row: the report after the WAKE or WBTB alarm. Null = skipped. */
+/** One w_morning.csv row: the report after the WAKE or WBTB alarm, or a later one. Null = skipped. */
 @Serializable
 data class DreamReport(
     val atMs: Long,
-    /** WAKE or WBTB. */
+    /** WAKE, WBTB, or LATER: "Record a dream / From last night", which the experiment leaves out. */
     val after: String,
     /** The w_dream_*.m4a file in the same session folder. */
     val recording: String? = null,

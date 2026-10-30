@@ -137,6 +137,7 @@ class LoggingSession(
                     wbtbSkip = it.wbtbSkip,
                     wbtbAtMs = it.wbtbAtMs,
                     wbtbAheadAtMs = it.wbtbAheadAtMs,
+                    wbtbNowFromMs = it.wbtbNowFromMs,
                     wbtbSkippedTonight = it.wbtbSkippedTonight,
                     wbtbBackToSleepAtMs = it.wbtbBackToSleepAtMs,
                     lastWakeText = it.lastWakeText,

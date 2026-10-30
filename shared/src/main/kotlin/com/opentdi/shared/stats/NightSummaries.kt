@@ -205,10 +205,19 @@ private fun wbtbOutcome(alarms: List<AlarmRow>): WbtbOutcome? {
     val end = alarms.next(first + 1) { it.alarm == WBTB && (it.event == "STOPPED" || it.event == "TIMED_OUT") }
     val up = end?.takeIf { alarms[it].event == "STOPPED" }
     val buzz = up?.let { alarms.next(it + 1) { r -> r.alarm == WBTB && r.event == "BACK_TO_SLEEP" } }
-    // LateCues logs RE_ONSET on the first one-second tick RE_ONSET_MS after the still stretch began: within about 1 s.
-    val reOnset = buzz?.let { alarms.next(it + 1) { r -> r.alarm == CUES && r.event == "RE_ONSET" } }?.let(alarms::get)
+    val reOnsetAt = buzz?.let { alarms.next(it + 1) { r -> r.alarm == CUES && r.event == "RE_ONSET" } }
+    val reOnset = reOnsetAt?.let(alarms::get)
     val buzzMs = buzz?.let { alarms[it].wallMs }
-    val reOnsetMs = reOnset?.let { it.wallMs - StructuralConstants.RE_ONSET_MS }
+    val guided = buzz != null && reOnsetAt != null &&
+        alarms.subList(buzz + 1, reOnsetAt).any { it.alarm == WBTB && it.event == "GUIDE_START" }
+    // The row's onset_ms. Before it: with no guide played the cues armed at the buzz, maybe only once "I'm in bed" went
+    // untapped for 30 min, so the row comes late but latency_min counts from the buzz. A played guide arms at its end,
+    // and the row comes on the first tick RE_ONSET_MS after the still stretch began.
+    val reOnsetMs = reOnset?.let { r ->
+        r.detail["onset_ms"]?.toLongOrNull()
+            ?: buzzMs?.takeIf { !guided }?.let { b -> r.detail["latency_min"]?.toLongOrNull()?.let { b + it * 60_000 } }
+            ?: (r.wallMs - StructuralConstants.RE_ONSET_MS)
+    }
     return WbtbOutcome(
         ringAtMs = alarms[first].wallMs,
         upAtMs = up?.let { alarms[it].wallMs },
@@ -280,7 +289,7 @@ private fun dreamReport(row: Map<String, String?>): DreamReport? {
     fun scale(key: String, range: IntRange) = row[key]?.toIntOrNull()?.takeIf { it in range }
     return DreamReport(
         atMs = atMs,
-        after = row["after"] ?: WAKE, // a report opened by hand is a WAKE report (MainActivity)
+        after = row["after"] ?: WAKE, // older rows without it; one recorded from last night by hand is LATER now
         recording = row["recording"]?.takeIf { RECORDING.matches(it) },
         recalled = recalled,
         insight = scale("insight", 0..5)?.takeIf { recalled == "YES" },

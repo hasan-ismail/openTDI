@@ -252,6 +252,26 @@ class NightSummariesTest {
     }
 
     @Test
+    fun wbtbInBedNeverTapped_reOnsetFromTheBuzz_notTheLateRow() {
+        // "I'm in bed" left untapped: the cues arm from the buzz 30 min later, and RE_ONSET is logged then.
+        fun withReOnset(detail: String) = summarize(
+            breakNight + alarms(
+                listOf(at(190), "WBTB", "RING", null, null, "tone=MELODY;alarm_volume=5"),
+                listOf(at(191), "WBTB", "STOPPED", 0.3f, 72f, "after_ms=60000;first_movement_ms=5000"),
+                listOf(at(246), "WBTB", "BACK_TO_SLEEP", 0.9f, 64f, null),
+                listOf(at(276), "CUES", "ARMED", null, null, "night=CUE;start_after_onset_min=30"),
+                listOf(at(276) + 1, "CUES", "RE_ONSET", 1f, 58f, detail),
+            ),
+        )!!.wbtb!!
+        val old = withReOnset("latency_min=3") // a row from before onset_ms: latency_min counts from the buzz
+        assertEquals(at(249), old.reOnsetMs)
+        assertEquals(3, old.reOnsetLatencyMin)
+        val new = withReOnset("onset_ms=${at(249) + 30_000};latency_min=3")
+        assertEquals(at(249) + 30_000, new.reOnsetMs)
+        assertEquals(3, new.reOnsetLatencyMin)
+    }
+
+    @Test
     fun wbtbSkipped_orRungOut() {
         val skipped = alarms(listOf(at(120), "WBTB", "SKIPPED", 1f, 60f, "recording_ms=7200000"))
         assertEquals(WbtbOutcome(skipped = "MIN_SLEEP_BEFORE_WBTB"), summarize(night() + skipped)!!.wbtb)

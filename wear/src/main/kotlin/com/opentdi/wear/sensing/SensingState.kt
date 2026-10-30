@@ -24,6 +24,7 @@ data class SensingState(
     // Tonight's early wake-up still to ring, epoch ms (while the watch waits: the set time, the latest it rings); null:
     // none, done, skipped.
     val wbtbAheadAtMs: Long? = null,
+    val wbtbNowFromMs: Long? = null, // "I'm up now" is offered from then, epoch ms: 4.5 h into the night
     val wbtbSkippedTonight: Boolean = false, // "Skip the early wake-up" was tapped tonight
     val wbtbBackToSleepAtMs: Long? = null, // after a WBTB alarm: when the back-to-sleep buzz comes, epoch ms
     val lastWakeText: String? = null, // how long the last morning wake-up took
@@ -31,7 +32,8 @@ data class SensingState(
     val lateCuesTraining: Boolean = false, // after a WBTB alarm with late cues: the cue is being trained
     val guideOffered: Boolean = false, // after the back-to-sleep buzz: "I'm in bed" starts the guided back-to-sleep
     val guideRunning: Boolean = false, // the guide plays; a long press or the back key stops it
-    val reportAfter: String? = null, // "WAKE" or "WBTB": a dream report is due (DreamReport)
+    // "WAKE" or "WBTB": a dream report is due (DreamReport). Saved reports also have "LATER": from last night, by hand.
+    val reportAfter: String? = null,
     val sessionId: String? = null,
     val startedElapsedMs: Long = 0L,
     val logRawAccel: Boolean = false,

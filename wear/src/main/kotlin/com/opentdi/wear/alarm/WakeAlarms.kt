@@ -12,6 +12,7 @@ import androidx.core.content.edit
 import com.opentdi.shared.audio.nextAlarmAt
 import com.opentdi.shared.config.MIN_SLEEP_BEFORE_WBTB_MIN
 import com.opentdi.shared.config.StructuralConstants.RE_ONSET_MS
+import com.opentdi.shared.config.wakeBeforeWbtb
 import com.opentdi.shared.csv.CsvFiles
 import com.opentdi.shared.csv.CsvWriter
 import com.opentdi.shared.model.AlarmConfig
@@ -359,7 +360,12 @@ class WakeAlarms(
      * once, silent: the stay-up time, the guide or the back-to-sleep buzz, the late cues and its dream questions.
      */
     fun startWbtbNow(nowMs: Long, stillness: Float?, hr: Float?) {
-        if (ringing != null || wbtbAhead(wbtbAt, nowMs, recordingStartMs, unitMs) == null) return
+        // Not before a ringing one could (4.5 h in): at bedtime "I'm up now" reads as "I'm still up".
+        if (ringing != null || wbtbTooSoon(nowMs, recordingStartMs, unitMs) ||
+            wbtbAhead(wbtbAt, nowMs, recordingStartMs, unitMs) == null
+        ) {
+            return
+        }
         ringing = Ringing("WBTB", config.wbtbTone, nowMs)
         wbtbDone(nowMs)
         log(nowMs, "WBTB", "RING", stillness, hr, "how=USER_NOW")
@@ -391,6 +397,7 @@ class WakeAlarms(
                 wbtbSkip = null,
                 wbtbAtMs = null,
                 wbtbAheadAtMs = null,
+                wbtbNowFromMs = null,
                 wbtbSkippedTonight = false,
                 wbtbBackToSleepAtMs = null,
                 lateCuesTraining = false,
@@ -457,8 +464,12 @@ class WakeAlarms(
         val at = wbtbAt.takeIf { wbtbTimed }
         val ahead = wbtbAhead(wbtbAt, nowMs, recordingStartMs, unitMs)
         val skipped = wbtbSkippedAt?.let { nowMs - it < NEW_NIGHT_MS } == true
+        val nowFrom = recordingStartMs + MIN_SLEEP_BEFORE_WBTB_MIN * unitMs // startWbtbNow's guard
         SensingStateHolder.update {
-            it.copy(wbtbSkip = skip, wbtbAtMs = at, wbtbAheadAtMs = ahead, wbtbSkippedTonight = skipped)
+            it.copy(
+                wbtbSkip = skip, wbtbAtMs = at, wbtbAheadAtMs = ahead, wbtbSkippedTonight = skipped,
+                wbtbNowFromMs = nowFrom,
+            )
         }
     }
 
@@ -626,7 +637,8 @@ class WakeAlarms(
         /**
          * Tonight's early wake-up with sleep timing on (owner, 2026-10-29; lucid_induction.md §5.2, §8.5 item 8):
          * wbtbAfterSleepMin after the live [onsetMs] when that comes before the set time [clockAtMs]; else the set
-         * time, exactly as without sleep timing. With what timed it: SLEEP, or why the set time stands: LATE (falling
+         * time, exactly as without sleep timing. With what timed it: SLEEP, or why the set time stands: CLOCK (the
+         * wake-up comes before it, wakeBeforeWbtb, so it never rings tonight), LATE (falling
          * asleep then, or even at the night's start, is too late to ring earlier), NO_ONSET (none seen by the
          * deadline) or EARLY_START (the night began over NEW_NIGHT_MS before the set time: a nap then is not
          * tonight's sleep). Null while the watch should still wait to see you fall asleep. [test]: a test night counts
@@ -639,6 +651,8 @@ class WakeAlarms(
             // Never under the 4.5-h guard, whatever a phone sent: a sleep-timed ring needs no wbtbTooSoon check.
             val afterMs = maxOf(c.wbtbAfterSleepMin ?: 0, MIN_SLEEP_BEFORE_WBTB_MIN) * unit
             return when {
+                // As Settings says: the wake-up rings first and ends tonight's early wake-up, sleep timing or not.
+                c.wakeBeforeWbtb() -> clockAtMs to "CLOCK"
                 !test && clockAtMs - nightStartMs > NEW_NIGHT_MS -> clockAtMs to "EARLY_START"
                 nightStartMs + afterMs >= clockAtMs -> clockAtMs to "LATE" // known at bedtime: no wait, skip shown now
                 onsetMs != null && onsetMs + afterMs < clockAtMs -> onsetMs + afterMs to "SLEEP"

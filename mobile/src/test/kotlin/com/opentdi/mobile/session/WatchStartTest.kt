@@ -38,4 +38,13 @@ class WatchStartTest {
         assertNull(after(missing, WatchStatus(WatchState.RECORDING, apk = carried), misses = 0))
         assertEquals("other", after("other", WatchStatus(WatchState.RECORDING, apk = carried), misses = 0))
     }
+
+    @Test
+    fun aSkippedCue_neverHidesAWatchWarning() {
+        val skipped = "The voice didn't play at 1:10 AM."
+        assertEquals(missing, afterSkippedCue(missing, skipped, missing, outdated))
+        assertEquals(outdated, afterSkippedCue(outdated, skipped, missing, outdated))
+        assertEquals(skipped, afterSkippedCue(null, skipped, missing, outdated))
+        assertEquals(skipped, afterSkippedCue("an older skip", skipped, missing, outdated))
+    }
 }

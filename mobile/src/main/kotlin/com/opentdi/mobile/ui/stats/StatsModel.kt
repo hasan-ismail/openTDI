@@ -390,9 +390,16 @@ fun marks(s: NightSummary): List<Mark> = buildList {
         a.stoppedAtMs?.let { add(Mark(it, "\"I'm awake\"", "Awake")) }
     }
     for (r in s.reports) {
-        add(Mark(r.atMs, if (r.after == "WBTB") "Early wake-up questions" else "Morning questions", "Questions"))
+        add(Mark(r.atMs, questionsLabel(r.after), "Questions"))
     }
 }.sortedBy { it.atMs }
+
+/** What a dream report is called, by what it came [after]: LATER, from last night by hand, is no morning's. */
+fun questionsLabel(after: String): String = when (after) {
+    "WBTB" -> "Early wake-up questions"
+    "LATER" -> "Dream questions"
+    else -> "Morning questions"
+}
 
 /** "Recorded 6:45 AM, after the wake-up alarm" from the watch's w_dream_HHmmss.m4a name and the report that made it. */
 fun recordingLabel(name: String, reports: List<DreamReport>): String {

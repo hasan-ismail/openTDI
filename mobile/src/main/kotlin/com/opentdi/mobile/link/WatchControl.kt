@@ -1,5 +1,10 @@
 package com.opentdi.mobile.link
 
+import android.app.job.JobInfo
+import android.app.job.JobParameters
+import android.app.job.JobScheduler
+import android.app.job.JobService
+import android.content.ComponentName
 import android.content.Context
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.wearable.CapabilityClient
@@ -11,6 +16,10 @@ import com.opentdi.shared.model.DataLayerPaths
 import com.opentdi.shared.model.OpenTdiJson
 import com.opentdi.shared.model.TdiCommand
 import com.opentdi.shared.model.WatchStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
@@ -55,15 +64,57 @@ private fun syncPrefs(context: Context) = context.getSharedPreferences(SYNC_PREF
 /** The config revision of the last alarm or watch-output change the watch hasn't answered; 0 when none. */
 fun pendingWatchSync(context: Context): Long = syncPrefs(context).getLong(KEY_PENDING, 0)
 
-/** Kept on disk: the screen's resend loop ends with the app, and a missed change rings at the old time. */
+/**
+ * Kept on disk, and sent by [WatchSyncJob] too: the screen's resend loop ends with the app, and a missed change rings
+ * at the old time.
+ */
 fun markWatchSyncPending(context: Context, revision: Long) {
     syncPrefs(context).edit().putLong(KEY_PENDING, revision).apply()
+    val scheduler = context.getSystemService(JobScheduler::class.java)
+    val job = JobInfo.Builder(SYNC_JOB_ID, ComponentName(context, WatchSyncJob::class.java))
+        .setBackoffCriteria(SYNC_RETRY_MS, JobInfo.BACKOFF_POLICY_LINEAR)
+    // Expedited: it runs now, even in Doze. Out of that quota, an ordinary job still runs, later.
+    if (scheduler.schedule(job.setExpedited(true).build()) != JobScheduler.RESULT_SUCCESS) {
+        scheduler.schedule(job.setExpedited(false).build())
+    }
 }
 
 /** The watch answered a command carrying the config of [revision], so every change up to it has arrived. */
 fun watchSyncAnswered(context: Context, revision: Long) {
     val prefs = syncPrefs(context)
-    if (prefs.getLong(KEY_PENDING, 0) <= revision) prefs.edit().remove(KEY_PENDING).apply()
+    if (prefs.getLong(KEY_PENDING, 0) <= revision) {
+        prefs.edit().remove(KEY_PENDING).apply()
+        context.getSystemService(JobScheduler::class.java).cancel(SYNC_JOB_ID)
+    }
+}
+
+private const val SYNC_JOB_ID = 1 // the app's only JobScheduler job
+private const val SYNC_RETRY_MS = 30_000L
+
+/**
+ * Sends the change the watch hasn't answered, with the app closed too; the system runs it again with a backoff until
+ * the watch has it. Not DataClient: its items are kept and backed up to the cloud. [WatchSyncListener] stays the fast
+ * path when the watch comes back in reach.
+ */
+class WatchSyncJob : JobService() {
+    private var work: Job? = null
+
+    override fun onStartJob(params: JobParameters): Boolean {
+        work = CoroutineScope(Dispatchers.IO).launch {
+            val config = loadConfig(this@WatchSyncJob) // the newest change, not the one that scheduled this
+            val answered = watchRequest(this@WatchSyncJob, TdiCommand.ConfigSync(null, config))?.understood == true
+            if (answered) watchSyncAnswered(this@WatchSyncJob, config.revision)
+            // Again until the newest change is in; with no watch at all (a phone-only night) there is none to send to.
+            val again = pendingWatchSync(this@WatchSyncJob) != 0L && (answered || watchKnown(this@WatchSyncJob))
+            jobFinished(params, again)
+        }
+        return true
+    }
+
+    override fun onStopJob(params: JobParameters): Boolean {
+        work?.cancel()
+        return true
+    }
 }
 
 /**
