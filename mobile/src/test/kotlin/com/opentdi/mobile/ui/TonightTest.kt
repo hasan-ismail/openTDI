@@ -231,6 +231,21 @@ class TonightTest {
     }
 
     @Test
+    fun checklist_whileOpeningTheWatch_saysSo_andStillBlocks() {
+        fun row(opening: Boolean, alarmsOn: Boolean) =
+            checklist(false, DndEffect.PLAYS, true, null, true, WatchState.IDLE, alarmsOn = alarmsOn, openingWatch = opening)
+                .single { it.check == Check.WATCH }
+        for (alarmsOn in listOf(false, true)) {
+            val opening = row(opening = true, alarmsOn)
+            assertEquals("Opening OpenTDI on your watch…", opening.text)
+            assertTrue(!opening.ok && opening.blocking == alarmsOn)
+            val byHand = row(opening = false, alarmsOn)
+            assertTrue("press the Home button" in byHand.text && "starts by itself" in byHand.text)
+            assertTrue(!byHand.ok && byHand.blocking == alarmsOn)
+        }
+    }
+
+    @Test
     fun nightPlan_wrapsPastMidnight() {
         val cfg = SessionConfig(alarms = AlarmConfig(wakeEnabled = true, wakeAtMin = 7 * 60))
         val zone = ZoneId.of("America/New_York")

@@ -137,6 +137,7 @@ dependencies {
     implementation(libs.androidx.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.play.services.wearable)
+    implementation(libs.androidx.wear.remote.interactions)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(files(sherpaOnnxAar).builtBy(fetchSherpaOnnx))
     implementation(libs.kadb)

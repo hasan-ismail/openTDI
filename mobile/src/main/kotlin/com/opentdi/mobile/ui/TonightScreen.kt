@@ -127,6 +127,9 @@ fun TonightScreen(
     val onWatch = config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER
     val alarmsOn = config.alarms.wakeEnabled || config.alarms.wbtbEnabled
     val running = status.running
+    // Start opened the watch app (owner, 2026-10-30: one button at bedtime); after 20 s the popup says how by hand.
+    var openedWatch by rememberSaveable { mutableStateOf(false) }
+    var openTimedOut by rememberSaveable { mutableStateOf(false) }
     val checks = checklist(
         volumeOff, dnd, ui.batteryUnrestricted, cueProblem,
         if (onWatch) ui.watchTested else ui.calibratedIndex != null, watch, onWatch,
@@ -137,6 +140,7 @@ fun TonightScreen(
         speakerOff = speakerOff,
         running = running && !status.quickTest,
         watchAppOutdated = watchAppOutdated(watchStatus, carriedApk),
+        openingWatch = openedWatch && !openTimedOut,
     )
     val idle = !status.running && !ui.preparing && !ui.testing
     fun waitsForWatch(quick: Boolean) = checkingWatch && (!quick || onWatch) // a phone-route Quick test never asks it
@@ -196,6 +200,34 @@ fun TonightScreen(
         } else {
             oldMessage = ui.cueMessage
             startAsk = quick
+        }
+    }
+    // Only a real Start opens the watch app, never a Quick test. It only opens: the watch then waits for this Start.
+    LaunchedEffect(startAsk, watch) {
+        if (startAsk == false && watch == WatchState.IDLE && !openedWatch) {
+            openedWatch = true
+            viewModel.openWatchApp()
+        }
+    }
+    LaunchedEffect(openedWatch) {
+        if (openedWatch) {
+            delay(20_000)
+            openTimedOut = true
+        }
+    }
+    LaunchedEffect(startAsk) {
+        if (startAsk == null) {
+            openedWatch = false
+            openTimedOut = false
+        }
+    }
+    // Goes on by itself once the watch waits, opened by Start or by hand; anything else left keeps the popup open.
+    val goOn = startAsk == false && openedWatch && idle && errors.isEmpty() && !waitsForWatch(false) &&
+        problems(false).isEmpty() && !nightUnderway
+    LaunchedEffect(goOn) {
+        if (goOn) {
+            startAsk = null
+            begin(false)
         }
     }
     // Always through the popup: on arriving here the volume, speaker and Do Not Disturb checks have not been read yet.

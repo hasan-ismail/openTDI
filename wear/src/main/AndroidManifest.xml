@@ -64,6 +64,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- The phone's Start the night opens the app here (RemoteActivityHelper); the phone then starts the night.
+                 Any app could send this link: it only opens the app, which then waits for the phone. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="opentdi" android:host="tonight" />
+            </intent-filter>
         </activity>
 
         <service

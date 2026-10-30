@@ -146,6 +146,7 @@ fun checklist(
     speakerOff: Boolean = false, // the phone's media output is not its own speaker (earbuds, headphones)
     running: Boolean = false, // a real night's voice is running (not a Quick test)
     watchAppOutdated: Boolean = false, // the watch runs another version of the app ([watchAppOutdated])
+    openingWatch: Boolean = false, // Start just asked the watch to open OpenTDI, and it may still
 ): List<CheckItem> = buildList {
     if (firstCueMin != null) {
         val wait = if (firstCueMin == 1) "1 minute" else "$firstCueMin minutes"
@@ -230,7 +231,12 @@ fun checklist(
             WatchState.IDLE -> CheckItem(
                 Check.WATCH,
                 false,
-                "Open OpenTDI on the watch: press the Home button, then tap OpenTDI.$why",
+                if (openingWatch) {
+                    "Opening OpenTDI on your watch…"
+                } else {
+                    "Open OpenTDI on your watch: press the Home button, then tap OpenTDI. If it asks, tap Allow. " +
+                        "The night starts by itself once it's open.$why"
+                },
                 blocking = needed,
             )
             null -> CheckItem(

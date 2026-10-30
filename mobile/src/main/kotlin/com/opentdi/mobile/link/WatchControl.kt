@@ -6,12 +6,19 @@ import android.app.job.JobScheduler
 import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.util.Log
+import androidx.core.net.toUri
+import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.CapabilityInfo
+import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
+import com.opentdi.mobile.TAG_LINK
 import com.opentdi.mobile.loadConfig
+import com.opentdi.mobile.logLine
 import com.opentdi.shared.model.DataLayerPaths
 import com.opentdi.shared.model.OpenTdiJson
 import com.opentdi.shared.model.TdiCommand
@@ -30,9 +37,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 suspend fun watchRequest(context: Context, command: TdiCommand): WatchStatus? = withTimeoutOrNull(5_000) {
     try {
-        val nodes = Wearable.getCapabilityClient(context)
-            .getCapability(DataLayerPaths.CAPABILITY_WATCH, CapabilityClient.FILTER_REACHABLE).await().nodes
-        val node = nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull() ?: return@withTimeoutOrNull null
+        val node = watchNode(context) ?: return@withTimeoutOrNull null
         val request = OpenTdiJson.encodeToString(TdiCommand.serializer(), command).encodeToByteArray()
         val reply = Wearable.getMessageClient(context).sendRequest(node.id, DataLayerPaths.STATE_COMMAND, request).await()
         OpenTdiJson.decodeFromString(WatchStatus.serializer(), reply.decodeToString())
@@ -41,6 +46,35 @@ suspend fun watchRequest(context: Context, command: TdiCommand): WatchStatus? = 
     } catch (e: IllegalArgumentException) { // SerializationException: another app version
         null
     }
+}
+
+/** The watch with OpenTDI in reach, nearby first; null when none is. */
+private suspend fun watchNode(context: Context): Node? {
+    val nodes = Wearable.getCapabilityClient(context)
+        .getCapability(DataLayerPaths.CAPABILITY_WATCH, CapabilityClient.FILTER_REACHABLE).await().nodes
+    return nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull()
+}
+
+/**
+ * Opens OpenTDI on the watch, which then waits for the phone's Start. Wear OS starts it: the watch app can't start its
+ * health service from the background. Fire and forget: the screen follows the watch's state, not this.
+ */
+suspend fun openWatchApp(context: Context) {
+    val node = try {
+        withTimeoutOrNull(5_000) { watchNode(context) }
+    } catch (e: ApiException) {
+        null
+    }
+    if (node == null) {
+        Log.w(TAG_LINK, logLine("OPEN_WATCH_FAILED", "error" to "no watch in reach"))
+        return
+    }
+    val open = Intent(Intent.ACTION_VIEW, "opentdi://tonight".toUri()).addCategory(Intent.CATEGORY_BROWSABLE)
+    val result = RemoteActivityHelper(context).startRemoteActivity(open, node.id)
+    result.addListener(
+        { runCatching { result.get() }.onFailure { Log.w(TAG_LINK, logLine("OPEN_WATCH_FAILED", "error" to it)) } },
+        Runnable::run,
+    )
 }
 
 /**

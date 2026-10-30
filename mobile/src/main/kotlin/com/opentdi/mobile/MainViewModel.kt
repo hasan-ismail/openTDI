@@ -10,6 +10,7 @@ import com.opentdi.shared.model.AlarmTone
 import android.app.Application
 import android.app.NotificationManager
 import android.media.AudioManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,6 +20,7 @@ import com.opentdi.shared.model.TdiCommand
 import com.opentdi.shared.model.SessionEndReason
 import com.opentdi.shared.model.DeviceRole
 import com.opentdi.mobile.link.markWatchSyncPending
+import com.opentdi.mobile.link.openWatchApp
 import com.opentdi.mobile.link.pendingWatchSync
 import com.opentdi.mobile.link.watchKnown
 import com.opentdi.mobile.link.watchRequest
@@ -169,6 +171,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val carriedApk: StateFlow<String?> = flow { emit(carriedWatchApk(app)) }.flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /** Until when [watchStatus] asks every second: the watch app was just opened, so Start goes on soon after. */
+    @Volatile private var fastPollUntil = 0L
+
     /** The watch app's state and battery, asked every 5 s while the screen collects it; null when it does not answer. */
     val watchStatus: Flow<WatchStatus?> = flow {
         while (true) {
@@ -181,9 +186,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (it.error?.startsWith(NapSessionService.WATCH_OUTDATED) == true) it.copy(error = null) else it
             }
             emit(status)
-            delay(5000)
+            delay(if (SystemClock.elapsedRealtime() < fastPollUntil) 1000 else 5000)
         }
     }.distinctUntilChanged()
+
+    /** Opens OpenTDI on the watch for Start the night; the watch's state then says whether it opened. */
+    fun openWatchApp() {
+        fastPollUntil = SystemClock.elapsedRealtime() + 30_000
+        viewModelScope.launch { openWatchApp(app) }
+    }
 
     /** Ends the watch's night, which goes on after the voice ends; says so when the watch did not stop. */
     fun stopWatch() {
