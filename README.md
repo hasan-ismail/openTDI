@@ -33,7 +33,33 @@ on its sensor-free version that speaks on a timer only
    want one. The watch keeps tracking your sleep and runs your alarms all night.
 6. **In the morning** the wake-up alarm rings on the watch (it is on unless you turn it off). Tap **I'm awake** and the
    watch asks the dream questions: record your dream, then a few one-tap questions. Then tap **End the night** on the
-   phone or the watch.
+   phone or the watch. Remember a dream later? Tap **Record a dream** on the watch, up to 14 hours after the night,
+   and it is saved with that night.
+
+**The early wake-up** (off unless you turn it on in Settings) wakes you in the middle of the night, keeps you up for a
+short while, then buzzes when to go back to bed. While the watch tracks your sleep, it shows two buttons for it, and
+each one asks you first:
+
+- **Skip the early wake-up** turns it off for tonight only. Your wake-up alarm still rings, and the watch keeps
+  tracking your sleep.
+- **I'm up now** (from 4½ hours into the night) starts it straight away, without ringing, if you are already awake.
+
+In Settings, **Time it from when you fall asleep** makes the early wake-up ring a set time after the watch sees you
+fall asleep: 6 hours unless you change it (4½ to 7 hours). The time you set is then called **No later than**: it never
+rings after that, and if the watch can't tell when you fell asleep, it rings at that time. This needs Samsung's sensor
+kit (see "What you need").
+
+**The wake-up alarm has a backup.** The watch also sets it in its own alarm clock, so it still rings if tracking stops,
+the app closes, the watch restarts or the app updates during the night, and it still rings only once. If it can't
+start ringing, the watch tries again a minute later, and if that fails too, it shows a **Good morning** alarm
+notification instead of staying silent. If tracking stopped, the watch's main screen shows when the alarm will ring,
+with a **Turn it off for this morning** button. Turning the wake-up alarm off on the phone, or ending the night, turns
+the backup off too. The backup is for the wake-up alarm only, not the early wake-up.
+
+**The phone checks the watch app.** If the watch runs a different version of OpenTDI from the phone, Start's popup
+says **The watch app is out of date**, with an **Update the watch app** button that opens the Watch tab. You can still
+start the night, but your sleep tracking and alarms might not work. The warning is hidden while the watch is tracking
+your sleep, because updating would end that night's tracking and alarms.
 
 To try the voice in about 5 minutes, tap **Quick test (5 min)**.
 
@@ -71,10 +97,10 @@ the GPL does not allow distributing that combination as one app. Building it for
 |---|---|---|
 | **The voice** | A voice on a timer (MIT's method) that waits until the watch shows you lying still; from the phone, or from the watch's speaker or earbuds paired with the watch; lucid-dream words by default; your own words, or your own recorded voice; a natural-sounding voice that runs on the phone | |
 | **Watch** | Tracks your sleep all night: heart rate, heartbeat timing, skin response, movement, skin temperature, blood oxygen and the raw pulse signal; the phone shows them live | Breathing rate worked out from the pulse signal |
-| **Alarms** | On the watch: a wake-up alarm, on by default (five tones, a spoken one with your name, snooze), that logs how long you take to wake up; and an early wake-up (often called WBTB, "wake back to bed") that guides you through staying up and buzzes when to go back to bed | |
+| **Alarms** | On the watch: a wake-up alarm, on by default (five tones, a spoken one with your name, snooze), that logs how long you take to wake up, with a backup in the watch's own alarm clock; and an early wake-up (often called WBTB, "wake back to bed") that guides you through staying up and buzzes when to go back to bed. You can skip it for one night, start it yourself with **I'm up now**, or time it from when you fall asleep | |
 | **Soft sounds** | After the early wake-up, the watch teaches you a soft three-note sound, then plays it quietly once you are asleep again; a test mode secretly skips some nights so Stats can show whether it helps you | |
-| **Your answers** | Dream questions on the watch after each alarm: record your dream, then a few one-tap questions | Showing your recordings as text (the phone already transcribes them offline, see [docs/SETUP.md](docs/SETUP.md) §13), and a dream journal on the phone |
-| **Safety** | The voice never gets louder than the volume you test it at. When the phone plays it, Start stops first if the phone's volume is off, its sound goes to headphones, or Do Not Disturb would mute it | |
+| **Your answers** | Dream questions on the watch after each alarm: record your dream, then a few one-tap questions; **Record a dream** for a dream you remember after the night | Showing your recordings as text (the phone already transcribes them offline, see [docs/SETUP.md](docs/SETUP.md) §13), and a dream journal on the phone |
+| **Safety** | The voice never gets louder than the volume you test it at. When the phone plays it, Start stops first if the phone's volume is off, its sound goes to headphones, or Do Not Disturb would mute it. Start warns when the watch app is out of date | |
 
 Good to know: MIT's own studies used a calm voice and short lines, like OpenTDI. In their at-home study, a timed
 voice alone got the chosen theme into at least one dream report for 73 of 80 people. Whether this setup helps you

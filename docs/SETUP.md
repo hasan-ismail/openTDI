@@ -135,6 +135,13 @@ a Secure Folder or work profile, which is a second Android user. Without `--user
 user on the device, and some shell commands fail with a `SecurityException` on such a profile. Apart from the
 read-only `dumpsys` in §4, every command in this guide touches only the `com.opentdi` package.
 
+Install both APKs from the same build. The phone carries the watch APK of its own build (`assets/watch.apk`) and
+compares its SHA-256 with the one the installed watch app reports. If they differ, for example after rebuilding and
+installing only the watch app, Start's popup says "The watch app is out of date" with an **Update the watch app**
+button that opens the Watch tab (its **Install the watch app** section installs the matching copy). The warning never
+blocks Start and is hidden while the watch is tracking. A watch app that cannot read a command at all also makes the
+phone say "The watch app is out of date", and the watch tests on the phone say so instead of failing silently.
+
 If an install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (the installed copy was signed with another key),
 uninstall first. This deletes the app's data on that device, including its session logs, so copy them first (§8):
 
@@ -280,3 +287,31 @@ run the push script again after a reinstall (`install -r` keeps it). Without a m
 recordings wait); once one is pushed, the next copy transcribes them. Each recording is
 transcribed once: delete its `.txt` to redo it, for example with the other model. `adb -s $P logcat -s OTDI.Stt` shows
 which model loaded and each file's timings, never the text.
+
+## 14. Alarms: the backup and the early wake-up options
+
+**Wake-up alarm backup.** Besides its own timer in the tracking service, the watch keeps one system alarm clock
+(`AlarmManager.setAlarmClock`, allowed by `USE_EXACT_ALARM`, which needs no grant) for the wake-up alarm, so it still
+rings if tracking stops, the app is killed, the watch restarts or the app updates mid-night. Its record is kept in
+device-protected storage and set again after a restart or an update (`LOCKED_BOOT_COMPLETED`, `BOOT_COMPLETED`,
+`MY_PACKAGE_REPLACED`). When it fires, it hands the ring to the running tracking service, or rings it on its own, so
+the alarm rings once. A wake-up missed by more than an hour (the watch was off) is not rung late. If ringing does not
+start, it tries again a minute later, and after two unanswered tries it posts an insistent "Good morning" notification
+on an alarm-sound channel; tapping it answers that morning's alarm. Turning the wake-up alarm off on the phone, End the
+night or the phone's Stop clears the backup. If tracking stopped, the watch's main screen shows the alarm time and a
+**Turn it off for this morning** button. The backup covers the wake-up alarm only: the early wake-up's routine needs
+the tracking service. Each step is a `BACKUP` row in the night's `w_alarm.csv` (`ARMED`, `FIRED`, `CLEARED`,
+`NOT_ARMED`) and a `BACKUP_*` line in `adb -s $W logcat -s OTDI.Sensors`.
+
+**Early wake-up options (watch).** While tracking, the main screen offers **Skip the early wake-up** (tonight only; the
+wake-up alarm and tracking go on) and, from 4½ hours into the night, **I'm up now**, which starts the early wake-up
+without ringing. Both ask first, and either one, like a ring, settles the early wake-up for that night, even after a
+restart or a time change. After End the night, **Record a dream** saves a dream report into the last night's folder
+for up to 14 hours after that night; Stats labels it "Dream questions" and keeps it out of the soft-sound experiment.
+
+**Time it from when you fall asleep (phone Settings, Early wake-up).** The early wake-up then rings 4½ to 7 hours
+(6 by default) after the watch sees you fall asleep, never later than the set time, which the setting then labels
+"No later than". The watch looks for sleep onset every night while it is worn, for up to 3 hours after the night
+starts, and logs it as a `SLEEP` row with the event `ONSET` in `w_alarm.csv`; with no onset by then, the set time is used. Telling that
+the watch is worn needs Samsung's sensor kit (§2), so without it the early wake-up rings at the set time and Settings
+says so.
