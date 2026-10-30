@@ -31,9 +31,9 @@ fun nightPlan(c: SessionConfig, now: ZonedDateTime): List<PlanMark> {
     val nowMs = now.toInstant().toEpochMilli()
     // As the watch sets them; rounded up, so an alarm keeps its minute when now has seconds.
     fun ahead(at: Int) = ((nextAlarmAt(at, nowMs, now.zone) - nowMs + 59_999) / 60_000).toInt()
-    // The watch skips an early wake-up too soon after Start, in milliseconds, so not by the rounded minutes.
+    // The watch skips a WBTB too soon after Start, in milliseconds, so not by the rounded minutes.
     // shortcut: a night restarted soon after a stopped one keeps its earlier start on the watch (WakeAlarms), so the
-    // plan can wrongly leave the early wake-up out then; upgrade if the phone ever learns the watch's night start.
+    // plan can wrongly leave WBTB out then; upgrade if the phone ever learns the watch's night start.
     val wbtbRings = !wbtbTooSoon(nextAlarmAt(c.alarms.wbtbAtMin, nowMs, now.zone), nowMs)
     return listOfNotNull(
         PlanMark(CUES, minOf(c.timed.firstSleepMinMin, c.sessionMaxMin), c.sessionMaxMin),
@@ -44,7 +44,7 @@ fun nightPlan(c: SessionConfig, now: ZonedDateTime): List<PlanMark> {
     )
 }
 
-/** "Voice now, then from about 11:20 PM until 2:10 AM at the latest · early wake-up 4:30 AM · wake-up 7 AM". */
+/** "Voice now, then from about 11:20 PM until 2:10 AM at the latest · WBTB 4:30 AM · wake-up 7 AM". */
 fun nightPlanLine(c: SessionConfig, now: ZonedDateTime): String {
     val marks = nightPlan(c, now)
     // The voice speaks once at Start (TimedCueScheduler.start), then in rounds.
@@ -54,12 +54,12 @@ fun nightPlanLine(c: SessionConfig, now: ZonedDateTime): String {
             else -> "${it.label} ${at(now, it.fromMin)}"
         }
     }
-    return if (wbtbSkipped(c, marks)) "$line · no early wake-up tonight (less than 4½ hours after Start)" else line
+    return if (wbtbSkipped(c, marks)) "$line · no WBTB tonight (less than 4½ hours after Start)" else line
 }
 
 /**
  * The bedtime card's sentence: where the voice plays and the watch's alarms if the night started [now], by the same
- * rules as [nightPlan], e.g. "The voice plays from your watch. Alarms on the watch: early wake-up 4:30 AM, wake-up 7 AM."
+ * rules as [nightPlan], e.g. "The voice plays from your watch. Alarms on the watch: WBTB 4:30 AM, wake-up 7 AM."
  */
 fun tonightSummary(c: SessionConfig, now: ZonedDateTime): String {
     val device = if (c.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER) "watch" else "phone"
@@ -70,7 +70,7 @@ fun tonightSummary(c: SessionConfig, now: ZonedDateTime): String {
         0 -> if (skipped) "" else " No alarms tonight."
         1 -> " Alarm on the watch: ${alarms[0]}."
         else -> " Alarms on the watch: ${alarms.joinToString(", ")}."
-    } + if (skipped) " No early wake-up tonight: it's less than 4½ hours away." else ""
+    } + if (skipped) " No WBTB tonight: it's less than 4½ hours away." else ""
 }
 
 /** After the voice, while the watch tracks: the alarms still [ahead] ([alarmsAhead]'s words) and how the night ends. */
@@ -84,7 +84,7 @@ fun nightOnText(ahead: String?, wakeEnabled: Boolean): String {
 }
 
 /**
- * The alarms still to ring tonight: the watch's own list when it sends one (only it knows a snooze, or an early wake-up
+ * The alarms still to ring tonight: the watch's own list when it sends one (only it knows a snooze, or a WBTB
  * skipped or too soon), else [alarmsAhead] from the settings (an older watch app, or no answer). Null when none.
  */
 fun alarmsLeftTonight(watch: WatchStatus?, alarms: AlarmConfig): String? = when (val left = watch?.alarmsLeft) {
@@ -94,7 +94,7 @@ fun alarmsLeftTonight(watch: WatchStatus?, alarms: AlarmConfig): String? = when 
 
 private fun at(now: ZonedDateTime, min: Int) = now.plusMinutes(min.toLong()).let { clock12(it.hour * 60 + it.minute) }
 
-/** The early wake-up is on, but too soon after a start now for the watch to ring it. */
+/** WBTB is on, but too soon after a start now for the watch to ring it. */
 private fun wbtbSkipped(c: SessionConfig, marks: List<PlanMark>) =
     c.alarms.wbtbEnabled && marks.none { it.label == WBTB || it.label == WBTB_BY }
 
@@ -137,6 +137,6 @@ internal fun InstructionsCard(config: SessionConfig) {
 }
 
 private const val CUES = "Voice"
-private const val WBTB = "early wake-up"
-private const val WBTB_BY = "early wake-up by"
+private const val WBTB = "WBTB"
+private const val WBTB_BY = "WBTB by"
 private const val WAKE = "wake-up"

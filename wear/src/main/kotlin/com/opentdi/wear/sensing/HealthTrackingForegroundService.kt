@@ -432,7 +432,7 @@ class HealthTrackingForegroundService : LifecycleService() {
             )
         }
 
-        /** "Skip the early wake-up": tonight's does not ring; tracking and the wake-up alarm go on. */
+        /** "Skip WBTB": tonight's does not ring; tracking and the wake-up alarm go on. */
         fun skipWbtb(context: Context) {
             context.startService(
                 Intent(context, HealthTrackingForegroundService::class.java).setAction(ACTION_SKIP_WBTB),
@@ -440,7 +440,7 @@ class HealthTrackingForegroundService : LifecycleService() {
         }
 
         /**
-         * "I'm up now": tonight's early wake-up starts now, as if it rang and I'm awake was tapped; it then sets
+         * "I'm up now": tonight's WBTB starts now, as if it rang and I'm awake was tapped; it then sets
          * reportAfter "WBTB" (WakeAlarms.startWbtbNow).
          */
         fun wbtbNow(context: Context) {

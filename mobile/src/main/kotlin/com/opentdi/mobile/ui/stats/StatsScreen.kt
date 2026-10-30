@@ -317,7 +317,7 @@ private fun SleepSection(
                 "Usually asleep around ${clockLabel(starts.first)} and up around ${clockLabel(ends.first)}, estimated.",
             bins = bins,
             axis = YAxis(ticks, { clockLabel(it.roundToInt()) }, down = true),
-            columns = listOf("Asleep (est.)", "Up (est.)", "Awake at the early wake-up"),
+            columns = listOf("Asleep (est.)", "Up (est.)", "Awake at WBTB"),
             cells = { i ->
                 windows[i]?.let { w ->
                     val awake = w.awake?.let { "${clockLabel(it.first)}–${clockLabel(it.last)}" } ?: "—"
@@ -330,7 +330,7 @@ private fun SleepSection(
                 Key("Asleep (estimated)", SERIES_1, KeyShape.BAR),
                 Key("Alarm", MaterialTheme.colorScheme.onSurface, KeyShape.LINE),
             ),
-            note = "Evening at the top. A gap is the time awake at the early wake-up. Weeks and months show average " +
+            note = "Evening at the top. A gap is the time awake at WBTB. Weeks and months show average " +
                 "times.",
             height = 220.dp,
         ) { p, ink, selected -> drawWindows(p, ink, windows, selected, reveal.value) }
@@ -395,18 +395,18 @@ private fun PracticeSection(
     Section("Practice") {
         val wbtb = nights.mapNotNull { it.watch?.wbtb }
         if (wbtb.isEmpty()) {
-            Help("Early wake-up nights show here once it is on in Settings.")
+            Help("WBTB nights show here once it is on in Settings.")
             return@Section
         }
         val rang = wbtb.count { it.ringAtMs != null }
         val skipped = wbtb.count { it.skipped != null }
         Text(
-            "Early wake-up on ${plural(rang, "night")}" + if (skipped > 0) ", skipped on $skipped" else "",
+            "WBTB on ${plural(rang, "night")}" + if (skipped > 0) ", skipped on $skipped" else "",
             style = MaterialTheme.typography.bodyMedium,
         )
         if (wbtb.any { it.reOnsetLatencyMin != null }) {
             SeriesChart(
-                "Minutes to fall back asleep after the early wake-up", bins,
+                "Minutes to fall back asleep after WBTB", bins,
                 listOf(Series("Estimated", SERIES_1) { it.watch?.wbtb?.reOnsetLatencyMin?.toFloat() }),
                 { "${it.roundToInt()} min" }, "", dates, onOpen, reveal,
                 note = "Estimated: the watch counts your first 10 still minutes after the back-to-bed buzz as sleep.",
@@ -422,7 +422,7 @@ private fun PracticeSection(
                 ),
                 ::num, "", dates, onOpen, reveal,
                 minStep = 1f,
-                note = "Soft sounds after the early wake-up, once you were still again.",
+                note = "Soft sounds after WBTB, once you were still again.",
             )
         }
         if (nights.any { it.watch?.lateCues?.mode == "EXPERIMENT" }) {

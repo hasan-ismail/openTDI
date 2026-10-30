@@ -94,7 +94,7 @@ class AlarmPlayer(private val context: Context) {
         return audio.samples.copyOf(audio.samples.size + 3 * audio.sampleRate)
     }
 
-    /** Three short buzzes, e.g. the early wake-up's "go back to bed": one soft pulse was easy to miss. */
+    /** Three short buzzes, e.g. WBTB's "go back to bed": one soft pulse was easy to miss. */
     fun buzz() = vibrate(
         VibrationEffect.createWaveform(longArrayOf(0, 300, 250, 300, 250, 300), intArrayOf(0, 160, 0, 160, 0, 160), -1),
     )

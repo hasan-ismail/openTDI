@@ -26,7 +26,7 @@ import kotlinx.serialization.Serializable
  * The wake-up alarm's system-owned backup (B27). The live WakeAlarms stays the main path; this keeps one AlarmManager
  * alarm clock at the next moment that clock must act on the wake-up (ring it, or end its ring), so a restart, a killed
  * process or an app update mid-night still wakes the user. Fired, it hands the ring to a running clock or rings it in
- * the service's alarm-only mode. The wake-up only: the early wake-up's routine needs the recording.
+ * the service's alarm-only mode. The wake-up only: WBTB's routine needs the recording.
  *
  * One record, written before its alarm is set and removed before it is cancelled, so an alarm always finds its record
  * or none. It lives in device-protected storage: a restart before the first unlock still finds it.
@@ -84,7 +84,7 @@ object WakeBackup {
             morningDone -> null
             ringKind == "WAKE" -> ringEnd // by then the clock has snoozed it (RANG_OUT) or stopped it
             wakeAt == null -> null // the wake-up is off
-            ringEnd != null -> maxOf(wakeAt, ringEnd) // the early wake-up rings: the wake-up comes after it
+            ringEnd != null -> maxOf(wakeAt, ringEnd) // WBTB rings: the wake-up comes after it
             else -> wakeAt
         }
         return due?.let { if (it <= nowMs) nowMs + RETRY_MS else it }

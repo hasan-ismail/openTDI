@@ -131,7 +131,7 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
                 s?.wbtb?.let { w ->
                     if (w.skipped != null) {
                         add(
-                            "Early wake-up skipped" + when (w.skipped) {
+                            "WBTB skipped" + when (w.skipped) {
                                 "MIN_SLEEP_BEFORE_WBTB" -> ": the watch had been tracking your sleep for less than 4½ hours"
                                 "PASSED" -> ": its time had already passed (the watch app was off, or the setting changed)"
                                 else -> ""
@@ -160,7 +160,7 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
                                 "asleep again about ${at(o)}$later (estimated)"
                             },
                         )
-                        if (steps.isNotEmpty()) add("Early wake-up: ${steps.joinToString(", ")}")
+                        if (steps.isNotEmpty()) add("WBTB: ${steps.joinToString(", ")}")
                     }
                 }
                 s?.lateCues?.takeIf { armShown(row, today) }?.let { c ->

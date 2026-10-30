@@ -41,7 +41,7 @@ class AlarmTonesTest {
         fun ms(text: String) = LocalDateTime.parse(text).atZone(zone).toInstant().toEpochMilli()
         val both = AlarmConfig(wakeEnabled = true, wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270)
         assertEquals(
-            "the early wake-up at 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM",
+            "WBTB at 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM",
             alarmsAhead(both, ms("2026-10-29T03:06"), zone),
         )
         assertEquals("the wake-up alarm at 7\u00A0AM", alarmsAhead(both, ms("2026-10-29T05:00"), zone)) // WBTB has rung
@@ -55,9 +55,9 @@ class AlarmTonesTest {
         fun ms(text: String) = LocalDateTime.parse(text).atZone(zone).toInstant().toEpochMilli()
         val cfg = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270, wbtbAfterSleepMin = 360)
         val bed = ms("2026-10-28T23:00")
-        assertEquals("the early wake-up by 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM", alarmsAhead(cfg, bed, zone))
+        assertEquals("WBTB by 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM", alarmsAhead(cfg, bed, zone))
         assertEquals(
-            "the early wake-up at 3:40\u00A0AM and the wake-up alarm at 7\u00A0AM",
+            "WBTB at 3:40\u00A0AM and the wake-up alarm at 7\u00A0AM",
             alarmsAhead(cfg, bed, zone, wbtbAtMs = ms("2026-10-29T03:40")),
         )
         // Tonight's rang: the watch holds tomorrow's.
@@ -67,7 +67,7 @@ class AlarmTonesTest {
         )
         assertEquals("the wake-up alarm at 7\u00A0AM", alarmsAhead(cfg, ms("2026-10-29T05:00"), zone))
         assertEquals(
-            "the early wake-up at 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM",
+            "WBTB at 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM",
             alarmsAhead(cfg.copy(wbtbAfterSleepMin = null), bed, zone, wbtbAtMs = ms("2026-10-29T04:30")),
         )
         assertEquals(

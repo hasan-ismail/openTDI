@@ -26,7 +26,7 @@ class WakeAlarmsTest {
         val file = File(tmp.root, "w_morning.csv")
         val ring = System.currentTimeMillis() - 60_000
         assertFalse(WakeAlarms.wakeSavedSince(file, ring)) // no file yet
-        // A night dream and the early wake-up's report, saved in the snooze, and last morning's WAKE row.
+        // A night dream and WBTB's report, saved in the snooze, and last morning's WAKE row.
         file.writeText("wall_ms,after,recording\n${ring - hour},WAKE,\n${ring + 1000},NIGHT,a.m4a\n${ring + 2000},WBTB,\n")
         assertFalse(WakeAlarms.wakeSavedSince(file, ring))
         file.appendText("${ring + 3000},WAKE,\n")
@@ -142,7 +142,7 @@ class WakeAlarmsTest {
 
     @Test
     fun wbtbTime_aWakeUpBeforeTheSetTime_ringsFirst_soTheEarlyWakeUpIsNotSleepTimed() {
-        // Wake-up at 6:00, early wake-up no later than 6:30: Settings says the early wake-up won't ring.
+        // Wake-up at 6:00, WBTB no later than 6:30: Settings says WBTB won't ring.
         val c = cfg.copy(wakeAtMin = 360, wbtbAtMin = 390)
         val sixThirty = 30 * hour + 30 * min
         val onset = 23 * hour + 45 * min // 6 h later would be 5:45, before the wake-up

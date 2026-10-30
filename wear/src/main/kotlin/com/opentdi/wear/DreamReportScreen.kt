@@ -99,7 +99,7 @@ internal const val SIGN_SEEN = 12
  * The indices of the questions this report asks, in order: the guide's after a guided WBTB ([guided]); the questions
  * about the dream itself only about a remembered one (no dream, or one without content, has nothing to judge); the
  * dream-sign question only when the phone sent signs ([signs]); how refreshed and how unusual the night only in the
- * morning, not at the early wake-up ([after] "WBTB"). A dream saved in the night ("NIGHT") is only the recording: the
+ * morning, not at WBTB ([after] "WBTB"). A dream saved in the night ("NIGHT") is only the recording: the
  * questions would keep a sleeper awake.
  */
 internal fun shownQuestions(answers: Map<Int, String>, guided: Boolean, signs: Boolean, after: String): List<Int> {
@@ -184,7 +184,7 @@ fun DreamReportScreen(
     onDone: () -> Unit,
 ) {
     val context = LocalContext.current
-    // Keyed on after: the wake-up ringing over an open early wake-up report writes that one and starts the morning's.
+    // Keyed on after: the wake-up ringing over an open WBTB report writes that one and starts the morning's.
     val draft = remember(after) {
         ReportDraft.open(after, dir, WakeAlarms.parse(WakeAlarms.loadConfigJson(context)).dreamSigns.isNotEmpty())
     }
@@ -394,7 +394,7 @@ fun DreamReportScreen(
                                     // Wellness wording: no condition sent to a doctor, nothing called abnormal [100].
                                     Line(
                                         "If you wake unable to move again, stay calm: it passes. Move one finger or toe. " +
-                                            "Sleeping on your side and fewer early wake-up nights may make it less " +
+                                            "Sleeping on your side and fewer WBTB nights may make it less " +
                                             "likely. Talking to a healthcare professional may be helpful.",
                                     )
                                 }

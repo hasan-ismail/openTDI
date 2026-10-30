@@ -98,17 +98,17 @@ fun nextAlarmAt(minuteOfDay: Int, fromMs: Long, zone: ZoneId): Long {
 fun wbtbTooSoon(atMs: Long, nightStartMs: Long) = atMs - nightStartMs < MIN_SLEEP_BEFORE_WBTB_MIN * 60_000L
 
 /**
- * The alarms of [config] still to ring tonight, soonest first, e.g. "the early wake-up at 4:30 AM and the wake-up
+ * The alarms of [config] still to ring tonight, soonest first, e.g. "WBTB at 4:30 AM and the wake-up
  * alarm at 7 AM"; null when none. One more than 12 h away has already rung this night, or belongs to the next one.
- * [wbtbAtMs]: the watch's decided early wake-up; without it, one timed from falling asleep is "by" its set time.
+ * [wbtbAtMs]: the watch's decided WBTB; without it, one timed from falling asleep is "by" its set time.
  */
 fun alarmsAhead(config: AlarmConfig, nowMs: Long, zone: ZoneId, wbtbAtMs: Long? = null): String? = listOfNotNull(
     when {
         !config.wbtbEnabled -> null
         // The sleep-timed one, or after tonight's rang, tomorrow's (dropped below).
-        wbtbAtMs != null -> wbtbAtMs to "the early wake-up at ${clock12(minuteOfDay(wbtbAtMs, zone))}"
+        wbtbAtMs != null -> wbtbAtMs to "WBTB at ${clock12(minuteOfDay(wbtbAtMs, zone))}"
         else -> nextAlarmAt(config.wbtbAtMin, nowMs, zone) to
-            "the early wake-up ${if (config.wbtbAfterSleepMin != null) "by" else "at"} ${clock12(config.wbtbAtMin)}"
+            "WBTB ${if (config.wbtbAfterSleepMin != null) "by" else "at"} ${clock12(config.wbtbAtMin)}"
     },
     config.wakeAtMin.takeIf { config.wakeEnabled }
         ?.let { nextAlarmAt(it, nowMs, zone) to "the wake-up alarm at ${clock12(it)}" },

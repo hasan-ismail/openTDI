@@ -37,7 +37,7 @@ import java.util.Locale
  * comes round after recording starts. The recording service ticks it once a second on its sensing thread. It logs
  * w_alarm.csv in the session folder: when an alarm rang, the first movement after it (stillness below 0.5, the
  * accelerometer's own "moving" line) and when it was stopped, so the morning shows how long waking up took. Every
- * night it also logs when it saw you fall asleep (SLEEP ONSET), which can time the early wake-up (wbtbAfterSleepMin).
+ * night it also logs when it saw you fall asleep (SLEEP ONSET), which can time WBTB (wbtbAfterSleepMin).
  */
 class WakeAlarms(
     private val context: Context,
@@ -57,7 +57,7 @@ class WakeAlarms(
         else -> null
     }
     private var firstRingAt: Long? = restored?.firstRingAt // the first ring of a snoozed wake-up
-    // Tonight's early wake-up is over: it rang, was skipped or started early, or the wake-up rang. Saved, so a
+    // Tonight's WBTB is over: it rang, was skipped or started early, or the wake-up rang. Saved, so a
     // recording started again tonight (the app died, End the night and a new Start) does not ring it again.
     private var wbtbDoneAt: Long? = prefs.getLong(KEY_WBTB_DONE, -1).takeIf { it >= recordingStartMs }
     private var wbtbSkippedAt: Long? = prefs.getLong(KEY_WBTB_SKIPPED, -1).takeIf { it >= recordingStartMs }
@@ -136,7 +136,7 @@ class WakeAlarms(
         ) {
             planWbtb(nowMs, clockFromMs = nowMs)
         }
-        if (old.wbtbEnabled && !next.wbtbEnabled) { // turned off on the phone: tonight's early wake-up ends here
+        if (old.wbtbEnabled && !next.wbtbEnabled) { // turned off on the phone: tonight's WBTB ends here
             if (ringing?.kind == "WBTB") stop(nowMs, null, null, "TURNED_OFF") // not STOPPED: no stay-up, no report
             backToSleepAt = null
             guideOfferedAt = null
@@ -169,7 +169,7 @@ class WakeAlarms(
      */
     fun tick(nowMs: Long, stillness: Float?, hr: Float?, seconds: List<Float?>, worn: Boolean) {
         // Alive: a recording whose process dies without close() still leaves a stop time for nightStart. A test night
-        // never does: the real night after it must not inherit its onset or its early wake-up. Nor a backup's morning,
+        // never does: the real night after it must not inherit its onset or its WBTB. Nor a backup's morning,
         // whose night already stopped.
         if (!testNight && restored == null && nowMs - aliveSavedAt >= ALIVE_SAVE_MS) {
             aliveSavedAt = nowMs
@@ -192,7 +192,7 @@ class WakeAlarms(
             }
         }
         if (!wbtbTimed && (onsetMs != null || nowMs >= deadline)) planWbtb(nowMs, clockFromMs = nowMs)
-        publishWbtb(nowMs) // every tick: tonight's early wake-up comes within 12 h as the clock moves on
+        publishWbtb(nowMs) // every tick: tonight's WBTB comes within 12 h as the clock moves on
         lateCues?.tick(nowMs, stillness, hr, seconds)
         guide?.tick(nowMs, stillness, hr)
         val r = ringing
@@ -353,7 +353,7 @@ class WakeAlarms(
     }
 
     /**
-     * "Skip the early wake-up": tonight's does not ring; the wake-up alarm and the rest of the night go on. Before it,
+     * "Skip WBTB": tonight's does not ring; the wake-up alarm and the rest of the night go on. Before it,
      * only End the night stopped it, and that also cancelled the wake-up alarm.
      */
     fun skipWbtbTonight(nowMs: Long, stillness: Float?, hr: Float?) {
@@ -365,7 +365,7 @@ class WakeAlarms(
     }
 
     /**
-     * "I'm up now": awake before tonight's early wake-up, they start it themselves. It is the ring and "I'm awake" at
+     * "I'm up now": awake before tonight's WBTB, they start it themselves. It is the ring and "I'm awake" at
      * once, silent: the stay-up time, the guide or the back-to-sleep buzz, the late cues and its dream questions.
      */
     fun startWbtbNow(nowMs: Long, stillness: Float?, hr: Float?) {
@@ -386,7 +386,7 @@ class WakeAlarms(
         // Ended during the morning's ring or snooze: that morning is over, and its dream questions are still due.
         (firstRingAt ?: ringing?.takeIf { it.kind == "WAKE" }?.startMs)?.let { endMorning(now, it, "NIGHT_ENDED") }
         // The exact stop time, over the last alive one: a recording started again soon after keeps the night's start.
-        // A test night never does: the real night after it must not inherit its onset or its early wake-up. A backup's
+        // A test night never does: the real night after it must not inherit its onset or its WBTB. A backup's
         // morning leaves the stop time its died night left.
         if (restored == null) {
             prefs.edit {
@@ -433,7 +433,7 @@ class WakeAlarms(
     private fun guideReady() = config.wbtbGuide && guideClipsPresent(context)
 
     /**
-     * Tonight's early wake-up into [wbtbAt], and the screen. Without sleep timing, or once tonight's is over: the set
+     * Tonight's WBTB into [wbtbAt], and the screen. Without sleep timing, or once tonight's is over: the set
      * time as before (the next after [clockFromMs]; tomorrow's after tonight's). With it: [wbtbTime], held at the set
      * time while it waits to see you fall asleep. A time already gone is not rung late: it is skipped, shown, logged.
      */
@@ -460,8 +460,8 @@ class WakeAlarms(
     }
 
     /**
-     * Tells the screen about tonight's early wake-up: its time once decided, still to ring, skipped with "Skip the
-     * early wake-up", or why it won't ring: too soon after the night began, so [tick] skips it, or its time passed.
+     * Tells the screen about tonight's WBTB: its time once decided, still to ring, skipped with "Skip the
+     * WBTB", or why it won't ring: too soon after the night began, so [tick] skips it, or its time passed.
      */
     private fun publishWbtb(nowMs: Long) {
         val skip = when {
@@ -482,14 +482,14 @@ class WakeAlarms(
         }
     }
 
-    /** Tonight's early wake-up is over: one set later, or a time moved, waits a night; saved for a restart tonight. */
+    /** Tonight's WBTB is over: one set later, or a time moved, waits a night; saved for a restart tonight. */
     private fun wbtbDone(nowMs: Long) {
         wbtbDoneAt = nowMs
         prefs.edit().putLong(KEY_WBTB_DONE, nowMs).apply()
         planWbtb(nowMs, clockFromMs = nowMs)
     }
 
-    /** For w_alarm.csv: what timed this early wake-up and the live onset, so each row stands alone in any folder. */
+    /** For w_alarm.csv: what timed this WBTB and the live onset, so each row stands alone in any folder. */
     private fun anchors() = "from=$wbtbFrom;onset_ms=${onsetMs ?: ""}$testTag"
 
     /** [detail] is appended to the RING row (anchors). */
@@ -548,7 +548,7 @@ class WakeAlarms(
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_ongoing)
-            .setContentTitle(if (kind == "WAKE") "Good morning" else "Early wake-up")
+            .setContentTitle(if (kind == "WAKE") "Good morning" else "WBTB")
             .setContentText(
                 "Tap I'm awake to stop the alarm." +
                     if (restored != null) " Tracking stopped during the night." else "",
@@ -669,7 +669,7 @@ class WakeAlarms(
         internal const val ONSET_DEADLINE_MIN = 180
 
         /**
-         * Tonight's early wake-up with sleep timing on (owner, 2026-10-29; lucid_induction.md §5.2, §8.5 item 8):
+         * Tonight's WBTB with sleep timing on (owner, 2026-10-29; lucid_induction.md §5.2, §8.5 item 8):
          * wbtbAfterSleepMin after the live [onsetMs] when that comes before the set time [clockAtMs]; else the set
          * time, exactly as without sleep timing. With what timed it: SLEEP, or why the set time stands: CLOCK (the
          * wake-up comes before it, wakeBeforeWbtb, so it never rings tonight), LATE (falling
@@ -685,7 +685,7 @@ class WakeAlarms(
             // Never under the 4.5-h guard, whatever a phone sent: a sleep-timed ring needs no wbtbTooSoon check.
             val afterMs = maxOf(c.wbtbAfterSleepMin ?: 0, MIN_SLEEP_BEFORE_WBTB_MIN) * unit
             return when {
-                // As Settings says: the wake-up rings first and ends tonight's early wake-up, sleep timing or not.
+                // As Settings says: the wake-up rings first and ends tonight's WBTB, sleep timing or not.
                 c.wakeBeforeWbtb() -> clockAtMs to "CLOCK"
                 !test && clockAtMs - nightStartMs > NEW_NIGHT_MS -> clockAtMs to "EARLY_START"
                 nightStartMs + afterMs >= clockAtMs -> clockAtMs to "LATE" // known at bedtime: no wait, skip shown now
@@ -714,19 +714,19 @@ class WakeAlarms(
         }
 
         /**
-         * The early wake-up at [minuteOfDay] next after [nowMs]. It rings once a night: after tonight's early wake-up
+         * WBTB at [minuteOfDay] next after [nowMs]. It rings once a night: after tonight's WBTB
          * or wake-up rang ([doneAtMs]), a time moved later, or one after the wake-up, is the next night's.
          */
         internal fun nextWbtbAt(minuteOfDay: Int, nowMs: Long, doneAtMs: Long?, zone: ZoneId): Long =
             nextAlarmAt(minuteOfDay, maxOf(nowMs, (doneAtMs ?: 0L) + NEW_NIGHT_MS), zone)
 
-        /** The early wake-up at [atMs] when it is tonight's and will ring: within 12 h, and not too soon to ring. */
+        /** WBTB at [atMs] when it is tonight's and will ring: within 12 h, and not too soon to ring. */
         internal fun wbtbAhead(atMs: Long?, nowMs: Long, nightStartMs: Long, unitMs: Long = 60_000L): Long? =
             atMs?.takeIf { it - nowMs <= NEW_NIGHT_MS && !wbtbTooSoon(it, nightStartMs, unitMs) }
 
         /**
          * Something can still ring or play tonight: a ring, a snoozed or rung-out wake-up, a wake-up within 12 h (once
-         * it rang, [wakeAtMs] is tomorrow's, about 24 h away), an early wake-up ahead, the back-to-sleep buzz, the
+         * it rang, [wakeAtMs] is tomorrow's, about 24 h away), a WBTB ahead, the back-to-sleep buzz, the
          * guide or the late cues (armed, their window not over).
          */
         internal fun somethingLeftTonight(

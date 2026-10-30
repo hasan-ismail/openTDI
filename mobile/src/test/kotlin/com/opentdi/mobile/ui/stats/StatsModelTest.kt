@@ -127,7 +127,7 @@ class StatsModelTest {
         assertFalse(w.copy(upAtMs = ms(next, 3, 1)).byUser)
         assertFalse(WbtbOutcome(skipped = "USER").byUser)
         val s = summary(night, sleep = sleep(ms(night, 23, 10), ms(next, 7, 5)), wbtb = w)
-        assertEquals(listOf("Up on your own for the early wake-up", "Back to bed"), marks(s).map { it.label })
+        assertEquals(listOf("Up on your own for WBTB", "Back to bed"), marks(s).map { it.label })
         assertEquals(Window(670, 1145, 900..920), window(row(night, s))) // awake cut out, no alarm tick
     }
 
@@ -240,7 +240,7 @@ class StatsModelTest {
         assertEquals(0, experiment(later, today).pairs)
         assertEquals("Dream questions", questionsLabel("LATER"))
         assertEquals("Morning questions", questionsLabel("WAKE"))
-        assertEquals("Early wake-up questions", questionsLabel("WBTB"))
+        assertEquals("WBTB questions", questionsLabel("WBTB"))
         val made = listOf(DreamReport(0, "LATER", recording = "w_dream_151500.m4a"))
         assertEquals("Recorded 3:15\u00A0PM", recordingLabel("w_dream_151500.m4a", made)) // no alarm named
     }
@@ -324,7 +324,7 @@ class StatsModelTest {
             ),
         )
         assertEquals(
-            listOf("Early", "Up", "Questions", "Bed", "Asleep", "Dream", "Alarm", "Awake", "Questions"),
+            listOf("WBTB", "Up", "Questions", "Bed", "Asleep", "Dream", "Alarm", "Awake", "Questions"),
             marks(s).map { it.short },
         )
     }

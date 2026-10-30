@@ -169,7 +169,7 @@ const val MIN_WAKE_AFTER_BACK_TO_BED_MIN = 120
 /** Too early a WBTB cuts the first, deep half of the night and did worse (4.5 h vs 6 h, Erlacher 2022). */
 const val MIN_SLEEP_BEFORE_WBTB_MIN = 270
 
-/** The early wake-up's time after falling asleep when it is first switched on (lucid_induction.md §5.2). */
+/** WBTB's time after falling asleep when it is first switched on (lucid_induction.md §5.2). */
 const val WBTB_AFTER_SLEEP_MIN = 360
 
 /**

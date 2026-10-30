@@ -62,7 +62,7 @@ class DreamReportTest {
             dream + listOf(GUIDE_SLEEP, ODD, SIGN_SEEN),
             shownQuestions(mapOf(0 to "YES"), guided = true, signs = true, after = "WAKE"),
         )
-        // At the early wake-up, not how refreshed or how unusual the night was: it isn't over yet.
+        // At WBTB, not how refreshed or how unusual the night was: it isn't over yet.
         assertEquals(
             listOf(0, 6, 8, GUIDE_SLEEP),
             shownQuestions(emptyMap(), guided = true, signs = false, after = "WBTB"),
@@ -132,7 +132,7 @@ class DreamReportTest {
             .toEpochMilli()
         val config = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270)
         assertEquals(
-            "the early wake-up at 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM",
+            "WBTB at 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM",
             alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = false, nowMs = at(1, 0)),
         )
         assertEquals(
@@ -153,11 +153,11 @@ class DreamReportTest {
             .toEpochMilli()
         val config = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270, wbtbAfterSleepMin = 360)
         assertEquals(
-            "the early wake-up by 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM", // still waiting to see you fall asleep
+            "WBTB by 4:30\u00A0AM and the wake-up alarm at 7\u00A0AM", // still waiting to see you fall asleep
             alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = false, nowMs = at(1, 0)),
         )
         assertEquals(
-            "the early wake-up at 3:40\u00A0AM and the wake-up alarm at 7\u00A0AM",
+            "WBTB at 3:40\u00A0AM and the wake-up alarm at 7\u00A0AM",
             alarmsLeft(config, wakeAgainAtMs = null, wbtbWontRing = false, nowMs = at(1, 0), wbtbAtMs = at(3, 40)),
         )
     }

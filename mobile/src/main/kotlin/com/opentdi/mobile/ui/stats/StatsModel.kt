@@ -193,7 +193,7 @@ fun window(row: NightRow): Window? {
 }
 
 /**
- * "I'm up now" on the watch: no alarm rang, the sleeper started the early wake-up. WakeAlarms logs its silent RING and
+ * "I'm up now" on the watch: no alarm rang, the sleeper started WBTB. WakeAlarms logs its silent RING and
  * the STOPPED in one millisecond, which no answered ring can match.
  */
 val WbtbOutcome.byUser: Boolean get() = ringAtMs != null && upAtMs == ringAtMs
@@ -380,8 +380,8 @@ data class Mark(val atMs: Long, val label: String, val short: String)
 /** The night's alarms, WBTB steps and reports, in time order. */
 fun marks(s: NightSummary): List<Mark> = buildList {
     s.wbtb?.let { w ->
-        w.ringAtMs?.takeUnless { w.byUser }?.let { add(Mark(it, "Early wake-up", "Early")) }
-        val up = if (w.byUser) "Up on your own for the early wake-up" else "Up for the early wake-up"
+        w.ringAtMs?.takeUnless { w.byUser }?.let { add(Mark(it, "WBTB", "WBTB")) }
+        val up = if (w.byUser) "Up on your own for WBTB" else "Up for WBTB"
         w.upAtMs?.let { add(Mark(it, up, "Up")) }
         w.backToSleepAtMs?.let { add(Mark(it, "Back to bed", "Bed")) }
         w.reOnsetMs?.let { add(Mark(it, "Asleep again (estimated)", "Asleep")) }
@@ -397,7 +397,7 @@ fun marks(s: NightSummary): List<Mark> = buildList {
 
 /** What a dream report is called, by what it came [after]: LATER, from last night by hand, is no morning's. */
 fun questionsLabel(after: String): String = when (after) {
-    "WBTB" -> "Early wake-up questions"
+    "WBTB" -> "WBTB questions"
     "LATER" -> "Dream questions"
     "NIGHT" -> "Dream saved in the night"
     else -> "Morning questions"
@@ -409,7 +409,7 @@ fun recordingLabel(name: String, reports: List<DreamReport>): String {
         ?.let { "Recorded ${clock12(it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt())}" }
     val after = when (reports.firstOrNull { it.recording == name }?.after) {
         "WAKE" -> "after the wake-up alarm"
-        "WBTB" -> "at the early wake-up"
+        "WBTB" -> "at WBTB"
         "NIGHT" -> "in the night"
         else -> null
     }

@@ -31,7 +31,7 @@ data class NightSummary(
     /** Dormio prompts that woke the sleeper during the recording: the phone's p_transitions.csv WAKING_USER rows. */
     val promptedWakings: Int = 0,
     /**
-     * When the watch saw you fall asleep, live (SLEEP ONSET, or the onset_ms an early wake-up carries in a folder
+     * When the watch saw you fall asleep, live (SLEEP ONSET, or the onset_ms a WBTB carries in a folder
      * without it); null before it was logged, or none seen.
      */
     val liveOnsetMs: Long? = null,

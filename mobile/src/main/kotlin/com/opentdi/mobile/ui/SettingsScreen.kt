@@ -29,6 +29,9 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.material3.IconButton
 import android.content.pm.PackageManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.rememberScrollState
@@ -651,7 +654,23 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        SwitchRow("Early wake-up", alarms.wbtbEnabled, enabled) { on ->
+        var wbtbInfo by remember { mutableStateOf(false) }
+        if (wbtbInfo) {
+            AlertDialog(
+                onDismissRequest = { wbtbInfo = false },
+                confirmButton = { TextButton(onClick = { wbtbInfo = false }) { Text("OK") } },
+                title = { Text("What is WBTB?") },
+                text = {
+                    Text(
+                        "WBTB means Wake Back To Bed. The watch wakes you gently late in the night. Stay up for " +
+                            "a short while and think about your dream, then go back to sleep. You fall back into " +
+                            "the part of the night with the longest dreams, and studies found more lucid dreams " +
+                            "this way."
+                    )
+                },
+            )
+        }
+        SwitchRow("WBTB", alarms.wbtbEnabled, enabled, info = { wbtbInfo = true }) { on ->
             // Late cues follow a WBTB alarm, so they go off with it (else Start would be blocked by validation).
             change { it.copy(wbtbEnabled = on, lateCues = if (on) it.lateCues else LateCueMode.OFF) }
         }
@@ -663,7 +682,7 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 }
             }
             // With sleep timing the set time is the latest it rings, and the time used when the watch can't tell.
-            val timeLabel = if (after == null) "Early wake-up at" else "No later than"
+            val timeLabel = if (after == null) "WBTB at" else "No later than"
             TimeRow(timeLabel, alarms.wbtbAtMin, enabled) { m -> change { it.copy(wbtbAtMin = m) } }
             if (after != null) {
                 Help(
@@ -677,7 +696,7 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 if (watchAnswer?.orElse(null)?.let { it.samsungKit == null } == true) { // no answer: unknown, say nothing
                     Text(
                         "Your watch needs Samsung's sensor kit for this (Settings › More › Samsung's sensor kit). " +
-                            "Without it, the early wake-up rings at the set time.",
+                            "Without it, WBTB rings at the set time.",
                         color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
@@ -706,7 +725,7 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 ) { Text("$timeLabel ${clock12(alarms.wbtbAtMinBeforeWake())} instead") }
             } else if (alarms.wakeBeforeWbtb()) {
                 Text(
-                    "Your wake-up alarm is before your early wake-up, so the early wake-up won't ring.",
+                    "Your wake-up alarm is before your WBTB, so WBTB won't ring.",
                     color = MaterialTheme.colorScheme.tertiary,
                 )
             }
@@ -744,7 +763,7 @@ private fun LateCuesSettings(
     viewModel: MainViewModel,
     change: ((AlarmConfig) -> AlarmConfig) -> Unit,
 ) {
-    Text("Soft sounds after the early wake-up")
+    Text("Soft sounds after WBTB")
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         val modes = listOf(LateCueMode.OFF to "Off", LateCueMode.ON to "On", LateCueMode.EXPERIMENT to "Test if they help")
         for ((mode, label) in modes) {
@@ -758,7 +777,7 @@ private fun LateCuesSettings(
     }
     Help(
         when (alarms.lateCues) {
-            LateCueMode.OFF -> "No sounds after the early wake-up."
+            LateCueMode.OFF -> "No sounds after WBTB."
             LateCueMode.ON ->
                 "The watch teaches you a soft three-note sound, then plays it quietly once you're asleep again. Not " +
                     "proven to work."
@@ -800,7 +819,13 @@ private fun LateCuesSettings(
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun SwitchRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    info: (() -> Unit)? = null,
+    onChange: (Boolean) -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -808,7 +833,15 @@ private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean, onChang
             .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, modifier = Modifier.weight(1f))
+        // The label wraps before it can push the (i) or the switch off a narrow screen.
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, modifier = Modifier.weight(1f, fill = false))
+            if (info != null) {
+                IconButton(onClick = info, modifier = Modifier.semantics { contentDescription = "What is $label?" }) {
+                    Text("ⓘ", style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
         Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }

@@ -191,12 +191,12 @@ private fun wakeOutcome(alarms: List<AlarmRow>): AlarmOutcome? {
 /**
  * The first WBTB alarm (§B4): skipped, or its ring, getting up ("I'm awake"; none when it rang out), the
  * back-to-sleep buzz and the re-onset LateCues logged after it. "I'm up now" logs a silent RING (how=USER_NOW) and
- * STOPPED at once, so it reads as an early wake-up rung at that time.
+ * STOPPED at once, so it reads as a WBTB rung at that time.
  */
 private fun wbtbOutcome(alarms: List<AlarmRow>): WbtbOutcome? {
     val first = alarms.next(0) { it.alarm == WBTB && (it.event == "RING" || it.event == "SKIPPED") } ?: return null
     val d = alarms[first].detail
-    // reason= (MIN_SLEEP_BEFORE_WBTB or PASSED), or "Skip the early wake-up" (how=USER); before reason=, only too
+    // reason= (MIN_SLEEP_BEFORE_WBTB or PASSED), or "Skip WBTB" (how=USER); before reason=, only too
     // little sleep recorded before it.
     if (alarms[first].event == "SKIPPED") {
         val why = d["reason"] ?: if (d["how"] == "USER") "USER" else "MIN_SLEEP_BEFORE_WBTB"
@@ -229,7 +229,7 @@ private fun wbtbOutcome(alarms: List<AlarmRow>): WbtbOutcome? {
     )
 }
 
-/** SLEEP ONSET, or the onset an early wake-up was timed from when this folder lacks that row (a restart). */
+/** SLEEP ONSET, or the onset a WBTB was timed from when this folder lacks that row (a restart). */
 private fun liveOnset(alarms: List<AlarmRow>): Long? =
     alarms.firstOrNull { it.alarm == SLEEP && it.event == "ONSET" }?.detail?.get("onset_ms")?.toLongOrNull()
         ?: alarms.firstNotNullOfOrNull { r -> r.detail["onset_ms"]?.toLongOrNull()?.takeIf { r.alarm == WBTB } }

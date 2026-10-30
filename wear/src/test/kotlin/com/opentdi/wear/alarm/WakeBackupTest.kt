@@ -30,7 +30,7 @@ class WakeBackupTest {
         assertEquals(seven + 9 * min, due(seven + 9 * min, now = seven + min))
         // While the wake-up rings (wakeAt already tomorrow's): the end of its ring, when the clock snoozes or stops it.
         assertEquals(seven + 10 * min, due(seven + 24 * hour, "WAKE", seven, now = seven + min))
-        // The early wake-up rings over the wake time: the wake-up comes after its ring; well before it, unchanged.
+        // WBTB rings over the wake time: the wake-up comes after its ring; well before it, unchanged.
         assertEquals(seven + 5 * min, due(seven, "WBTB", seven - 5 * min, now = seven - min))
         assertEquals(seven, due(seven, "WBTB", seven - 3 * hour, now = seven - 3 * hour))
     }

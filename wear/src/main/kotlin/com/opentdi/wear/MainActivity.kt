@@ -191,7 +191,7 @@ class MainActivity : ComponentActivity() {
                                     onReport = { openReport(fromEnd = false) },
                                     onLastNightReport = { openReport(fromEnd = false, lastNight = it) },
                                     onSkipWbtb = { HealthTrackingForegroundService.skipWbtb(this@MainActivity) },
-                                    // The choice only when the early wake-up can be started now; otherwise the dream.
+                                    // The choice only when WBTB can be started now; otherwise the dream.
                                     onWokeUp = {
                                         val s = SensingStateHolder.state.value
                                         if (wbtbNowAt(s, System.currentTimeMillis()) != null) {
@@ -484,7 +484,7 @@ private val NightColors = ColorScheme(
 
 /**
  * The main screen: waiting for the phone, the one-time setup, the night being tracked with its alarms and one big
- * button for the moment (I woke up), or the night saved; after an alarm, the dream questions and the early wake-up come
+ * button for the moment (I woke up), or the night saved; after an alarm, the dream questions and WBTB come
  * first. End the night is under Details: the night ends by itself.
  */
 @Composable
@@ -527,8 +527,8 @@ private fun MainScreen(
         lastNight = WakeAlarms.lastNight(context)?.first
         onPauseOrDispose {}
     }
-    val wbtbAt = state.wbtbAheadAtMs // tonight's early wake-up, while it can still be skipped or started
-    // Keyed on it: a question left open as the early wake-up rang or moved must not come back for another one.
+    val wbtbAt = state.wbtbAheadAtMs // tonight's WBTB, while it can still be skipped or started
+    // Keyed on it: a question left open as WBTB rang or moved must not come back for another one.
     var askSkip by remember(wbtbAt) { mutableStateOf(false) }
     // Asked once: after that it lives in Details, so a watch with it already on isn't nagged every night.
     val ui = remember { context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE) }
@@ -653,10 +653,10 @@ private fun MainScreen(
                 alarms?.let { item { Line(it) } }
                 when (state.wbtbSkip) {
                     "MIN_SLEEP_BEFORE_WBTB" ->
-                        item { Line("No early wake-up tonight: it's less than 4½ hours after you went to bed.") }
-                    "PASSED" -> item { Line("No early wake-up tonight: its time had already passed.") }
+                        item { Line("No WBTB tonight: it's less than 4½ hours after you went to bed.") }
+                    "PASSED" -> item { Line("No WBTB tonight: its time had already passed.") }
                 }
-                if (state.wbtbSkippedTonight) item { Line("Early wake-up skipped tonight.") }
+                if (state.wbtbSkippedTonight) item { Line("WBTB skipped tonight.") }
                 if (showIWokeUp(state)) {
                     item {
                         Button(onClick = onWokeUp, modifier = Modifier.fillMaxWidth(), label = { Text("I woke up") })
@@ -668,7 +668,7 @@ private fun MainScreen(
                             onClick = { askSkip = true },
                             colors = ButtonDefaults.filledTonalButtonColors(),
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Skip the early wake-up") },
+                            label = { Text("Skip WBTB") },
                             secondaryLabel = { Text("Tonight only") },
                         )
                     }
@@ -728,14 +728,14 @@ private fun MainScreen(
             item { FilledTonalButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) { Text("Details") } }
         }
     }
-    // Asked first: tonight's early wake-up cannot be brought back once skipped.
+    // Asked first: tonight's WBTB cannot be brought back once skipped.
     if (wbtbAt != null) {
         val at = WakeAlarms.hhmm(wbtbAt)
         // Timed from falling asleep and not yet decided: it rings by then, maybe sooner.
         val skipWhen = if (state.wbtbAtMs == null && config.wbtbAfterSleepMin != null) "by $at" else "at $at"
         AskFirst(
             visible = askSkip,
-            title = "Skip tonight's early wake-up $skipWhen?",
+            title = "Skip tonight's WBTB $skipWhen?",
             text = config.wakeAtMin.takeIf { config.wakeEnabled }
                 ?.let { "Your wake-up alarm at ${clock12(it)} still rings." },
             onDismiss = { askSkip = false },
@@ -755,7 +755,7 @@ private fun MainScreen(
 }
 
 /**
- * After "I woke up" with tonight's early wake-up startable now ([wbtbAt]): save a dream and sleep again, or do the early
+ * After "I woke up" with tonight's WBTB startable now ([wbtbAt]): save a dream and sleep again, or do the early
  * wake-up now. Two clearly named taps are the confirmation the old "I'm up now" question gave.
  */
 @Composable
@@ -779,7 +779,7 @@ private fun AwakeScreen(wbtbAt: Long?, onSaveDream: () -> Unit, onWbtbNow: () ->
                         onClick = onWbtbNow,
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Do my early wake-up now") },
+                        label = { Text("Do my WBTB now") },
                         secondaryLabel = { Text("${WakeAlarms.hhmm(at)} won't ring") },
                     )
                 }
@@ -930,7 +930,7 @@ private fun EndNightScreen(
             // Ending in the middle of the night used to cancel the alarms still to come without a word.
             alarmsAhead?.let { item { Line("${it.replaceFirstChar(Char::uppercase)} won't ring.") } }
             if (wbtbAhead) {
-                item { Line("Only want to skip the early wake-up? Go back and tap Skip the early wake-up.") }
+                item { Line("Only want to skip WBTB? Go back and tap Skip WBTB.") }
             }
             // Ending the night saves an unfinished report as it stands; questions not reached stay unanswered. Worded for
             // every report: a dream saved in the night has no questions, only its recording.
@@ -1003,7 +1003,7 @@ private fun AlarmScreen(kind: String, snoozeMin: Int, snoozesLeft: Int, onAlarmS
             if (!morning) item { Canvas(Modifier.fillMaxWidth().height(72.dp)) { drawMoon(moon) } }
             item {
                 Text(
-                    if (morning) "Good morning" else "Early wake-up",
+                    if (morning) "Good morning" else "WBTB",
                     style = MaterialTheme.typography.displaySmall,
                     color = MaterialTheme.colorScheme.primary,
                     textAlign = TextAlign.Center,
@@ -1079,7 +1079,7 @@ private fun format(pattern: String, value: Float?) = value?.let { String.format(
 
 /**
  * The alarms still to ring, worded as [alarmsAhead]: a snoozed or rung-out wake-up at its next ring
- * ([wakeAgainAtMs]), and no early wake-up that won't ring tonight ([wbtbWontRing]: too soon after bedtime, rung,
+ * ([wakeAgainAtMs]), and no WBTB that won't ring tonight ([wbtbWontRing]: too soon after bedtime, rung,
  * skipped or started early).
  */
 internal fun alarmsLeft(
@@ -1087,14 +1087,14 @@ internal fun alarmsLeft(
     wakeAgainAtMs: Long?,
     wbtbWontRing: Boolean,
     nowMs: Long,
-    wbtbAtMs: Long? = null, // the watch's decided early wake-up (alarmsAhead)
+    wbtbAtMs: Long? = null, // the watch's decided WBTB (alarmsAhead)
 ): String? = wakeAgainAtMs?.let { "the wake-up alarm at ${WakeAlarms.hhmm(it)}" } ?: alarmsAhead(
     config.copy(wbtbEnabled = config.wbtbEnabled && !wbtbWontRing), nowMs, ZoneId.systemDefault(), wbtbAtMs,
 )
 
 /**
  * "I woke up" only when nothing else is due first: a ring, a snooze, dream questions, the stay-up time or the guide. A
- * dream left unsaved in the night does not hide it: "I woke up" goes on with that dream, or to the early wake-up.
+ * dream left unsaved in the night does not hide it: "I woke up" goes on with that dream, or to WBTB.
  */
 internal fun showIWokeUp(state: SensingState): Boolean =
     state.running && state.alarmRinging == null && state.wakeAgainAtMs == null &&
@@ -1102,7 +1102,7 @@ internal fun showIWokeUp(state: SensingState): Boolean =
         state.wbtbBackToSleepAtMs == null && !state.guideOffered && !state.guideRunning
 
 /**
- * Tonight's early wake-up, while "Do my early wake-up now" can start it: not before a ringing one could, when it reads as
+ * Tonight's WBTB, while "Do my WBTB now" can start it: not before a ringing one could, when it reads as
  * "I'm still up" (WakeAlarms.startWbtbNow does nothing then). Null otherwise.
  */
 internal fun wbtbNowAt(state: SensingState, nowMs: Long): Long? =

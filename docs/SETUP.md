@@ -289,7 +289,7 @@ recordings wait); once one is pushed, the next copy transcribes them. Each recor
 transcribed once: delete its `.txt` to redo it, for example with the other model. `adb -s $P logcat -s OTDI.Stt` shows
 which model loaded and each file's timings, never the text.
 
-## 14. Alarms: the backup and the early wake-up options
+## 14. Alarms: the backup and WBTB options
 
 **Wake-up alarm backup.** Besides its own timer in the tracking service, the watch keeps one system alarm clock
 (`AlarmManager.setAlarmClock`, allowed by `USE_EXACT_ALARM`, which needs no grant) for the wake-up alarm, so it still
@@ -300,22 +300,22 @@ the alarm rings once. A wake-up missed by more than an hour (the watch was off) 
 start, it tries again a minute later, and after two unanswered tries it posts an insistent "Good morning" notification
 on an alarm-sound channel; tapping it answers that morning's alarm. Turning the wake-up alarm off on the phone, End the
 night or the phone's Stop clears the backup. If tracking stopped, the watch's main screen shows the alarm time and a
-**Turn it off for this morning** button. The backup covers the wake-up alarm only: the early wake-up's routine needs
+**Turn it off for this morning** button. The backup covers the wake-up alarm only: WBTB's routine needs
 the tracking service. Each step is a `BACKUP` row in the night's `w_alarm.csv` (`ARMED`, `FIRED`, `CLEARED`,
 `NOT_ARMED`) and a `BACKUP_*` line in `adb -s $W logcat -s OTDI.Sensors`.
 
-**Early wake-up options (watch).** While tracking, the main screen offers **Skip the early wake-up** (tonight only; the
+**WBTB options (watch).** While tracking, the main screen offers **Skip WBTB** (tonight only; the
 wake-up alarm and tracking go on; it asks first) and **I woke up**. From 4½ hours into the night, **I woke up** offers
-**Do my early wake-up now**, which starts the early wake-up without ringing; before that, or with none ahead, it goes
-straight to **Save my dream**. Skip or start, like a ring, settles the early wake-up for that night, even after a
+**Do my WBTB now**, which starts WBTB without ringing; before that, or with none ahead, it goes
+straight to **Save my dream**. Skip or start, like a ring, settles WBTB for that night, even after a
 restart or a time change. **Save my dream** in the night records the dream only, with no questions, as a
 `w_morning.csv` row with `after=NIGHT`; the night goes on, and Stats labels it "Dream saved in the night". After the night
 ends, **Save my dream** (From last night) saves a dream report into the last night's folder
 for up to 14 hours after that night; Stats labels it "Dream questions" and keeps it out of the soft-sound experiment.
 
-**Time it from when you fall asleep (phone Settings › More, Early wake-up).** The early wake-up then rings 4½ to 7
+**Time it from when you fall asleep (phone Settings › More, WBTB).** WBTB then rings 4½ to 7
 hours (6 by default) after the watch sees you fall asleep, never later than the set time, which the setting then labels
 "No later than". The watch looks for sleep onset every night while it is worn, for up to 3 hours after the night
 starts, and logs it as a `SLEEP` row with the event `ONSET` in `w_alarm.csv`; with no onset by then, the set time is used. Telling that
-the watch is worn needs Samsung's sensor kit (§2), so without it the early wake-up rings at the set time and Settings
+the watch is worn needs Samsung's sensor kit (§2), so without it WBTB rings at the set time and Settings
 says so.

@@ -20,6 +20,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -297,7 +300,7 @@ fun TonightScreen(
     }
 
     val sentence = when {
-        // The watch's own list when it sends one: only it knows an early wake-up skipped or too soon to ring.
+        // The watch's own list when it sends one: only it knows a WBTB skipped or too soon to ring.
         nightDone -> nightOnText(alarmsLeftTonight(watchStatus, config.alarms), config.alarms.wakeEnabled)
         // Not after a phone-only night's voice: it describes a night started now.
         !running && (status.state != TdiState.SESSION_COMPLETE || status.quickTest) ->
@@ -306,7 +309,14 @@ fun TonightScreen(
     }
     Page("Tonight") {
         MoonHeader(remember { System.currentTimeMillis() })
-        StatusCard(status, now, nightDone, sentence)
+        StatusCard(
+            status, now, nightDone, sentence,
+            watchLink = when {
+                streaming || watchStatus != null -> true
+                watchAnswer != null -> false // asked, no answer
+                else -> null
+            },
+        )
         if (ui.alarmsNotSent) Text(ALARMS_NOT_SENT, color = MaterialTheme.colorScheme.error)
         if (running) {
             OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
@@ -466,11 +476,28 @@ private fun StartButton(enabled: Boolean, glow: Boolean, onStart: () -> Unit) {
 
 /** The big line, then [sentence] (tonight in short, or what is left of the night) or the voice line while it plays. */
 @Composable
-private fun StatusCard(status: SessionStatus, now: Long, nightDone: Boolean, sentence: String?) {
+private fun StatusCard(status: SessionStatus, now: Long, nightDone: Boolean, sentence: String?, watchLink: Boolean?) {
     val (headline, cycle) = statusLines(status, now, tracking = nightDone)
     val context = LocalContext.current
     val debuggable = remember { context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 }
     Section(null) {
+        // Green or red with words, so it never relies on colour alone; grey until the watch's first answer.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val dot = when (watchLink) {
+                true -> Color(0xFF66BB6A)
+                false -> MaterialTheme.colorScheme.error
+                null -> MaterialTheme.colorScheme.outline
+            }
+            Box(Modifier.size(10.dp).background(dot, CircleShape))
+            Text(
+                when (watchLink) {
+                    true -> "Watch connected"
+                    false -> "Watch not connected"
+                    null -> "Checking the watch…"
+                },
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
         AnimatedContent(
             headline,
             label = "headline",
