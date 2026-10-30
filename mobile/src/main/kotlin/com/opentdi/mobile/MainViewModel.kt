@@ -211,11 +211,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }.distinctUntilChanged()
 
     /**
-     * [watchStatus]'s last answer while still fresh (two polls): Tonight composed again after a tab switch starts from
-     * it, so a Start tapped at once still knows a night is underway. Null: not asked lately.
+     * [watchStatus]'s last answer while still fresh (two polls, or one that timed out): Tonight composed again after a
+     * tab switch starts from it, so a Start tapped at once still knows a night is underway. Null: not asked lately.
+     * [at]: Tonight passes its clock tick, so it sees the answer go stale.
      */
-    fun recentWatchAnswer(): Optional<WatchStatus>? =
-        lastAnswer?.takeIf { SystemClock.elapsedRealtime() - it.first < 10_000 }?.second
+    fun recentWatchAnswer(at: Long = SystemClock.elapsedRealtime()): Optional<WatchStatus>? =
+        lastAnswer?.takeIf { at - it.first < 15_000 }?.second
 
     /** Opens OpenTDI on the watch for Start the night; the watch's state then says whether it opened. */
     fun openWatchApp() {

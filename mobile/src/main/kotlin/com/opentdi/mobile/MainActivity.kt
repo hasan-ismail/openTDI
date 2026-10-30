@@ -35,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.mobile.audio.CuePlayer
@@ -61,13 +62,11 @@ class MainActivity : ComponentActivity() {
     // The session runs whether or not notifications are allowed; the FGS notice then shows in Task Manager only.
     // Lint sees the androidx.fragment 1.1 that play-services pulls in; its bug is in FragmentActivity, not used here.
     @SuppressLint("InvalidFragmentVersionForActivityResult")
-    private val askNotifications =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { startSessionService(quickTest) }
+    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
-        quickTest = savedInstanceState?.getBoolean(KEY_QUICK_TEST) == true
         volumeControlStream = AudioManager.STREAM_MUSIC // the volume keys set the voice's volume, not the ringer's
         if (savedInstanceState == null) {
             lifecycleScope.launch(Dispatchers.IO) {
@@ -138,15 +137,7 @@ class MainActivity : ComponentActivity() {
         viewModel.showBattery(batteryUnrestricted())
     }
 
-    private var quickTest = false // kept across a recreation while the notification permission is asked
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putBoolean(KEY_QUICK_TEST, quickTest)
-    }
-
     private fun start(quick: Boolean) {
-        quickTest = quick
         // The phone's volume and DND only matter when the phone speaker plays the cues.
         if (viewModel.ui.value.config.audio.route != AudioRouteMode.WATCH_WRIST_SPEAKER) {
             // Calibrated at index 0, a session would scale later cues to silence (§7.7 step 5); Start's popup blocks it.
@@ -155,14 +146,18 @@ class MainActivity : ComponentActivity() {
             val (filter, categories) = getSystemService(NotificationManager::class.java).dndState()
             if (dndEffect(filter, categories) != DndEffect.PLAYS) return // Start's popup says why
         }
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            startSessionService(quick)
-        } else {
+        startSessionService(quick)
+        // Never waited for: a Start that goes on as the screen turns off would wait for the next unlock, maybe the
+        // morning, with no voice, tracking or alarms. Asked only while the user can see it; the next Start asks again.
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        ) {
             askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
-    // Called while this activity is visible, which the foreground service start needs (§14.3).
+    // Called while this activity is visible or has just stopped (a Start that goes on at screen-off), which the
+    // foreground service start needs (§14.3).
     private fun startSessionService(quick: Boolean) {
         startForegroundService(
             Intent(this, NapSessionService::class.java).putExtra(NapSessionService.EXTRA_QUICK_TEST, quick),
@@ -208,5 +203,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-private const val KEY_QUICK_TEST = "quickTest"

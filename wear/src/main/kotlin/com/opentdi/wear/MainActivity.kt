@@ -256,7 +256,8 @@ class MainActivity : ComponentActivity() {
                                         )
                                     },
                                     wbtbAhead = state.wbtbAheadAtMs != null,
-                                    endLine = nightEndLine(
+                                    // None once the wake-up rang with its dream unsaved: the lines below say so.
+                                    endLine = if (state.reportAfter == "WAKE") null else nightEndLine(
                                         WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity)).wakeEnabled,
                                         System.currentTimeMillis() -
                                             (SystemClock.elapsedRealtime() - state.startedElapsedMs),
@@ -917,7 +918,7 @@ private fun EndNightScreen(
     onReport: () -> Unit,
     alarmsAhead: String?,
     wbtbAhead: Boolean,
-    endLine: String, // nightEndLine: with the wake-up alarm off there is no morning alarm to end it
+    endLine: String?, // nightEndLine: with the wake-up alarm off there is no morning alarm to end it
     onEnd: () -> Unit,
     onKeep: () -> Unit,
 ) {
@@ -926,7 +927,7 @@ private fun EndNightScreen(
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item { BigLine("End the night?") }
             item { Line("Tracking stops and the app closes.") }
-            item { Line(endLine) }
+            endLine?.let { item { Line(it) } }
             // Ending in the middle of the night used to cancel the alarms still to come without a word.
             alarmsAhead?.let { item { Line("${it.replaceFirstChar(Char::uppercase)} won't ring.") } }
             if (wbtbAhead) {

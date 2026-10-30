@@ -209,8 +209,9 @@ fun TonightScreen(
 
     fun begin(quick: Boolean) = if (quick) onQuickTest() else onStart()
     // No answer from the watch yet (up to 5 s after opening Tonight), or none since the screen came back on: the last
-    // one can be hours old, such as "not tracking" from just before a night started.
-    val unsure = checkingWatch || (!streaming && viewModel.recentWatchAnswer() == null)
+    // one can be hours old, such as "not tracking" from just before a night started. Read with `now`, so the ticks
+    // see it go stale and fresh again; an unchanged answer recomposes nothing.
+    val unsure = checkingWatch || (!streaming && viewModel.recentWatchAnswer(now) == null)
     // A real Start tapped then waits for the answer, so a night already tracked still asks before replaying the voice,
     // and a low watch battery still shows.
     var startOnAnswer by rememberSaveable { mutableStateOf(false) }
