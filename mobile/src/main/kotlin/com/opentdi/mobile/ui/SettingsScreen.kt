@@ -268,7 +268,7 @@ private fun CueWordsCard(
     recordingCue: PromptCue?,
 ) {
     Section("Words") {
-        Help("What the voice says. By default: that you are dreaming.")
+        Help("What the voice says. By default, it helps you notice when you're dreaming.")
         // The default words ignore the topic. A topic left blank by an older version stays shown, as it blocks Start.
         val showTopic = remember { config.theme.length !in 1..60 } ||
             config.audio.cueTexts.values.any { THEME_PLACEHOLDER in it }
@@ -278,7 +278,10 @@ private fun CueWordsCard(
                 onValueChange = { theme -> edit { it.copy(theme = theme.take(60)) } },
                 label = { Text("Dream topic") },
                 supportingText = {
-                    Text("The voice says this wherever the words show $THEME_PLACEHOLDER. Up to 60 letters.")
+                    Text(
+                        "The voice says this wherever the words show $THEME_PLACEHOLDER. Write it as you'd say it, " +
+                            "like a tree or flying. Up to 60 letters.",
+                    )
                 },
                 singleLine = true,
                 enabled = enabled,
@@ -298,8 +301,8 @@ private fun CueWordsCard(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Use dream-topic wording") }
             Help(
-                "Instead of \"You are dreaming\", the voice asks you to think of a topic you choose (MIT Dormio's " +
-                    "wording).",
+                "Instead of helping you notice a dream, the voice asks you to think of a topic you choose (MIT " +
+                    "Dormio's wording).",
             )
             for (cue in PHASE1_CUES) CueWords(cue, config, enabled, edit, viewModel, recordingCue)
             TextButton(

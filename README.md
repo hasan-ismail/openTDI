@@ -4,9 +4,10 @@
 guiding what a dream is about with a soft voice, on a timer, as you fall asleep.
 
 As you drift off to sleep, there is a short, dreamy in-between stage where thoughts turn into images. OpenTDI uses
-that moment. A soft voice from your phone or watch says, *"You are dreaming. You are in control."* It gently asks
-what you notice, then lets you drift back, and repeats this a few times. The aim is simple: to help you **realise you
-are dreaming**, and leave the rest of the dream up to you.
+that moment. A soft voice from your phone or watch says, *"You are safe in bed. If you hear this voice in a dream,
+you'll know it's only a dream."* It gently asks what was going through your mind, then lets you drift back, and
+repeats this a few times. The aim is simple: to help you **realise when you are dreaming**, and leave the rest of the
+dream up to you.
 
 OpenTDI is free and open-source. It builds on **Dormio**, a research project from the MIT Media Lab that spoke to
 people as they fell asleep ([Horowitz et al., 2020](https://pmc.ncbi.nlm.nih.gov/articles/PMC7590944/)), and
@@ -16,19 +17,21 @@ on its sensor-free version that speaks on a timer only
 > **Please read: this is not a medical device.** OpenTDI is wellness and research software. It does not diagnose,
 > treat, cure or prevent any illness, and it is not a sleep tracker you can rely on: its sleep estimates use untested
 > settings and may be wrong. Its sensor readings are for general wellness information only. **Talk to a doctor first**
-> if you have ever had a psychotic disorder, narcolepsy, frequent sleep paralysis, sleepwalking or another sleep
-> disorder. OpenTDI is not made by, or endorsed by, MIT or Samsung.
+> if you have ever had a psychotic or dissociative disorder, narcolepsy, frequent sleep paralysis, hallucinations when
+> falling asleep or waking up, sleepwalking or another sleep disorder. If everyday life ever starts to feel unreal or
+> dreamlike, stop using OpenTDI and talk to a doctor. OpenTDI is not made by, or endorsed by, MIT or Samsung.
 
 ## How a night goes
 
 1. **Open OpenTDI on the watch** (it waits for the phone), then **tap Start the night** on the phone. If anything needs
    fixing first, such as getting the voice ready, a popup lists just that, each with a button to fix it. The watch
-   starts tracking your sleep and you hear the voice: *"You are dreaming. You are in control."*
+   starts tracking your sleep and you hear the voice: *"You are safe in bed. If you hear this voice in a dream,
+   you'll know it's only a dream."*
 2. **About 10–15 minutes later**, around when most people start drifting off, the voice says it again, softly. If you
    are still moving around, it waits until the watch shows you lying still.
-3. **Three minutes after that**, a question wakes you lightly: *"You're falling asleep. You are dreaming now. What do
-   you notice?"* Say whatever is on your mind, or nothing at all. Nothing is recorded.
-4. **A minute later:** *"You are dreaming. You are in control. You can fall back asleep now."*
+3. **Three minutes after that**, a question wakes you lightly: *"You were falling asleep. What was going through your
+   mind? Was it a dream?"* Say whatever is on your mind, or nothing at all. Nothing is recorded.
+4. **A minute later:** *"You can fall back asleep now. When you dream, you'll know it's only a dream."*
 5. **This round repeats up to 4 times**, about 7 minutes apart. The voice then ends, with a soft goodnight chime if you
    want one. The watch keeps tracking your sleep and runs your alarms all night.
 6. **In the morning** the wake-up alarm rings on the watch (it is on unless you turn it off). Tap **I'm awake** and the
@@ -63,9 +66,10 @@ your sleep, because updating would end that night's tracking and alarms.
 
 To try the voice in about 5 minutes, tap **Quick test (5 min)**.
 
-The voice speaks slowly, one phrase at a time, and fades in over two seconds so it does not startle you. You can
-change the words, the voice and the speaking speed, and, under **More settings**, all the timings. If your phone is in
-another room, turn on **Play the voice on the watch** in Settings, and the watch plays it.
+The voice speaks slowly, one phrase at a time, and fades in over two seconds so it does not startle you. It never
+tells you that you are dreaming right now; it only says how to recognise a dream if you hear it in one. You can change
+the words, the voice and the speaking speed, and, under **More settings**, all the timings. If your phone is in another
+room, turn on **Play the voice on the watch** in Settings, and the watch plays it.
 
 While you sleep, the **watch tracks your body's signals**: heart rate and heartbeat timing, skin response (EDA),
 movement, skin temperature, blood-oxygen spot checks, and the raw pulse signal, which can later show your breathing.

@@ -1,12 +1,15 @@
 package com.opentdi.mobile
 
 import android.content.Context
+import com.opentdi.mobile.cues.CUE_WORDS_VERSION
+import com.opentdi.mobile.cues.dropOldBuiltInWords
 import com.opentdi.shared.model.OpenTdiJson
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SessionMode
 
 private const val PREFS = "opentdi"
 private const val KEY_CONFIG = "session_config"
+private const val KEY_WORDS_VERSION = "cue_words_version"
 private const val KEY_CALIBRATED_INDEX = "calibrated_stream_index"
 private const val KEY_ONBOARDED = "onboarded"
 
@@ -15,16 +18,21 @@ val PHASE1_DEFAULT_CONFIG = SessionConfig(mode = SessionMode.TIMED_CUES)
 
 /** The saved SessionConfig, or the Phase 1 default when nothing (readable) is saved. */
 fun loadConfig(context: Context): SessionConfig {
-    val json = prefs(context).getString(KEY_CONFIG, null) ?: return PHASE1_DEFAULT_CONFIG
-    return try {
+    val prefs = prefs(context)
+    val json = prefs.getString(KEY_CONFIG, null) ?: return PHASE1_DEFAULT_CONFIG
+    val config = try {
         OpenTdiJson.decodeFromString<SessionConfig>(json)
     } catch (e: IllegalArgumentException) { // SerializationException included
-        PHASE1_DEFAULT_CONFIG
+        return PHASE1_DEFAULT_CONFIG
     }
+    // Once per change of the built-in words (saveConfig stamps the version), so old words typed later on purpose stay.
+    if (prefs.getInt(KEY_WORDS_VERSION, 1) >= CUE_WORDS_VERSION) return config
+    return dropOldBuiltInWords(config).also { saveConfig(context, it) }
 }
 
 fun saveConfig(context: Context, config: SessionConfig) {
-    prefs(context).edit().putString(KEY_CONFIG, OpenTdiJson.encodeToString(config)).apply()
+    prefs(context).edit().putString(KEY_CONFIG, OpenTdiJson.encodeToString(config))
+        .putInt(KEY_WORDS_VERSION, CUE_WORDS_VERSION).apply()
 }
 
 /** §7.7 step 5 "the index saved at calibration": STREAM_MUSIC's speaker index of the last full test cue, or null. */

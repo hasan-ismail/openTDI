@@ -457,7 +457,7 @@ There is no movement abort, no refractory and no missed-cycle rule in `TIMED_CUE
 | `PromptCue` | OpenTDI text | Literature | Reconciliation |
 |---|---|---|---|
 | `INITIAL_INCUBATION` | "Remember to think of [THEME]." | P20 §2.4 "Think of a tree"; P20 Fig. 1 R1 "Remember to think of a Tree"; FS24 "Remember to think of a Fork/Tree" ([P] §5.1) | SOURCED. CLAUDE.md's "Remember to think of [THEME]..." kept, without the trailing ellipsis |
-| `WAKE_PROMPT` | "You're falling asleep. Please tell me, what's going through your mind?" | P20 §2.4 "You're falling asleep," + "Please tell me, what's going through your mind" ([P] §5.1) | SOURCED, verbatim. Matches CLAUDE.md |
+| `WAKE_PROMPT` | "You're falling asleep. Please tell me what's going through your mind." | P20 §2.4 "You're falling asleep," + "Please tell me, what's going through your mind" ([P] §5.1) | SOURCED, verbatim (comma after "Please tell me" dropped, 2026-10-30). Matches CLAUDE.md |
 | `SLEEP_STATE_QUESTION` **[EXT]** | "And were you asleep?" | P20 §2.4, answers Awake / Halfway / Asleep ([P] §1.2 #8) | SOURCED. CLAUDE.md omits it; it is the only per-awakening ground truth MIT used ([P] §8 item 5). `askSleepState`, default true |
 | `RE_INCUBATION` | "Remember to think of [THEME]. You can fall back asleep now." | P20 §2.4 "Remember to think of a tree" + "You can fall back asleep now" ([P] §5.1) | SOURCED. Matches CLAUDE.md |
 | `SESSION_END` | soft chime ×3, then "The session is over. You can wake up now." | Code: gong ×3 (`script_timer.js:429-435`); lab: the experimenter "instructed the participant to wake up fully" ([P] §1.2 #11) | Chime count SOURCED; the wording is ours (GUESSED). `endAlarm` = `CHIME` (default) or `NONE` (PhD22 p.58: "set no alarm and continue sleeping") |

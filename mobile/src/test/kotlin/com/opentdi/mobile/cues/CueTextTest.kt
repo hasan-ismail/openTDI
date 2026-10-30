@@ -9,22 +9,26 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CueTextTest {
     @Test
     fun defaultWording_isLucidity_andIgnoresTheTheme() {
-        assertEquals("You are dreaming. You are in control.", cueText(PromptCue.INITIAL_INCUBATION, "a tree"))
         assertEquals(
-            "You're falling asleep. You are dreaming now. What do you notice?",
+            "You are safe in bed. If you hear this voice in a dream, you'll know it's only a dream.",
+            cueText(PromptCue.INITIAL_INCUBATION, "a tree"),
+        )
+        assertEquals(
+            "You were falling asleep. What was going through your mind? Was it a dream?",
             cueText(PromptCue.WAKE_PROMPT, "a tree"),
         )
         assertEquals(
-            "You are dreaming. You are in control. You can fall back asleep now.",
+            "You can fall back asleep now. When you dream, you'll know it's only a dream.",
             cueText(PromptCue.RE_INCUBATION, "a fork"),
         )
-        assertEquals("That was the last cue for tonight. Sleep well.", cueText(PromptCue.SESSION_END, "a tree"))
+        assertEquals("That's all for now. Sleep well.", cueText(PromptCue.SESSION_END, "a tree"))
         assertEquals(cueText(PromptCue.RE_INCUBATION, "a tree"), cueText(PromptCue.RE_INCUBATION, "a fork"))
     }
 
@@ -32,7 +36,7 @@ class CueTextTest {
     fun mitWording_isSection7_1WithTheTheme() {
         assertEquals("Remember to think of a tree.", mitThemeCueText(PromptCue.INITIAL_INCUBATION, "a tree"))
         assertEquals(
-            "You're falling asleep. Please tell me, what's going through your mind?",
+            "You're falling asleep. Please tell me what's going through your mind.",
             mitThemeCueText(PromptCue.WAKE_PROMPT, "a tree"),
         )
         assertEquals(
@@ -56,7 +60,7 @@ class CueTextTest {
     fun spokenWakeUp_saysTheSleepersName_whereverTheWordsSayGoodMorning() {
         val named = SessionConfig(alarms = AlarmConfig(sleeperName = " Hasan "))
         assertEquals(
-            "Good morning, Hasan. Keep your eyes closed, and replay your dream before you move.",
+            "Good morning, Hasan. It's time to wake up. Lie still with your eyes closed and think back to your dreams.",
             cueText(PromptCue.MORNING_WAKE, named),
         )
         val own = named.copy(audio = AudioConfig(cueTexts = mapOf(PromptCue.MORNING_WAKE to "Wake up slowly.")))
@@ -82,16 +86,46 @@ class CueTextTest {
         val off = SessionConfig(alarms = AlarmConfig(wbtbEnabled = true, wbtbGuide = false))
         assertFalse(guideOn(off))
         val settle = guideText(GuideClip.SETTLE, wbtb)
-        assertTrue(settle.contains("about twelve minutes, then only the soft sound will play for a few more."))
+        assertTrue(settle.contains("about twelve minutes. Then a soft sound will play for a few more minutes."))
         val generic = guideText(GuideClip.MILD, wbtb)
         assertTrue(generic.endsWith("next time I'm dreaming, I will remember I'm dreaming."))
         val signed = wbtb.copy(alarms = wbtb.alarms.copy(dreamSigns = listOf("my old school", "flying")))
-        val ifThen = " Next time I see my old school, I'll know I'm dreaming."
+        val ifThen = " Next time I dream of my old school, I'll know I'm dreaming."
         assertEquals(generic + ifThen, guideText(GuideClip.MILD, signed)) // the first sign only
         // The guide on, or a new first sign, asks for Prepare cues; switched off, the cues stay ready.
         assertNotEquals(cueFingerprint(SessionConfig(), "v"), cueFingerprint(wbtb, "v"))
         assertNotEquals(cueFingerprint(wbtb, "v"), cueFingerprint(signed, "v"))
         assertEquals(cueFingerprint(SessionConfig(), "v"), cueFingerprint(off, "v"))
+    }
+
+    @Test
+    fun noBuiltInLine_saysYouAreDreamingNow_orSpeaksOfReal() {
+        // A listener may be awake: "dream" only as "if… in a dream", "when you dream" or a question (cue_wording.md).
+        val wbtb = SessionConfig(alarms = AlarmConfig(wbtbEnabled = true, dreamSigns = listOf("flying")))
+        val lines = PHASE1_CUES.map { cueText(it, wbtb) } + GuideClip.entries.map { guideText(it, wbtb) } +
+            PHASE1_CUES.map { mitThemeCueText(it, "a tree") }
+        val claim = Regex("""\b(you are|you're) dreaming\b|\breal\b""", RegexOption.IGNORE_CASE)
+        for (line in lines) assertFalse(line, claim.containsMatchIn(line))
+    }
+
+    @Test
+    fun oldBuiltInWords_giveWayToTheNewOnes_ownWordsStay() {
+        // Words the dream-topic button stored, with the topic "dreaming", plus one old default and one own line.
+        val saved = mapOf(
+            PromptCue.INITIAL_INCUBATION to "Remember to think of [THEME].",
+            PromptCue.WAKE_PROMPT to "You're falling asleep. Please tell me, what's going through your mind?",
+            PromptCue.RE_INCUBATION to "Remember to think of [THEME]. You can fall back asleep now.",
+            PromptCue.SESSION_END to "That was the last cue for tonight. Sleep well.",
+            PromptCue.MORNING_WAKE to "Good morning. Rise and shine.",
+        )
+        val config = SessionConfig(theme = "dreaming", audio = AudioConfig(cueTexts = saved))
+        val migrated = dropOldBuiltInWords(config)
+        assertEquals(mapOf(PromptCue.MORNING_WAKE to "Good morning. Rise and shine."), migrated.audio.cueTexts)
+        assertEquals("dreaming", migrated.theme)
+        assertEquals(cueText(PromptCue.WAKE_PROMPT, "x"), cueText(PromptCue.WAKE_PROMPT, migrated))
+        assertNotEquals(cueFingerprint(config, "v"), cueFingerprint(migrated, "v")) // so the voice is made again
+        val clean = SessionConfig()
+        assertSame(clean, dropOldBuiltInWords(clean)) // nothing old: the same config back
     }
 
     @Test

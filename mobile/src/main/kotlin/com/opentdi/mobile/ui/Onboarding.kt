@@ -39,7 +39,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opentdi.mobile.MainViewModel
 import com.opentdi.mobile.UiState
 import com.opentdi.mobile.cues.cueSetProblem
+import com.opentdi.mobile.cues.cueText
 import com.opentdi.mobile.session.SessionMonitor
+import com.opentdi.shared.model.PromptCue
 
 private enum class Step(val title: String) {
     WELCOME("Welcome"),
@@ -108,7 +110,8 @@ private fun StepPage(
             Step.WELCOME -> Section(null) {
                 Text("OpenTDI helps you notice that you are dreaming: a lucid dream.", style = MaterialTheme.typography.titleMedium)
                 Bullets(
-                    "As you fall asleep, the phone or watch softly says \"You are dreaming. You are in control.\"",
+                    "As you fall asleep, the phone or watch softly says " +
+                        "\"${cueText(PromptCue.INITIAL_INCUBATION, ui.config)}\"",
                     "It waits until the watch shows you lying still, so tossing and turning is left alone.",
                     "Optionally the watch wakes you briefly in the early morning, the best-supported way to have a " +
                         "lucid dream at home.",
@@ -130,6 +133,10 @@ private fun StepPage(
                     "Talk to a doctor first if you have ever had a psychotic disorder, narcolepsy, frequent sleep " +
                         "paralysis, sleepwalking or another sleep disorder. Lucid-dream practice disturbs sleep a " +
                         "little; take nights off when you need them.",
+                )
+                Help(
+                    "If everyday life ever starts to feel unreal or dreamlike, stop using OpenTDI and talk to a " +
+                        "doctor.",
                 )
                 Row(
                     Modifier

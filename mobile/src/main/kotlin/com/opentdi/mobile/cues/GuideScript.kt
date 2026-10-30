@@ -13,37 +13,45 @@ fun guideOn(config: SessionConfig) = config.alarms.wbtbEnabled && config.alarms.
  * relay through Google's servers, end-to-end encrypted, when Bluetooth is not available. Sources (sleep_and_dreams.md
  * §8): lying on the side [83][84]; falling asleep during the technique is fine (on 70.7% of occasions, unrelated to
  * lucidity [67]); the MILD recap and intention [66][67]; SSILD after Salvesen's spoken script, shortened [69]; the cue
- * guidance after Carr [63] and Konkoly [70], "sound" for "cue"; the first dream sign as an if-then plan (GUESSED
- * wording). A practice aid: none of it is shown to raise lucid dreaming.
+ * guidance after Carr [63] and Konkoly [70], "sound" for "cue" and "clear and aware" for "lucid"; the first
+ * dream sign as an if-then plan limited to dreams (GUESSED wording). No line tells the listener they are dreaming now
+ * (docs/references/cue_wording.md). A practice aid: none of it is shown to raise lucid dreaming.
  */
 fun guideText(clip: GuideClip, config: SessionConfig): String = when (clip) {
     GuideClip.SETTLE ->
-        "Lie down on your side, eyes closed, light off. Get comfortable. I'll guide you for about twelve minutes, " +
-            "then only the soft sound will play for a few more. If you fall asleep along the way, that's fine."
+        "Turn off the light and lie on your side. Close your eyes. I'll guide you for about twelve minutes. Then a " +
+            "soft sound will play for a few more minutes. If you fall asleep along the way, that's fine."
     GuideClip.MILD -> {
         val sign = config.alarms.dreamSigns.firstOrNull()?.trim()
-        "Bring back the dream you just recorded, and its odd moment. Picture yourself back in it, noticing: this is " +
-            "a dream. Say it silently: next time I'm dreaming, I will remember I'm dreaming." +
-            sign?.let { " Next time I see $it, I'll know I'm dreaming." }.orEmpty()
+        // An upsetting dream is not rehearsed: MILD would replay a nightmare just before sleep (journal notes A7).
+        "Think back to the dream you just had. If nothing comes back, or the dream was upsetting, pick a calm " +
+            "dream you remember. Find one moment in it that was strange. Picture yourself back in that dream. This " +
+            "time you notice the strange moment and know it's only a dream. Say silently to yourself: next time " +
+            "I'm dreaming, I will remember I'm dreaming." +
+            // Only inside a dream: "Next time I see X" taught doubting waking life whenever X happened awake.
+            sign?.let { " Next time I dream of $it, I'll know I'm dreaming." }.orEmpty()
     }
     GuideClip.SSILD ->
-        "Now cycles of attention: sight, sound, body. Sight: the darkness behind your eyelids; don't try to see " +
-            "anything. Sound: whatever you can hear, outside or inside you. Body: the weight of the blanket, your " +
-            "breath, any tingling or heaviness; just watch it calmly. Thoughts will come; let them go."
-    GuideClip.FAST -> "Four quick cycles: two or three seconds on each. Sight, sound, body. Start now."
-    GuideClip.SLOW -> "Now slower: about twenty seconds on each. Four rounds. Start now."
+        "Now move your attention between three things: what you see, what you hear, and what you feel. With " +
+            "your eyes, notice the darkness behind your eyelids. Do not try to see anything. With your ears, " +
+            "listen to any sound, outside or inside you. With your body, feel the blanket and your breathing. " +
+            "Heaviness or tingling is normal. Thoughts will come. Let them go."
+    GuideClip.FAST -> "Now do four quick rounds. Spend two or three seconds on each: eyes, ears, body. Start now."
+    GuideClip.SLOW -> "Now do four slow rounds. Spend about twenty seconds on each. Start now."
     // The watch's WBTB screen showed the sound's meaning in a box; with the guide it is said here instead.
     GuideClip.CUE_INTRO ->
-        "Now we'll pair your sound with this calm awareness. Tonight, when you hear this soft three-note sound, you " +
-            "are dreaming. When you hear it, stay still, eyes closed, and become lucid. Between sounds, keep cycling."
+        "Now you'll hear a soft sound of three notes. Each time it plays, stay still with your eyes closed and " +
+            "become aware. If you hear it later in a dream, you'll know it's only a dream. Between the sounds, " +
+            "keep moving your attention: eyes, ears, body."
     GuideClip.PROMPT_THOUGHTS ->
-        "As you notice the sound, you become lucid. Bring your attention to your thoughts; notice where your mind " +
-            "has wandered."
-    GuideClip.PROMPT_BODY -> "Now observe your body, sensations and feelings."
-    GuideClip.PROMPT_BREATH -> "Observe your breathing."
-    GuideClip.PROMPT_AWARE ->
-        "Remain critically aware, lucid, and notice how this experience is in any way different from normal waking."
+        "As you hear the sound, you become clear and aware. Bring your attention to your thoughts. Notice where " +
+            "your mind has wandered."
+    GuideClip.PROMPT_BODY -> "Now notice your body and how it feels."
+    GuideClip.PROMPT_BREATH -> "Notice your breathing."
+    // Carr's check, left open: awake, the honest answer is no, so it never suggests the room is unreal.
+    GuideClip.PROMPT_AWARE -> "Stay calm and aware. Notice whether anything here is different from being awake."
     GuideClip.CLOSE ->
-        "From now on the sound comes without words. Each time you hear it, become lucid. Next time I'm dreaming, I " +
-            "will remember I'm dreaming. You can drift off now."
+        "From now on, the sound will play without words. If you hear it in a dream, you'll know it's only a " +
+            "dream. You are safe in bed. Say silently to yourself: next time I'm dreaming, I will remember I'm " +
+            "dreaming. You can drift off now."
 }

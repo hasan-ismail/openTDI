@@ -558,7 +558,7 @@ private fun MainScreen(
                             .clip(RoundedCornerShape(18.dp))
                             .background(MaterialTheme.colorScheme.surfaceContainer)
                             .padding(12.dp),
-                    ) { Line("Tonight, when you hear this soft three-note sound, you are dreaming. Notice it.") }
+                    ) { Line("If you hear this soft three-note sound in a dream tonight, you'll know it's only a dream.") }
                 }
             }
             state.lastWakeText?.let { item { Line(it) } }

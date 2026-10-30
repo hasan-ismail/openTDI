@@ -41,31 +41,66 @@ val PHASE1_CUES = listOf(
 )
 
 /**
- * OpenTDI's default words (§7.1): lucidity, telling the sleeper they are dreaming and leaving the rest to them
- * (owner decision 2026-10-27). [theme] is not used; MIT's theme incubation wording is [mitThemeCueText].
- * SESSION_END is the sentence only: the chime is prepended at playback.
+ * OpenTDI's default words (§7.1): lucidity (owner, 2026-10-27 and 2026-10-30). Every line is true whenever it is
+ * heard, awake, drifting off or dreaming: "dream" only as "if… in a dream", "when you dream" or a question, never
+ * "you are dreaming" or "not real" said about now (docs/references/cue_wording.md). [theme] is not used; MIT's
+ * theme incubation wording is [mitThemeCueText]. SESSION_END is the sentence only: the chime is prepended at playback.
  */
 fun cueText(cue: PromptCue, @Suppress("UNUSED_PARAMETER") theme: String): String = when (cue) {
-    PromptCue.INITIAL_INCUBATION -> "You are dreaming. You are in control."
-    PromptCue.WAKE_PROMPT -> "You're falling asleep. You are dreaming now. What do you notice?"
-    PromptCue.RE_INCUBATION -> "You are dreaming. You are in control. You can fall back asleep now."
-    // Not "you can wake up now": the night goes on after the cues (owner, 2026-10-29).
-    PromptCue.SESSION_END -> "That was the last cue for tonight. Sleep well."
-    // Calm and about recall first: being woken by name helped recall more than an alarm tone (§5.2).
-    PromptCue.MORNING_WAKE -> "Good morning. Keep your eyes closed, and replay your dream before you move."
+    // The voice itself as the dream sign (TLR). If it wakes the sleeper, drop the first sentence first.
+    PromptCue.INITIAL_INCUBATION ->
+        "You are safe in bed. If you hear this voice in a dream, you'll know it's only a dream."
+    // Said while waking someone, so it claims nothing about now; Dormio's question, then a dream check.
+    PromptCue.WAKE_PROMPT -> "You were falling asleep. What was going through your mind? Was it a dream?"
+    PromptCue.RE_INCUBATION -> "You can fall back asleep now. When you dream, you'll know it's only a dream."
+    // Not "you can wake up now": the night goes on after the cues (owner, 2026-10-29); the guide may still speak.
+    PromptCue.SESSION_END -> "That's all for now. Sleep well."
+    // Calm and about recall: being woken by name helped recall more than an alarm tone (§5.2). Not "You're awake
+    // now": the alarm repeats, and heard in a dream that line would feed a false awakening.
+    PromptCue.MORNING_WAKE ->
+        "Good morning. It's time to wake up. Lie still with your eyes closed and think back to your dreams."
     PromptCue.SLEEP_STATE_QUESTION -> throw IllegalArgumentException("SLEEP_STATE_QUESTION is Phase 2")
 }
 
-/** MIT Dormio's theme incubation wording (P20 §2.4), with [theme] for [THEME]: the alternative to [cueText]. */
+/**
+ * MIT Dormio's theme incubation wording (P20 §2.4), with [theme] for [THEME]: the alternative to [cueText]. The wake
+ * prompt drops the comma after "Please tell me", which broke the sentence in two (owner, 2026-10-30).
+ */
 fun mitThemeCueText(cue: PromptCue, theme: String): String = when (cue) {
     PromptCue.INITIAL_INCUBATION -> "Remember to think of $theme."
-    PromptCue.WAKE_PROMPT -> "You're falling asleep. Please tell me, what's going through your mind?"
+    PromptCue.WAKE_PROMPT -> "You're falling asleep. Please tell me what's going through your mind."
     PromptCue.RE_INCUBATION -> "Remember to think of $theme. You can fall back asleep now."
     PromptCue.SESSION_END, PromptCue.SLEEP_STATE_QUESTION, PromptCue.MORNING_WAKE -> cueText(cue, theme)
 }
 
 /** Stands for the theme in the user's own cue words, so edited cues follow a later theme change (§7.1). */
 const val THEME_PLACEHOLDER = "[THEME]"
+
+/** Bumped when built-in words change; ConfigStore.loadConfig then runs [dropOldBuiltInWords] once. */
+const val CUE_WORDS_VERSION = 2
+
+// Every text built in before version 2, exactly as Settings stored it (the topic as [THEME_PLACEHOLDER]).
+// shortcut: one list for one bump; on the next bump, keep this list for stored version 1 and add one for version 2.
+private val OLD_BUILT_IN_WORDS = setOf(
+    // OpenTDI's lucidity defaults, 2026-10-27 to 2026-10-30
+    "You are dreaming. You are in control.",
+    "You're falling asleep. You are dreaming now. What do you notice?",
+    "You are dreaming. You are in control. You can fall back asleep now.",
+    "The session is over. You can wake up now.",
+    "That was the last cue for tonight. Sleep well.",
+    "Good morning. Keep your eyes closed, and replay your dream before you move.",
+    // MIT Dormio's: the defaults until 2026-10-27, then what "Use dream-topic wording" stored
+    "Remember to think of $THEME_PLACEHOLDER.",
+    "You're falling asleep. Please tell me, what's going through your mind?",
+    "Remember to think of $THEME_PLACEHOLDER. You can fall back asleep now.",
+)
+
+/** [config] without own words that only repeat an earlier built-in text, so today's words play (§7.1). */
+fun dropOldBuiltInWords(config: SessionConfig): SessionConfig {
+    val own = config.audio.cueTexts.filterValues { it !in OLD_BUILT_IN_WORDS }
+    if (own.size == config.audio.cueTexts.size) return config
+    return config.copy(audio = config.audio.copy(cueTexts = own))
+}
 
 /** The words [cue] is rendered with: the user's own (audio.cueTexts), or the §7.1 wording when missing or blank. */
 fun cueText(cue: PromptCue, config: SessionConfig): String {
