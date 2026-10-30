@@ -89,6 +89,7 @@ data class WbtbOutcome(
     val backToSleepAtMs: Long? = null,
     /** Estimated falling back asleep (LateCues RE_ONSET). */
     val reOnsetMs: Long? = null,
+    /** [reOnsetMs] minus [backToSleepAtMs], whole minutes. */
     val reOnsetLatencyMin: Int? = null,
     /** Why it did not ring, e.g. too little sleep recorded before it. */
     val skipped: String? = null,
@@ -143,8 +144,9 @@ data class DreamReport(
 )
 
 /** Bump whenever [summarizeNight]'s output changes for the same files. */
-const val SUMMARY_VERSION = 4
+const val SUMMARY_VERSION = 5
 
 /** The evening a time belongs to: noon to noon, so an evening and the night after it share one date. */
 fun nightDate(epochMs: Long, zone: ZoneId): LocalDate =
-    Instant.ofEpochMilli(epochMs - 12 * 3_600_000L).atZone(zone).toLocalDate()
+    // On the local clock: 12 elapsed hours would move the boundary to 11 AM or 1 PM on a daylight-saving day.
+    Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDateTime().minusHours(12).toLocalDate()

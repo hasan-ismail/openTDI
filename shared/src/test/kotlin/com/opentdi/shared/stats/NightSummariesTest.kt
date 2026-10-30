@@ -239,6 +239,19 @@ class NightSummariesTest {
     }
 
     @Test
+    fun wbtbGuided_latencyCountsFromTheBuzz_notTheGuidesEnd() {
+        val guided = alarms(
+            listOf(at(190), "WBTB", "RING", null, null, "tone=MELODY;alarm_volume=5"),
+            listOf(at(191), "WBTB", "STOPPED", 0.3f, 72f, "after_ms=60000;first_movement_ms=5000"),
+            listOf(at(246), "WBTB", "BACK_TO_SLEEP", 0.9f, 64f, null),
+            listOf(at(247), "WBTB", "GUIDE_START", null, null, null),
+            listOf(at(266), "CUES", "ARMED", null, null, "night=CUE;start_after_onset_min=30"),
+            listOf(at(276), "CUES", "RE_ONSET", 1f, 58f, "latency_min=0"), // the watch counts from the arm
+        )
+        assertEquals(20, summarize(breakNight + guided)!!.wbtb!!.reOnsetLatencyMin)
+    }
+
+    @Test
     fun wbtbSkipped_orRungOut() {
         val skipped = alarms(listOf(at(120), "WBTB", "SKIPPED", 1f, 60f, "recording_ms=7200000"))
         assertEquals(WbtbOutcome(skipped = "MIN_SLEEP_BEFORE_WBTB"), summarize(night() + skipped)!!.wbtb)
@@ -392,6 +405,11 @@ class NightSummariesTest {
         assertEquals(ms("2026-11-01T07:00"), s.recordEndMs)
         assertEquals(540, s.epochs.asleep.size)
         assertEquals(510, s.sleep!!.sleepMin)
+        // Noon on the local clock, also on daylight-saving days.
+        assertEquals("2026-10-31", nightDate(ms("2026-11-01T11:30"), zone).toString())
+        assertEquals("2026-11-01", nightDate(ms("2026-11-01T12:00"), zone).toString())
+        assertEquals("2027-03-13", nightDate(ms("2027-03-14T11:59"), zone).toString())
+        assertEquals("2027-03-14", nightDate(ms("2027-03-14T12:30"), zone).toString())
     }
 
     @Test

@@ -110,6 +110,7 @@ class LoggingSession(
     private var accelCallbacks = 0L
     private var lastAccelBatchSize = -1
     private val frames = ArrayList<TelemetryFrame>() // emitted since the last telemetry batch
+    private val stillSeconds = ArrayList<Float?>() // each packet's stillness since the last drainStillness()
     private var batches = 0L
     private val extraStates = EnumMap<ExtraTracker, String>(ExtraTracker::class.java) // "on", or why it is off
     private var spo2Check: Spo2Check? = null
@@ -216,6 +217,9 @@ class LoggingSession(
         }
         if (seconds % FILE_FLUSH_S == 0L) flushFiles()
     }
+
+    /** The stillness of each packet since the last call, oldest first: with the screen off they come in bursts. */
+    fun drainStillness(): List<Float?> = stillSeconds.toList().also { stillSeconds.clear() }
 
     /** Logging-only trackers run while their CSV is open: enabled in the config, and PPG not stopped by STORAGE_LOW. */
     fun extraWanted(extra: ExtraTracker): Boolean = when (extra) {
@@ -433,6 +437,7 @@ class LoggingSession(
             val seq = packets++ // outside io(): after a CSV failure the phone still gets rising seqs
             // No engine runs yet: every frame is IDLE, without a score. Its seq is the packet's w_packets.csv seq.
             frames += TelemetryFrame(seq, p, TdiState.IDLE, stateReason = null, completedCycles = 0, score = null)
+            stillSeconds += p.stillnessScore
             io {
                 packetsCsv?.row(
                     p.timestamp, seq, p.source, p.hr, p.hrStatus, p.ibiList, p.rmssd, p.skinConductance,

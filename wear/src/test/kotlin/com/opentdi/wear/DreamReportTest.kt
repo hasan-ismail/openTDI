@@ -82,12 +82,15 @@ class DreamReportTest {
         wbtb.answers[0] = "NO"
         val wake = ReportDraft.open("WAKE", night, signs = false) // the WBTB one is written as it stands
         assertNotSame(wbtb, wake)
+        assertFalse(ReportDraft.isCurrent(wbtb)) // a page still showing it closes instead of saving nothing
+        assertTrue(ReportDraft.isCurrent(wake))
         wake.answers[0] = "YES"
         assertTrue(wake.write())
         assertFalse(wake.write()) // one row per report
         val next = ReportDraft.open("WAKE", night, signs = false) // a saved report is not reopened
         assertNotSame(wake, next)
         assertFalse(ReportDraft.flush()) // nothing said or answered: no row
+        assertFalse(ReportDraft.isCurrent(next)) // dropped by the night ending all the same
         val rows = File(night, CsvFiles.W_MORNING.name).reader().use(::readCsv)
         val after = rows[0].indexOf("after")
         assertEquals(listOf("WBTB", "WAKE"), rows.drop(1).map { it[after] })

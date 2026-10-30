@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.Button
@@ -143,8 +144,12 @@ internal class ReportDraft private constructor(
     companion object {
         private var current: ReportDraft? = null // main thread only
 
-        /** While DreamReportScreen is shown (main thread only): its own Save writes the report, not a night ending. */
-        var onScreen = false
+        /** While DreamReportScreen is shown (set on the main thread): its own Save writes the report, not a night ending. */
+        @Volatile
+        var onScreen = false // LateCues reads it on the sensing thread
+
+        /** False once [draft] was written or dropped by a night ending, or replaced by a new report. */
+        fun isCurrent(draft: ReportDraft) = current === draft
 
         /** The unsaved report after [after] in [dir] to go on with, or a new one; any other is [flush]ed first. */
         fun open(after: String, dir: File, signs: Boolean): ReportDraft {
@@ -199,9 +204,12 @@ fun DreamReportScreen(
         draft.recordedMs = SystemClock.elapsedRealtime() - startedMs // the length shown on the Save page
     }
     // Left without Save (back, the app closing): the recording is kept, and the draft waits for the next opening.
-    DisposableEffect(Unit) {
+    // Shown, not just composed: a report behind the watch face is written when the night ends, and leaving the app
+    // ends the take, as in the background the microphone records silence and nothing else would stop it.
+    LifecycleStartEffect(draft) {
+        if (!ReportDraft.isCurrent(draft)) onDone() // the night ended and wrote it: a Save here would add nothing
         ReportDraft.onScreen = true
-        onDispose {
+        onStopOrDispose {
             ReportDraft.onScreen = false
             stopRecording()
         }

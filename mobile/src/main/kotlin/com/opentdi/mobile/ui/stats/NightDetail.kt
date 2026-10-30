@@ -177,6 +177,21 @@ private fun answers(r: DreamReport): List<Pair<String, String>> {
         "How refreshed?" to r.refreshed?.let { "$it of 5" },
         "Sleep paralysis?" to yes(r.sleepParalysis),
         "Unusual night?" to yes(r.unusualNight),
+        // The watch's labels (DreamReportScreen LABELS), repeated: :mobile cannot read :wear.
+        "Fell asleep during the guide?" to when (r.guideSleep) {
+            "YES" -> "Yes"
+            "NO" -> "No"
+            "UNSURE" -> "Not sure"
+            else -> null
+        },
+        "What was odd?" to when (r.odd) {
+            "FORM" -> "How something looked"
+            "ACTION" -> "What happened"
+            "CONTEXT" -> "Where you were"
+            "NONE" -> "Nothing odd"
+            else -> null
+        },
+        "Did one of your signs show up?" to yes(r.signSeen),
     ).mapNotNull { (q, a) -> a?.let { q to it } }
 }
 

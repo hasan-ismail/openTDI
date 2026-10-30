@@ -66,6 +66,7 @@ import com.opentdi.mobile.link.WatchTelemetry
 import com.opentdi.mobile.session.SessionMonitor
 import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.audio.alarmsAhead
+import com.opentdi.shared.config.MAX_CUE_TEXT_CHARS
 import com.opentdi.shared.config.validate
 import com.opentdi.shared.model.SessionConfig
 import java.time.ZoneId
@@ -270,7 +271,7 @@ fun TonightScreen(
                     errors.map(::settingsProblem).distinct().forEach {
                         Text(it, color = MaterialTheme.colorScheme.error)
                     }
-                    if (errors.any { !it.startsWith("theme") }) {
+                    if (errors.any { !it.startsWith("theme") && !it.startsWith("audio.cueTexts") }) { // keeps those
                         TextButton(onClick = { viewModel.edit(::withDefaultNumbers) }, enabled = idle) {
                             Text("Reset to normal")
                         }
@@ -341,11 +342,12 @@ fun TonightScreen(
 /** Checks a running session cannot act on, or that only matter before it starts. */
 private val NOT_WHILE_RUNNING = setOf(Check.TIMING, Check.TEST_CUE, Check.WATCH_BATTERY)
 
-/** A settings error ([validate]) in plain words; the theme is the one a user can easily get wrong, Reset the rest. */
-private fun settingsProblem(error: String) = if (error.startsWith("theme")) {
-    "Type a dream topic in Settings > Words."
-} else {
-    "Some settings don't fit together."
+/** A settings error ([validate]) in plain words: the topic and the words a user can get wrong; Reset fixes the rest. */
+private fun settingsProblem(error: String) = when {
+    error.startsWith("theme") -> "Type a dream topic in Settings > Words."
+    error.startsWith("audio.cueTexts") ->
+        "One of the voice's lines is too long ($MAX_CUE_TEXT_CHARS letters at most). Shorten it in Settings > Words."
+    else -> "Some settings don't fit together."
 }
 
 /** Start, with a slow breathing halo when nothing needs attention (composed only then, so it costs nothing otherwise). */

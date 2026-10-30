@@ -18,7 +18,11 @@ import com.opentdi.shared.model.WatchStatus
 import com.opentdi.shared.model.TdiCommand
 import com.opentdi.shared.model.SessionEndReason
 import com.opentdi.shared.model.DeviceRole
+import com.opentdi.mobile.link.markWatchSyncPending
+import com.opentdi.mobile.link.pendingWatchSync
+import com.opentdi.mobile.link.watchKnown
 import com.opentdi.mobile.link.watchRequest
+import com.opentdi.mobile.link.watchSyncAnswered
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.mobile.audio.AudioEvent
 import com.opentdi.mobile.audio.CuePlayer
@@ -97,6 +101,7 @@ internal fun testFailure(last: AudioEvent?): String = when (last?.detail ?: last
     "watch_media_volume_off" -> "The watch's volume is off. Turn it up on the watch."
     "watch_media_not_on_speaker" -> "The watch's sound is going to earbuds. Disconnect them, or choose Earbuds in Settings."
     "watch_unreachable" -> "The watch didn't answer. Open OpenTDI on the watch and keep it near the phone."
+    "phone_in_call" -> "A call was on the phone."
     else -> "The voice didn't play. Try again."
 }
 
@@ -251,6 +256,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var watchSync: Job? = null
 
+    init { // after watchSync's initializer, which would otherwise clear the job started here
+        // A change the watch never answered before the app was closed: send it again.
+        if (pendingWatchSync(app) != 0L) syncWatch(ui.value.config)
+    }
+
     /** Applies and saves a settings change; alarm and watch-output changes also go to the watch, even mid-night. */
     fun edit(transform: (SessionConfig) -> SessionConfig) {
         val old = ui.value.config
@@ -258,12 +268,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mutableUi.update { it.copy(config = next) }
         saveConfig(app, next)
         if (next.alarms == old.alarms && next.audio.watchOutput == old.audio.watchOutput) return
+        markWatchSyncPending(app, next.revision)
+        syncWatch(next)
+    }
+
+    /** Sends [config] until the watch answers: a missed change rings at the old time. A newer edit cancels this loop. */
+    private fun syncWatch(config: SessionConfig) {
         // A slider drag sends one request with its last value, so an older request never arrives last.
         watchSync?.cancel()
         watchSync = viewModelScope.launch {
             delay(800)
-            // Until the watch answers: a missed change rings at the old time. A newer edit cancels this loop.
-            while (watchRequest(app, TdiCommand.ConfigSync(null, next)) == null) {
+            while (true) {
+                if (watchRequest(app, TdiCommand.ConfigSync(null, config)) != null) {
+                    watchSyncAnswered(app, config.revision)
+                    break
+                }
+                // No watch at all (a phone-only night): nothing to sync, and no warning nobody could clear.
+                if (!watchKnown(app)) break
                 mutableUi.update { it.copy(alarmsNotSent = true) }
                 delay(30_000)
             }

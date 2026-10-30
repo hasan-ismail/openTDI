@@ -150,7 +150,7 @@ class HealthTrackingForegroundService : LifecycleService() {
         }
         alarmsJson = json
         val p = SensingStateHolder.state.value.lastPacket?.packet
-        alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr)
+        alarms?.tick(System.currentTimeMillis(), p?.stillnessScore, p?.hr, s.drainStillness())
     }
 
     /** Stops the sensors; [endNight] false keeps the night's alarms for the session that starts next. */

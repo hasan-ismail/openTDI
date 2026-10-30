@@ -27,7 +27,7 @@ class TonightTest {
         assertEquals("Ready" to null, statusLines(SessionStatus(), NOW, ready = true))
         assertEquals("Almost ready" to null, statusLines(SessionStatus(), NOW, ready = false))
         assertEquals(
-            "First voice in 12:30" to "Round 1 of 4",
+            "Next voice in 12:30" to "Round 1 of 4", // the voice already spoke at Start
             statusLines(running(TdiState.AWAKE_INCUBATING, 750_000), NOW, ready = true),
         )
         assertEquals(
@@ -187,12 +187,23 @@ class TonightTest {
         val plan = nightPlan(cfg, at23)
         assertEquals(PlanMark("wake-up", 480), plan.last()) // 23:00 to 7:00
         assertEquals(PlanMark("Voice", 10, 180), plan.first())
-        assertEquals("Voice from about 11:10 PM until 2 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, at23))
+        assertEquals("Voice now, then from about 11:10 PM until 2 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, at23))
         assertEquals(PlanMark("wake-up", 480), nightPlan(cfg, at23.withSecond(30)).last()) // still 7:00, not 6:59
         // DST ends at 2:00 that night: 3 real hours end at 1:00, and 7:00 is 9 hours away.
         val fallBack = ZonedDateTime.of(2026, 10, 31, 23, 0, 0, 0, zone)
         assertEquals(PlanMark("wake-up", 540), nightPlan(cfg, fallBack).last())
-        assertEquals("Voice from about 11:10 PM until 1 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, fallBack))
+        assertEquals("Voice now, then from about 11:10 PM until 1 AM at the latest · wake-up 7 AM", nightPlanLine(cfg, fallBack))
+    }
+
+    @Test
+    fun nightPlan_leavesOutAnEarlyWakeUpTheWatchWouldSkip() {
+        val cfg = SessionConfig(alarms = AlarmConfig(wbtbEnabled = true, wbtbAtMin = 4 * 60 + 30))
+        val late = ZonedDateTime.of(2026, 3, 10, 0, 30, 0, 0, ZoneId.of("UTC")) // 4 h before it: the watch skips it
+        assertTrue(nightPlan(cfg, late).none { it.label == "early wake-up" })
+        assertTrue(nightPlanLine(cfg, late).endsWith(" · no early wake-up tonight (less than 4½ hours after Start)"))
+        val midnight = late.withMinute(0) // 4.5 h: it rings
+        assertEquals(PlanMark("early wake-up", 270), nightPlan(cfg, midnight)[1])
+        assertFalse("no early wake-up" in nightPlanLine(cfg, midnight))
     }
 
     private companion object {

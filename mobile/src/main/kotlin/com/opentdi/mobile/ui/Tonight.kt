@@ -33,7 +33,8 @@ fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean, tracking: Bo
             TdiState.AWAKE_INCUBATING -> if (status.nextEventAtRealtimeMs?.let { it <= nowMs } == true) {
                 "Waiting until you're still"
             } else {
-                countdown(if (status.completedCycles == 0) "First voice" else "Next round", left)
+                // "Next": the voice already spoke once at Start.
+                countdown(if (status.completedCycles == 0) "Next voice" else "Next round", left)
             }
             TdiState.HYPNAGOGIA_DETECTED -> countdown("Question", left)
             TdiState.WAKING_USER, TdiState.RE_INCUBATING -> "Speaking…"
@@ -93,7 +94,7 @@ fun presetOf(config: SessionConfig): TimingPreset? = TimingPreset.entries.firstO
 /** "What to expect" in plain words, with the cue words and timing the session will really use. */
 fun whatToExpect(config: SessionConfig): String {
     val still = if (config.timed.waitForStillness) " If you move around, it waits until you're still again." else ""
-    return "Lie down and let your mind wander. When it's time, a soft voice says \"" +
+    return "Lie down and let your mind wander. When you tap Start, and again as you drift off, a soft voice says \"" +
         cueText(PromptCue.INITIAL_INCUBATION, config) + "\" Let the words drift into your thoughts; you don't need " +
         "to wake up. About ${span(config.countdownS)} later it asks \"" + cueText(PromptCue.WAKE_PROMPT, config) +
         "\" Say out loud, in a few words, what was going through your mind. Nothing is recorded: saying it keeps you " +
@@ -148,7 +149,7 @@ fun checklist(
             CheckItem(
                 Check.TIMING,
                 false,
-                "Your timing is set for a test: the first voice would come after $wait. Use night timing for a " +
+                "Your timing is set for a test: the first round would come after $wait. Use night timing for a " +
                     "real night.",
                 blocking = true,
             ),

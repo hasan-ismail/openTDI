@@ -1,5 +1,6 @@
 package com.opentdi.wear
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import com.opentdi.shared.sky.moonPhase
@@ -91,6 +92,7 @@ import kotlinx.coroutines.delay
 class MainActivity : ComponentActivity() {
     private var afterPermissions: (() -> Unit)? = null
     private var resolving = false // Galaxy Store was opened to install or update Health Sensor Service
+    private var notificationsOn by mutableStateOf(true) // read on resume, so a change in Settings shows on return
 
     // Lint sees the androidx.fragment 1.1 that play-services pulls in; its bug is in FragmentActivity, not used here.
     @SuppressLint("InvalidFragmentVersionForActivityResult")
@@ -108,6 +110,8 @@ class MainActivity : ComponentActivity() {
             var logRawAccelChoice by rememberSaveable { mutableStateOf(AccelConfig().logRawAccel) }
             var page by rememberSaveable { mutableStateOf(Page.MAIN) }
             var reportFromEnd by rememberSaveable { mutableStateOf(false) } // opened from End the night
+            // A report page restored after the app was killed has no night behind it, nor any folder the phone copies.
+            LaunchedEffect(state.sessionId) { if (page == Page.REPORT && state.sessionId == null) page = Page.MAIN }
             fun openReport(fromEnd: Boolean) {
                 reportFromEnd = fromEnd
                 page = Page.REPORT
@@ -158,6 +162,8 @@ class MainActivity : ComponentActivity() {
                                     onAllow = ::allowSensors,
                                     onBasicSensors = { startSession(logRawAccel, androidSensorsOnly = true) },
                                     onStatusTap = ::onStatusTap,
+                                    notificationsOff = !notificationsOn,
+                                    onAllowNotifications = ::allowNotifications,
                                     onInBed = { HealthTrackingForegroundService.startGuide(this@MainActivity) },
                                     onReport = { openReport(fromEnd = false) },
                                     onDetails = { page = Page.DETAILS },
@@ -175,10 +181,14 @@ class MainActivity : ComponentActivity() {
                                     dir = File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
                                     requestMic = ::requestMic,
                                     onSaved = { SensingStateHolder.update { it.copy(reportAfter = null) } },
-                                    onDone = { page = backTo },
+                                    // Read now, not when composed: a night ended from the phone has no End the night.
+                                    onDone = {
+                                        page = if (SensingStateHolder.state.value.running) backTo else Page.MAIN
+                                    },
                                 )
                                 Page.END_NIGHT -> EndNightScreen(
-                                    reportDue = state.reportAfter != null,
+                                    // During a snooze too: ended now, the wake-up never rings again to ask them.
+                                    reportDue = state.reportAfter != null || state.wakeAgainAtMs != null,
                                     onReport = { openReport(fromEnd = true) },
                                     alarmsAhead = remember {
                                         val alarms = WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity))
@@ -254,21 +264,49 @@ class MainActivity : ComponentActivity() {
             } else if (!shouldShowRequestPermissionRationale(heartRatePermission(Build.VERSION.SDK_INT)) &&
                 !shouldShowRequestPermissionRationale(Manifest.permission.ACTIVITY_RECOGNITION)
             ) {
-                // Refused for good: Android shows no dialog any more, so the app's settings page is where to allow it;
-                // back from there, onResume waits for the phone.
-                try {
-                    startActivity(
-                        Intent(
-                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            android.net.Uri.fromParts("package", packageName, null),
-                        ),
-                    )
-                } catch (e: android.content.ActivityNotFoundException) {
-                    Unit
-                }
+                openAppSettings() // back from there, onResume waits for the phone
             }
         }
         permissionRequest.launch(missingPermissions().toTypedArray())
+    }
+
+    /**
+     * Refused for good, Android shows no dialog any more: the app's settings page is where to allow it. [first], a
+     * closer page, where the watch has it.
+     */
+    private fun openAppSettings(first: Intent? = null) {
+        val details = Intent(
+            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            android.net.Uri.fromParts("package", packageName, null),
+        )
+        for (intent in listOfNotNull(first, details)) {
+            try {
+                startActivity(intent)
+                return
+            } catch (e: android.content.ActivityNotFoundException) {
+                Unit
+            }
+        }
+    }
+
+    private fun notificationsEnabled() = getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+
+    /** The notifications card: asks while Android still shows its dialog, otherwise opens the notification settings. */
+    private fun allowNotifications() {
+        val settings = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            openAppSettings(settings)
+        } else {
+            afterPermissions = {
+                if (!notificationsEnabled() &&
+                    !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                ) {
+                    openAppSettings(settings)
+                }
+            }
+            permissionRequest.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+        }
     }
 
     /** Requests the runtime permissions first: a health FGS started without them throws (§14.3). */
@@ -291,6 +329,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        notificationsOn = notificationsEnabled()
         // Opening the app waits for the phone's Start session (owner, 2026-10-28), once a sensor permission allows a
         // health service; without one, the one-time setup's Allow asks for it first.
         val s0 = SensingStateHolder.state.value
@@ -304,13 +343,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        // Closed with no night tracked or awaited, nothing keeps the app alive: write a report left without Save now.
+    override fun onStop() {
+        super.onStop()
+        // Closed or behind the watch face with no night tracked or awaited, nothing keeps the app alive: write a report
+        // left without Save now. Not under a permission dialog: the app comes straight back to it.
         val s = SensingStateHolder.state.value
-        if (isFinishing && !s.running && !s.waiting && ReportDraft.flush()) {
+        if (afterPermissions == null && !s.running && !s.waiting && ReportDraft.flush()) {
             SensingStateHolder.update { it.copy(reportAfter = null) }
         }
-        super.onDestroy()
     }
 
     private fun onStatusTap(status: SensorStatus) {
@@ -318,16 +358,21 @@ class MainActivity : ComponentActivity() {
             SensorStatus.HSS_NOT_INSTALLED, SensorStatus.HSS_TOO_OLD ->
                 resolving = SensingStateHolder.state.value.resolve?.invoke(this) == true
             SensorStatus.PERMISSION_MISSING -> {
-                val missing = missingPermissions()
+                val hr = heartRatePermission(Build.VERSION.SDK_INT)
                 afterPermissions = {
-                    // A dropped tracker comes back only in a new session (§11.6), with the same sensor choice.
                     val s = SensingStateHolder.state.value
-                    if (s.running && missingPermissions().size < missing.size) {
-                        val basicChosen = s.source == SensorSource.ANDROID_SENSORS && s.fallbackCause == null
-                        HealthTrackingForegroundService.start(this, s.logRawAccel, androidSensorsOnly = basicChosen)
+                    if (checkSelfPermission(hr) == PackageManager.PERMISSION_GRANTED) {
+                        // A dropped tracker comes back only in a new session (§11.6), with the same sensor choice; a
+                        // grant made in Settings too, which this request no longer sees as new.
+                        if (s.running) {
+                            val basicChosen = s.source == SensorSource.ANDROID_SENSORS && s.fallbackCause == null
+                            HealthTrackingForegroundService.start(this, s.logRawAccel, androidSensorsOnly = basicChosen)
+                        }
+                    } else if (!shouldShowRequestPermissionRationale(hr)) {
+                        openAppSettings()
                     }
                 }
-                permissionRequest.launch(missing.toTypedArray())
+                permissionRequest.launch(missingPermissions().toTypedArray())
             }
             else -> Unit
         }
@@ -363,6 +408,8 @@ private fun MainScreen(
     onAllow: () -> Unit,
     onBasicSensors: () -> Unit,
     onStatusTap: (SensorStatus) -> Unit,
+    notificationsOff: Boolean,
+    onAllowNotifications: () -> Unit,
     onInBed: () -> Unit,
     onReport: () -> Unit,
     onDetails: () -> Unit,
@@ -478,6 +525,14 @@ private fun MainScreen(
             // Only problems; Details lists every status.
             for (status in statuses(state).filter { it !in FINE }) {
                 item { StatusLine(status, state, onStatusTap, short = true) }
+            }
+            // Without notifications a ring has no full-screen alarm, and behind the watch face no button stops it.
+            if (notificationsOff && (state.waiting || state.running)) {
+                item {
+                    Card(onClick = onAllowNotifications, modifier = Modifier.fillMaxWidth()) {
+                        Text("Notifications are off, so an alarm could ring with no button to stop it. Tap to allow.")
+                    }
+                }
             }
             if (state.status == SensorStatus.SDK_POLICY_ERROR) {
                 item {
@@ -735,8 +790,7 @@ private fun liveValues(state: SensingState): List<String> {
         "RMSSD ${format("%.1f", packet?.rmssd)} ms",
         "EDA ${format("%.3f", packet?.skinConductance)} µS, status ${packet?.edaStatus ?: "—"}",
         "Skin ${format("%.1f", packet?.skinTemperature)} °C",
-        // %tR: the local 24-hour time of the epoch-ms timestamp
-        "SpO2 ${state.lastSpo2?.let { String.format(Locale.ROOT, "%d %% at %tR", it, state.lastSpo2AtMs) } ?: "—"}",
+        "SpO2 ${state.lastSpo2?.let { "$it % at ${state.lastSpo2AtMs?.let(WakeAlarms::hhmm) ?: "—"}" } ?: "—"}",
         "Stillness ${format("%.2f", packet?.stillnessScore)}",
         "Accel ${state.lastPacket?.accelSampleCount ?: 0} samples/s",
         "PPG ${format("%.1f", state.ppgRate)} samples/s",

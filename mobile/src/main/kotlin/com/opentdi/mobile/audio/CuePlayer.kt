@@ -182,6 +182,12 @@ class CuePlayer(private val context: Context) {
             name, cue, routedType = reply?.routedType?.takeIf { it >= 0 }, gain = gain * (reply?.factor ?: 1f),
             fadeMs = config.fadeInMs, streamIndex = reply?.streamIndex?.takeIf { it >= 0 }, detail = detail,
         )
+        // A call (ringing, cellular, VoIP, screening) on the phone: the cue must not talk over it, as on the phone
+        // route. No focus request: that would pause the user's own sleep sounds on the phone for a cue played elsewhere.
+        if (audioManager.mode != AudioManager.MODE_NORMAL) {
+            log(event("CUE_SKIPPED", "phone_in_call"))
+            return false
+        }
         val channels = Wearable.getChannelClient(context)
         val channel = try {
             openWatchChannel(channels)

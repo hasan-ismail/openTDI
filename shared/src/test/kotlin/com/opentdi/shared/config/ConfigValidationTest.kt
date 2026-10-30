@@ -8,6 +8,7 @@ import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.AudioConfig
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.model.DetectionConfig
+import com.opentdi.shared.model.LateCueMode
 import com.opentdi.shared.model.LinkConfig
 import com.opentdi.shared.model.PromptCue
 import com.opentdi.shared.model.PpgChannel
@@ -20,6 +21,7 @@ import com.opentdi.shared.model.TimedCueConfig
 import com.opentdi.shared.model.TtsEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -227,6 +229,30 @@ class ConfigValidationTest {
         assertFalse(late.copy(wbtbAtMin = late.wbtbAtMinBeforeWake()).wakeTooSoonAfterWbtb())
         assertEquals(22 * 60 + 30, AlarmConfig(wakeAtMin = 60).wbtbAtMinBeforeWake()) // across midnight
         assertEquals(23 * 60 + 15, AlarmConfig(wakeAtMin = 120, wbtbAwakeMin = 45).wbtbAtMinBeforeWake())
+    }
+
+    @Test
+    fun wakeUpBeforeTheEarlyWakeUp_warns() {
+        val both = AlarmConfig(wakeEnabled = true, wbtbEnabled = true) // 04:30 and 07:00
+        assertFalse(both.wakeBeforeWbtb())
+        assertTrue(both.copy(wakeAtMin = 255).wakeBeforeWbtb()) // up at 04:15 for a flight
+        assertTrue(both.copy(wbtbAtMin = 30, wakeAtMin = 23 * 60 + 50).wakeBeforeWbtb()) // across midnight
+        assertFalse(both.copy(wakeAtMin = 255, wbtbEnabled = false).wakeBeforeWbtb())
+    }
+
+    @Test
+    fun lateCuesThatCannotStartBeforeTheWakeUp_warn_andATimeThatFitsIsOffered() {
+        // Back to bed at 05:00, wake-up at 07:00, guide on: 19 + 10 + 10 + 40 = 79 of 120 min.
+        val on = AlarmConfig(wakeEnabled = true, wbtbEnabled = true, lateCues = LateCueMode.ON)
+        assertFalse(on.lateCuesAfterWake())
+        val late = on.copy(lateCueAfterOnsetMin = 90)
+        assertTrue(late.lateCuesAfterWake())
+        assertEquals(80, late.lateCueAfterOnsetMinThatFits())
+        assertFalse(late.copy(lateCueAfterOnsetMin = 80).lateCuesAfterWake())
+        assertFalse(late.copy(wbtbGuide = false).lateCuesAfterWake()) // 20 + 90 = 110
+        assertFalse(late.copy(lateCues = LateCueMode.OFF).lateCuesAfterWake())
+        assertFalse(late.copy(wakeEnabled = false).lateCuesAfterWake())
+        assertNull(on.copy(wakeAtMin = 5 * 60 + 45).lateCueAfterOnsetMinThatFits()) // 45 min: nothing fits
     }
 
     @Test

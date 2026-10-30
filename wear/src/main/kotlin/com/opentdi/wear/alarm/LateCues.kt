@@ -8,6 +8,7 @@ import com.opentdi.shared.config.StructuralConstants.MAJOR_MOVEMENT_MIN_S
 import com.opentdi.shared.config.StructuralConstants.MAJOR_MOVEMENT_WINDOW_S
 import com.opentdi.shared.config.StructuralConstants.RE_ONSET_MS
 import com.opentdi.shared.model.AlarmConfig
+import com.opentdi.wear.ReportDraft
 import kotlin.random.Random
 
 /**
@@ -80,6 +81,7 @@ class LateCues(
         armedAtMs = nowMs
         startAtMs = null
         endAtMs = nowMs + LATE_CUE_WINDOW_MS
+        trainingLeft = 0 // back in bed: training still held behind the dream questions would wake the sleeper
         val night = if (cueNight) "CUE" else "NO_CUE"
         log("ARMED", null, null, "night=$night$pair;start_after_onset_min=${c.lateCueAfterOnsetMin}")
     }
@@ -96,22 +98,24 @@ class LateCues(
 
     fun close() = sound.stop()
 
-    fun tick(nowMs: Long, stillness: Float?, hr: Float?) {
+    /** [stillness] and [hr] are the newest packet's, for the log; [seconds] the stillness of each packet since. */
+    fun tick(nowMs: Long, stillness: Float?, hr: Float?, seconds: List<Float?>) {
         if (endAtMs?.let { nowMs >= it } == true) disarm()
-        if (trainingLeft > 0 && nowMs >= nextTrainingAtMs) {
+        // Held under the dream questions: the meaning shows on the main screen, and the sound would be recorded.
+        if (trainingLeft > 0 && nowMs >= nextTrainingAtMs && !ReportDraft.onScreen) {
             play(TRAINING_VOLUME)
             trainingLeft--
             nextTrainingAtMs = nowMs + TRAINING_GAP_MS
             log("TRAINING_CUE", stillness, hr, null)
         }
-        recentMoving.addLast(stillness == null || stillness < STILL_THRESHOLD)
-        if (recentMoving.size > MAJOR_MOVEMENT_WINDOW_S) recentMoving.removeFirst()
-        if (recentMoving.count { it } >= MAJOR_MOVEMENT_MIN_S) {
-            if (stillSinceMs != null && boutCues > 0) log("PAUSE_MOVEMENT", stillness, hr, "bout_cues=$boutCues")
-            stillSinceMs = null
-            boutCues = 0
-        } else if (stillSinceMs == null) {
-            stillSinceMs = nowMs
+        for (second in seconds) { // with the screen off they come in bursts: each one counts, not just the newest
+            if (recentMoving.addSecond(second)) {
+                if (stillSinceMs != null && boutCues > 0) log("PAUSE_MOVEMENT", stillness, hr, "bout_cues=$boutCues")
+                stillSinceMs = null
+                boutCues = 0
+            } else if (stillSinceMs == null) {
+                stillSinceMs = nowMs
+            }
         }
         armedAtMs?.let { armed ->
             val onset = reOnsetAt(armed, stillSinceMs, nowMs) ?: return@let
@@ -142,7 +146,6 @@ class LateCues(
         const val KEY_FIRST_MS = "experiment_first_ms" // when the pair's first night was armed
         const val PAIR_MAX_MS = 7 * 24 * 3_600_000L // GUESSED: an older pending arm is dropped and a new pair starts
         const val SAMPLE_RATE = 24_000
-        const val STILL_THRESHOLD = 0.8f // the StillnessGate's default (MIT_STANDARD) still second
         const val STILL_MS = 5 * 60_000L // home TLR study: cues resume 5 min after movement stops
         const val CUES_PER_BOUT = 10 // the Netherlands lab's cap per REM period
         const val MIN_GAP_MS = 20_000L
@@ -159,6 +162,15 @@ class LateCues(
 
 /** GUESSED: the cue while awake, in training or the guide; louder than the night's lateCueVolume. */
 internal const val TRAINING_VOLUME = 0.4f
+
+private const val STILL_THRESHOLD = 0.8f // the StillnessGate's default (MIT_STANDARD) still second
+
+/** Adds one packet's second to the last [MAJOR_MOVEMENT_WINDOW_S]; true while they hold a major movement (§8.10). */
+internal fun ArrayDeque<Boolean>.addSecond(stillness: Float?): Boolean {
+    addLast(stillness == null || stillness < STILL_THRESHOLD)
+    if (size > MAJOR_MOVEMENT_WINDOW_S) removeFirst()
+    return count { it } >= MAJOR_MOVEMENT_MIN_S
+}
 
 /**
  * The estimated re-onset once the still stretch that began at [stillSinceMs] (null while moving) has lasted

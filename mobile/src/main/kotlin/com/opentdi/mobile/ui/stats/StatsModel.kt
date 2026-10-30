@@ -386,10 +386,10 @@ fun marks(s: NightSummary): List<Mark> = buildList {
     }
 }.sortedBy { it.atMs }
 
-/** "Recorded 6:45, after the wake-up alarm" from the watch's w_dream_HHmmss.m4a name and the report that made it. */
+/** "Recorded 6:45 AM, after the wake-up alarm" from the watch's w_dream_HHmmss.m4a name and the report that made it. */
 fun recordingLabel(name: String, reports: List<DreamReport>): String {
     val time = Regex("""w_dream_(\d{2})(\d{2})\d{2}\.m4a""").matchEntire(name)
-        ?.let { "Recorded ${it.groupValues[1].toInt()}:${it.groupValues[2]}" }
+        ?.let { "Recorded ${clock12(it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt())}" }
     val after = when (reports.firstOrNull { it.recording == name }?.after) {
         "WAKE" -> "after the wake-up alarm"
         "WBTB" -> "at the early wake-up"

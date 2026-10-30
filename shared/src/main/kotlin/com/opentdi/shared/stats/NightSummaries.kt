@@ -199,12 +199,15 @@ private fun wbtbOutcome(alarms: List<AlarmRow>): WbtbOutcome? {
     val buzz = up?.let { alarms.next(it + 1) { r -> r.alarm == WBTB && r.event == "BACK_TO_SLEEP" } }
     // LateCues logs RE_ONSET on the first one-second tick RE_ONSET_MS after the still stretch began: within about 1 s.
     val reOnset = buzz?.let { alarms.next(it + 1) { r -> r.alarm == CUES && r.event == "RE_ONSET" } }?.let(alarms::get)
+    val buzzMs = buzz?.let { alarms[it].wallMs }
+    val reOnsetMs = reOnset?.let { it.wallMs - StructuralConstants.RE_ONSET_MS }
     return WbtbOutcome(
         ringAtMs = alarms[first].wallMs,
         upAtMs = up?.let { alarms[it].wallMs },
-        backToSleepAtMs = buzz?.let { alarms[it].wallMs },
-        reOnsetMs = reOnset?.let { it.wallMs - StructuralConstants.RE_ONSET_MS },
-        reOnsetLatencyMin = reOnset?.detail?.get("latency_min")?.toIntOrNull(),
+        backToSleepAtMs = buzzMs,
+        reOnsetMs = reOnsetMs,
+        // From the buzz, not the row's latency_min: on a guided night the watch counts from the guide's end.
+        reOnsetLatencyMin = if (buzzMs != null && reOnsetMs != null) ((reOnsetMs - buzzMs) / 60_000).toInt() else null,
     )
 }
 

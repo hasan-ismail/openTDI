@@ -53,7 +53,7 @@ class CueTextTest {
     }
 
     @Test
-    fun spokenWakeUp_saysTheSleepersName_unlessTheWordsAreTheirOwn() {
+    fun spokenWakeUp_saysTheSleepersName_whereverTheWordsSayGoodMorning() {
         val named = SessionConfig(alarms = AlarmConfig(sleeperName = " Hasan "))
         assertEquals(
             "Good morning, Hasan. Keep your eyes closed, and replay your dream before you move.",
@@ -61,6 +61,14 @@ class CueTextTest {
         )
         val own = named.copy(audio = AudioConfig(cueTexts = mapOf(PromptCue.MORNING_WAKE to "Wake up slowly.")))
         assertEquals("Wake up slowly.", cueText(PromptCue.MORNING_WAKE, own))
+        // Lightly edited words keep the name, and a new name asks for Prepare cues again.
+        val edited = named.copy(audio = AudioConfig(cueTexts = mapOf(PromptCue.MORNING_WAKE to "Good morning. Lie still.")))
+        assertEquals("Good morning, Hasan. Lie still.", cueText(PromptCue.MORNING_WAKE, edited))
+        val renamed = edited.copy(alarms = AlarmConfig(sleeperName = "Sam"))
+        assertNotEquals(cueFingerprint(edited, "v"), cueFingerprint(renamed, "v"))
+        // Other cues never say it.
+        val ownNight = named.copy(audio = AudioConfig(cueTexts = mapOf(PromptCue.WAKE_PROMPT to "Good morning.")))
+        assertEquals("Good morning.", cueText(PromptCue.WAKE_PROMPT, ownNight))
         // A new own recording asks for Prepare cues again.
         val recorded = named.copy(audio = AudioConfig(ownVoice = mapOf(PromptCue.WAKE_PROMPT to "abc")))
         assertTrue(cueFingerprint(named, "v") != cueFingerprint(recorded, "v"))

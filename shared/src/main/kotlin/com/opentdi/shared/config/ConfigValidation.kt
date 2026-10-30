@@ -1,5 +1,6 @@
 package com.opentdi.shared.config
 
+import com.opentdi.shared.config.StructuralConstants.RE_ONSET_MS
 import com.opentdi.shared.config.StructuralConstants.nEdaMin
 import com.opentdi.shared.config.StructuralConstants.nHrMin
 import com.opentdi.shared.config.StructuralConstants.nStillMin
@@ -8,6 +9,9 @@ import com.opentdi.shared.model.LateCueMode
 import com.opentdi.shared.model.NEURAL_SPEAKERS
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.model.SimulationMode
+
+/** The longest words one cue may have; the Settings field stops there. */
+const val MAX_CUE_TEXT_CHARS = 300
 
 /** Every range of model/SessionConfig.kt and the cross-rules of §8.14; empty = valid. Each message names its field. */
 fun SessionConfig.validate(): List<String> {
@@ -108,7 +112,9 @@ fun SessionConfig.validate(): List<String> {
         float("audio.ttsSpeechRate", ttsSpeechRate, 0.5f..1.2f)
         int("audio.phrasePauseMs", phrasePauseMs, 0..2000)
         cueTexts.forEach { (cue, text) ->
-            rule(text.length <= 300) { "audio.cueTexts.$cue must be at most 300 characters, is ${text.length}" }
+            rule(text.length <= MAX_CUE_TEXT_CHARS) {
+                "audio.cueTexts.$cue must be at most $MAX_CUE_TEXT_CHARS characters, is ${text.length}"
+            }
         }
         rule(neuralSpeaker in NEURAL_SPEAKERS) { "audio.neuralSpeaker = $neuralSpeaker is not a voice of the model" }
     }
@@ -169,5 +175,25 @@ fun AlarmConfig.wakeTooSoonAfterWbtb(): Boolean = wakeEnabled && wbtbEnabled &&
 /** The WBTB alarm time that leaves exactly [MIN_WAKE_AFTER_BACK_TO_BED_MIN] from back to bed to the wake-up. */
 fun AlarmConfig.wbtbAtMinBeforeWake(): Int =
     Math.floorMod(wakeAtMin - wbtbAwakeMin - MIN_WAKE_AFTER_BACK_TO_BED_MIN, MINUTES_PER_DAY)
+
+/** Both alarms on, and the wake-up rings in the 12 h before the WBTB alarm: that night has no WBTB after it. */
+fun AlarmConfig.wakeBeforeWbtb(): Boolean = wakeEnabled && wbtbEnabled &&
+    Math.floorMod(wbtbAtMin - wakeAtMin, MINUTES_PER_DAY) < 12 * 60
+
+/** Late cues on, and the wake-up rings before the first one could play (lateCueAfterOnsetMin too long): none plays. */
+fun AlarmConfig.lateCuesAfterWake(): Boolean = wakeEnabled && wbtbEnabled && lateCues != LateCueMode.OFF &&
+    backToBedToWakeMin() < lateCueLeadMin() + lateCueAfterOnsetMin
+
+/** The longest lateCueAfterOnsetMin (a multiple of 5, at least 10) whose cues come before the wake-up, or null. */
+fun AlarmConfig.lateCueAfterOnsetMinThatFits(): Int? =
+    ((backToBedToWakeMin() - lateCueLeadMin()) / 5 * 5).takeIf { it >= 10 }
+
+private fun AlarmConfig.backToBedToWakeMin() = Math.floorMod(wakeAtMin - wbtbAtMin - wbtbAwakeMin, MINUTES_PER_DAY)
+
+/**
+ * From the back-to-sleep buzz to the first late cue, besides lateCueAfterOnsetMin. GUESSED: the guided back-to-sleep
+ * (GuideRoutine, about 19 min) when on, the still stretch taken as falling asleep (RE_ONSET_MS), 10 min for the cues.
+ */
+private fun AlarmConfig.lateCueLeadMin() = (if (wbtbGuide) 19 else 0) + (RE_ONSET_MS / 60_000L).toInt() + 10
 
 private const val MINUTES_PER_DAY = 24 * 60

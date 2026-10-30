@@ -5,12 +5,15 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import com.flyfishxu.kadb.Kadb
 import com.flyfishxu.kadb.cert.KadbCert
 import com.flyfishxu.kadb.cert.OkioFilePrivateKeyStore
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -98,7 +101,11 @@ class WatchInstaller(private val context: Context) {
             @Suppress("DEPRECATION")
             nsd.resolveService(info, object : NsdManager.ResolveListener {
                 override fun onServiceResolved(resolved: NsdServiceInfo) = found(resolved.host?.hostAddress, resolved.port)
-                override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) = Unit
+                override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
+                    // Android 13 resolves one service per app at a time: try again once the other one is done.
+                    if (errorCode != NsdManager.FAILURE_ALREADY_ACTIVE) return
+                    Handler(Looper.getMainLooper()).postDelayed({ if (listeners.isNotEmpty()) resolve(info, type) }, 500L)
+                }
             })
         }
     }
@@ -108,14 +115,16 @@ class WatchInstaller(private val context: Context) {
      * dozes never answers, so it gives up after 30 s.
      */
     suspend fun pair(endpoint: AdbEndpoint, code: String): String? = try {
+        var paired = false
         withTimeoutOrNull(PAIR_TIMEOUT_MS) {
-            withContext(Dispatchers.IO) {
+            // Kadb's blocking pair ignores cancellation: keep a pair that ends after the timeout or the card closed.
+            withContext(Dispatchers.IO + NonCancellable) {
                 Kadb.pair(endpoint.host, endpoint.port, code)
-                // No suspension point in between: a pair that ends after the card closed or the timeout is kept too.
                 prefs.edit().putString(KEY_HOST, endpoint.host).apply()
+                paired = true
             }
-            null
-        } ?: "The watch did not answer. Tap its screen to keep it awake and try again."
+        }
+        if (paired) null else "The watch did not answer. Tap its screen to keep it awake and try again."
     } catch (e: Exception) {
         if (e is kotlinx.coroutines.CancellationException) throw e
         "Pairing failed: ${e.message}. Check the code and try once more."

@@ -93,6 +93,12 @@ fun nextAlarmAt(minuteOfDay: Int, fromMs: Long, zone: ZoneId): Long {
     return at.toInstant().toEpochMilli()
 }
 
+/** The least sleep before a WBTB alarm: the watch skips one sooner after the night's start. */
+const val MIN_SLEEP_BEFORE_WBTB_MS = 270 * 60_000L // 4.5 h
+
+/** Too early a WBTB cuts the first, deep half of the night and did worse (4.5 h vs 6 h, Erlacher 2022). */
+fun wbtbTooSoon(atMs: Long, nightStartMs: Long) = atMs - nightStartMs < MIN_SLEEP_BEFORE_WBTB_MS
+
 /**
  * The alarms of [config] still to ring tonight, soonest first, e.g. "the early wake-up at 4:30 AM and the wake-up
  * alarm at 7 AM"; null when none. One more than 12 h away has already rung this night, or belongs to the next one.

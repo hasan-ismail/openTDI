@@ -42,5 +42,13 @@
             android:name=".session.NapSessionService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Resends an alarm change the watch missed when it comes back in reach, even with the app closed. -->
+        <service android:name=".link.WatchSyncListener" android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CAPABILITY_CHANGED" />
+                <data android:scheme="wear" android:host="*" android:path="/opentdi_watch" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

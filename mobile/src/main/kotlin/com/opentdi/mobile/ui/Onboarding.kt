@@ -155,6 +155,7 @@ private fun StepPage(
                     "The watch wakes you gently at this time, then asks about your dream. Change the time if you " +
                         "need to.",
                 )
+                if (ui.preparing) Help("${ui.prepareStatus} You can change the alarms when it's done.")
                 AlarmsCard(ui.config, idle, viewModel::edit, viewModel)
             }
             Step.FIRST_NIGHT -> Section(null) {

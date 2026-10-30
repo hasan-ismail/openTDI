@@ -2,7 +2,9 @@ package com.opentdi.wear.alarm
 
 import com.opentdi.shared.config.StructuralConstants.RE_ONSET_MS
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LateCuesTest {
@@ -42,6 +44,16 @@ class LateCuesTest {
         val at = armedAt!!
         assertEquals(buzz + 7 * min + 400, at)
         assertEquals(at, reOnsetAt(at, buzz + 3 * min, at + RE_ONSET_MS)) // still since before: counted from the stop
+    }
+
+    @Test
+    fun movement_countsEveryPacketOfAScreenOffBurst() {
+        // A burst of five seconds ending in a twitch: one moving second, no major movement.
+        val twitch = ArrayDeque<Boolean>()
+        assertFalse(listOf(0.9f, 0.9f, 0.9f, 0.9f, 0.1f).map { twitch.addSecond(it) }.any { it })
+        // Rolling over for three seconds, then still: a major movement, though the burst's newest second is still.
+        val rollOver = ArrayDeque<Boolean>()
+        assertTrue(listOf(0.1f, 0.1f, 0.1f, 0.9f, 0.9f).map { rollOver.addSecond(it) }.any { it })
     }
 
     @Test

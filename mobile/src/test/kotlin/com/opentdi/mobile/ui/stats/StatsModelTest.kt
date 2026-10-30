@@ -257,8 +257,9 @@ class StatsModelTest {
         assertEquals("3", num(3f))
 
         val made = listOf(DreamReport(0, "WAKE", recording = "w_dream_064512.m4a"))
-        assertEquals("Recorded 6:45, after the wake-up alarm", recordingLabel("w_dream_064512.m4a", made))
-        assertEquals("Recorded 23:59", recordingLabel("w_dream_235901.m4a", made))
+        assertEquals("Recorded 6:45 AM, after the wake-up alarm", recordingLabel("w_dream_064512.m4a", made))
+        assertEquals("Recorded 11:59 PM", recordingLabel("w_dream_235901.m4a", made))
+        assertEquals("Recorded 12:15 AM", recordingLabel("w_dream_001500.m4a", made))
         assertEquals("odd.m4a", recordingLabel("odd.m4a", made))
     }
 

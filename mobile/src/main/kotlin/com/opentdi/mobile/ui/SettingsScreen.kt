@@ -7,6 +7,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.LocalActivity
 import android.Manifest
 import android.content.Intent
 import android.media.AudioManager
@@ -64,6 +65,10 @@ import com.opentdi.mobile.cues.cueText
 import com.opentdi.mobile.cues.mitThemeCueText
 import com.opentdi.mobile.cues.speakerLabel
 import com.opentdi.mobile.session.SessionMonitor
+import com.opentdi.shared.config.MAX_CUE_TEXT_CHARS
+import com.opentdi.shared.config.lateCueAfterOnsetMinThatFits
+import com.opentdi.shared.config.lateCuesAfterWake
+import com.opentdi.shared.config.wakeBeforeWbtb
 import com.opentdi.shared.config.wakeTooSoonAfterWbtb
 import com.opentdi.shared.config.wbtbAtMinBeforeWake
 import com.opentdi.shared.model.AudioRouteMode
@@ -87,8 +92,14 @@ fun SettingsScreen(viewModel: MainViewModel) {
     var advanced by rememberSaveable { mutableStateOf(false) }
     // Leaving Settings gets the voice ready for what changed here, so Start is not blocked at bedtime.
     val latest by rememberUpdatedState(Triple(idle, cueProblem, ui.config.theme.length in 1..60))
+    val activity = LocalActivity.current
     DisposableEffect(Unit) {
-        onDispose { if (latest.first && latest.second != null && latest.third) viewModel.prepareCues() }
+        onDispose {
+            // A rotation or theme change rebuilds the screen; that is not leaving Settings.
+            if (activity?.isChangingConfigurations != true && latest.first && latest.second != null && latest.third) {
+                viewModel.prepareCues()
+            }
+        }
     }
 
     Page("Settings") {
@@ -103,7 +114,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Section("Defaults") {
                     Help(
-                        "The normal timing follows MIT Dormio's timer method: the first voice after 10–15 min, 3 min " +
+                        "The normal timing follows MIT Dormio's timer method: the first round after 10–15 min, 3 min " +
                             "before the question, 7 min before the next round. Resetting keeps your words, voice, " +
                             "alarm times and recordings.",
                     )
@@ -311,9 +322,13 @@ private fun CueWords(
     Column {
         OutlinedTextField(
             value = own ?: template,
-            onValueChange = { text -> edit { it.copy(audio = it.audio.copy(cueTexts = it.audio.cueTexts + (cue to text))) } },
+            onValueChange = { text ->
+                val words = text.take(MAX_CUE_TEXT_CHARS)
+                edit { it.copy(audio = it.audio.copy(cueTexts = it.audio.cueTexts + (cue to words))) }
+            },
             label = { Text(cueLabel(cue)) },
             placeholder = { Text(template) }, // an emptied field is rendered with these words
+            supportingText = { Text("${(own ?: template).length} / $MAX_CUE_TEXT_CHARS") }, // shows a cut paste
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -421,9 +436,10 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
                 timed.stillForS / 60, 1..30, 1, "min", enabled,
             ) { v -> edit { it.copy(timed = it.timed.copy(stillForS = v * 60)) } }
         }
-        // Each pushes the other along, so earliest never passes latest (validation would block Start).
+        // Each pushes the other along, so earliest never passes latest (validation would block Start), and latest
+        // stays before Stop after (else the night ends before its first round).
         IntSetting(
-            "First voice, earliest", "The voice first comes at a random minute between earliest and latest.",
+            "First round, earliest", "The first round comes at a random minute between earliest and latest.",
             timed.firstSleepMinMin, 1..60, 1, "min", enabled,
         ) { v ->
             edit {
@@ -431,11 +447,14 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
             }
         }
         IntSetting(
-            "First voice, latest", "Give yourself time to fall asleep before the voice first comes.",
+            "First round, latest", "Give yourself time to fall asleep before the first round.",
             timed.firstSleepMaxMin, 1..90, 1, "min", enabled,
         ) { v ->
             edit {
-                it.copy(timed = it.timed.copy(firstSleepMaxMin = v, firstSleepMinMin = minOf(v, it.timed.firstSleepMinMin)))
+                it.copy(
+                    sessionMaxMin = maxOf(it.sessionMaxMin, v / 5 * 5 + 5),
+                    timed = it.timed.copy(firstSleepMaxMin = v, firstSleepMinMin = minOf(v, it.timed.firstSleepMinMin)),
+                )
             }
         }
         IntSetting(
@@ -457,7 +476,13 @@ private fun TimingCard(config: SessionConfig, enabled: Boolean, edit: Edit) {
         IntSetting(
             "Stop after", "The voice stops after this long, even if rounds are left.",
             config.sessionMaxMin, 15..180, 5, "min", enabled,
-        ) { v -> edit { it.copy(sessionMaxMin = v) } }
+        ) { v ->
+            edit {
+                val latest = minOf(it.timed.firstSleepMaxMin, v - 5)
+                val earliest = minOf(it.timed.firstSleepMinMin, latest)
+                it.copy(sessionMaxMin = v, timed = it.timed.copy(firstSleepMinMin = earliest, firstSleepMaxMin = latest))
+            }
+        }
     }
 }
 
@@ -491,7 +516,15 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 label = { Text("Your name") },
                 supportingText = {
                     val name = alarms.sleeperName.trim().ifEmpty { "<name>" }
-                    Text("The spoken wake-up says \"Good morning, $name.\" Then tap Get the voice ready.")
+                    // Own wake-up words without "Good morning." never get the name (cueText).
+                    val said = alarms.sleeperName.isBlank() || name in cueText(PromptCue.MORNING_WAKE, config)
+                    Text(
+                        if (said) {
+                            "The spoken wake-up says \"Good morning, $name.\" Then tap Get the voice ready."
+                        } else {
+                            "Your own wake-up words are used. Add your name to them in Settings > Words."
+                        },
+                    )
                 },
                 singleLine = true,
                 enabled = enabled,
@@ -521,6 +554,11 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                     onClick = { change { it.copy(wbtbAtMin = it.wbtbAtMinBeforeWake()) } },
                     enabled = enabled,
                 ) { Text("Early wake-up at ${clock12(alarms.wbtbAtMinBeforeWake())} instead") }
+            } else if (alarms.wakeBeforeWbtb()) {
+                Text(
+                    "Your wake-up alarm is before your early wake-up, so the early wake-up won't ring.",
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
             }
             ToneChips(alarms.wbtbTone, enabled, onTest) { t -> change { it.copy(wbtbTone = t) } }
             if (LocalAdvanced.current) {
@@ -572,7 +610,9 @@ private fun LateCuesSettings(
                 "The watch teaches you a soft three-note sound, then plays it quietly once you're asleep again. Not " +
                     "proven to work."
             LateCueMode.EXPERIMENT ->
-                "The watch secretly plays the sounds on some nights and not others, so Stats can show whether they help."
+                "The watch secretly plays the sounds on some nights and not others, so Stats can show whether they help." +
+                    if (alarms.wakeEnabled) "" else " Turn on the wake-up alarm: Stats compares the dream questions " +
+                        "after it."
         },
     )
     if (alarms.lateCues != LateCueMode.OFF) {
@@ -592,6 +632,17 @@ private fun LateCuesSettings(
             "How long after you fall back asleep. Dreams usually return about 40 minutes later.",
             alarms.lateCueAfterOnsetMin, 10..120, 5, "min", enabled,
         ) { v -> change { it.copy(lateCueAfterOnsetMin = v) } }
+        if (alarms.lateCuesAfterWake()) {
+            Text(
+                "Your wake-up alarm comes before the first sound, so no sound would play.",
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+            alarms.lateCueAfterOnsetMinThatFits()?.let { fit ->
+                TextButton(onClick = { change { it.copy(lateCueAfterOnsetMin = fit) } }, enabled = enabled) {
+                    Text("First sound after $fit min instead")
+                }
+            }
+        }
     }
 }
 

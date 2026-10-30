@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.opentdi.shared.audio.nextAlarmAt
+import com.opentdi.shared.audio.wbtbTooSoon
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.time.clock12
 import java.time.ZonedDateTime
@@ -24,22 +25,30 @@ fun nightPlan(c: SessionConfig, now: ZonedDateTime): List<PlanMark> {
     val nowMs = now.toInstant().toEpochMilli()
     // As the watch sets them; rounded up, so an alarm keeps its minute when now has seconds.
     fun ahead(at: Int) = ((nextAlarmAt(at, nowMs, now.zone) - nowMs + 59_999) / 60_000).toInt()
+    // The watch skips an early wake-up too soon after Start, in milliseconds, so not by the rounded minutes.
+    // shortcut: a night restarted soon after a stopped one keeps its earlier start on the watch (WakeAlarms), so the
+    // plan can wrongly leave the early wake-up out then; upgrade if the phone ever learns the watch's night start.
+    val wbtbRings = !wbtbTooSoon(nextAlarmAt(c.alarms.wbtbAtMin, nowMs, now.zone), nowMs)
     return listOfNotNull(
         PlanMark(CUES, minOf(c.timed.firstSleepMinMin, c.sessionMaxMin), c.sessionMaxMin),
-        PlanMark(WBTB, ahead(c.alarms.wbtbAtMin)).takeIf { c.alarms.wbtbEnabled },
+        PlanMark(WBTB, ahead(c.alarms.wbtbAtMin)).takeIf { c.alarms.wbtbEnabled && wbtbRings },
         PlanMark(WAKE, ahead(c.alarms.wakeAtMin)).takeIf { c.alarms.wakeEnabled },
     )
 }
 
-/** "Voice from about 11:20 PM until 2:10 AM at the latest · early wake-up 4:30 AM · wake-up 7 AM" for [nightPlan]. */
+/** "Voice now, then from about 11:20 PM until 2:10 AM at the latest · early wake-up 4:30 AM · wake-up 7 AM". */
 fun nightPlanLine(c: SessionConfig, now: ZonedDateTime): String {
     fun at(min: Int) = now.plusMinutes(min.toLong()).let { clock12(it.hour * 60 + it.minute) }
-    return nightPlan(c, now).joinToString(" · ") {
+    val marks = nightPlan(c, now)
+    // The voice speaks once at Start (TimedCueScheduler.start), then in rounds.
+    val line = marks.joinToString(" · ") {
         when (it.label) {
-            CUES -> "Voice from about ${at(it.fromMin)} until ${at(it.toMin)} at the latest"
+            CUES -> "Voice now, then from about ${at(it.fromMin)} until ${at(it.toMin)} at the latest"
             else -> "${it.label} ${at(it.fromMin)}"
         }
     }
+    val skipped = c.alarms.wbtbEnabled && marks.none { it.label == WBTB }
+    return if (skipped) "$line · no early wake-up tonight (less than 4½ hours after Start)" else line
 }
 
 /** Tonight's plan as a timeline from now (a hollow dot) to the last alarm, shown while no session runs. */

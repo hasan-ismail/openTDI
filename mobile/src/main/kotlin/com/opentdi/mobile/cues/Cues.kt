@@ -70,13 +70,14 @@ const val THEME_PLACEHOLDER = "[THEME]"
 /** The words [cue] is rendered with: the user's own (audio.cueTexts), or the §7.1 wording when missing or blank. */
 fun cueText(cue: PromptCue, config: SessionConfig): String {
     val own = config.audio.cueTexts[cue]?.takeIf { it.isNotBlank() }?.replace(THEME_PLACEHOLDER, config.theme)
+    val words = own ?: cueText(cue, config.theme)
     val name = config.alarms.sleeperName.trim()
-    return when {
-        own != null -> own
-        // Only the wake-up alarm says the name: in a night cue it woke a dreamer (lucid_induction.md §6).
-        cue == PromptCue.MORNING_WAKE && name.isNotEmpty() ->
-            cueText(cue, config.theme).replaceFirst("Good morning.", "Good morning, $name.")
-        else -> cueText(cue, config.theme)
+    // Only the wake-up alarm says the name: in a night cue it woke a dreamer (lucid_induction.md §6). Own words that
+    // keep "Good morning." get it too, so a light edit does not silently drop the name.
+    return if (cue == PromptCue.MORNING_WAKE && name.isNotEmpty()) {
+        words.replaceFirst("Good morning.", "Good morning, $name.")
+    } else {
+        words
     }
 }
 

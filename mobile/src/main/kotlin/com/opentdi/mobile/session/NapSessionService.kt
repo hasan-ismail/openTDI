@@ -43,7 +43,9 @@ import com.opentdi.mobile.cues.loadPreparedCues
 import com.opentdi.mobile.loadCalibratedIndex
 import com.opentdi.mobile.loadConfig
 import com.opentdi.mobile.logLine
+import com.opentdi.mobile.link.watchSyncAnswered
 import com.opentdi.mobile.stats.NightsRepository
+import com.opentdi.mobile.testFailure
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.audio.WavAudio
 import com.opentdi.shared.audio.renderEndChime
@@ -72,6 +74,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+/** Tonight's red line for a cue the night skipped at [clock], with the plain-word reason; null when [e] is no skip. */
+internal fun skippedCueError(e: AudioEvent, clock: String): String? {
+    if (e.event != "CUE_SKIPPED" && e.event != "VOLUME_ZERO") return null
+    val why = testFailure(e).takeIf { it != testFailure(null) } // no "Try again" for a cue that is already gone
+    return listOfNotNull("The voice didn't play at $clock.", why).joinToString(" ")
+}
 
 /**
  * The phone's one foreground service (§14.3; type mediaPlayback in Phase 1), started from the visible activity. It
@@ -249,6 +258,8 @@ class NapSessionService : LifecycleService() {
                 while (isActive && !ending) {
                     val command = if (tracking) TdiCommand.StatusRequest(DeviceRole.PHONE) else start
                     val state = watchRequest(this@NapSessionService, command)?.state
+                    // An answered Start brought the watch this config's alarms: an edit still waiting has arrived.
+                    if (state != null && command === start) watchSyncAnswered(this@NapSessionService, config.revision)
                     val shown = state?.name ?: "NO_ANSWER"
                     if (shown != last) sessionEvent(logLine("WATCH_START", "state" to shown)) // changes only
                     last = shown
@@ -393,6 +404,10 @@ class NapSessionService : LifecycleService() {
         private fun audioEvent(e: AudioEvent, cycle: Int) {
             log.audio(e, cycle)
             show(TAG_AUDIO, e.toLogLine(config.audio.route, cycle))
+            // Otherwise only in p_audio.csv: a night silenced by a DND schedule, earbuds or a lost watch read as done.
+            skippedCueError(e, LocalTime.now().format(SHORT_CLOCK))?.let { error ->
+                SessionMonitor.update { it.copy(error = error) }
+            }
         }
 
         private fun sessionEvent(line: String) = show(TAG_SESSION, line)
@@ -462,6 +477,7 @@ class NapSessionService : LifecycleService() {
         private const val WATCH_MISSES = 3 // Start requests without a tracking watch before Tonight says so
         private val COMMAND_URI = "wear://*${DataLayerPaths.STATE_COMMAND}".toUri()
         private val CLOCK = DateTimeFormatter.ofPattern("h:mm:ss a", Locale.US)
+        private val SHORT_CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
         // ro.* properties are readable through getprop; the value is empty when the build does not set it.
         private fun systemProperty(name: String): String = try {
