@@ -2,6 +2,7 @@ package com.opentdi.mobile.ui
 
 import android.content.pm.ApplicationInfo
 import android.os.SystemClock
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -53,6 +54,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -194,9 +196,15 @@ fun TonightScreen(
     }
 
     fun begin(quick: Boolean) = if (quick) onQuickTest() else onStart()
+    // Only the watch app is closed, as at most bedtimes: a real Start opens it and goes on at once, since the voice's
+    // service resends Start until the watch tracks. Waiting here for the watch to open hung whenever the phone's screen
+    // went off right after Start: no voice, no tracking and no alarms.
+    fun onlyWatchClosed() = watch == WatchState.IDLE && problems(false).all { it.check == Check.WATCH }
     fun tryStart(quick: Boolean) {
-        val clear = errors.isEmpty() && !waitsForWatch(quick) && problems(quick).isEmpty()
+        val opens = !quick && onlyWatchClosed()
+        val clear = errors.isEmpty() && !waitsForWatch(quick) && (problems(quick).isEmpty() || opens)
         if (clear && (quick || !nightUnderway)) {
+            if (opens) viewModel.openWatchApp()
             begin(quick)
         } else {
             oldMessage = ui.cueMessage
@@ -222,15 +230,19 @@ fun TonightScreen(
             openTimedOut = false
         }
     }
-    // Goes on by itself once the watch waits, opened by Start or by hand; anything else left keeps the popup open.
+    // Goes on by itself once only the watch opening is left, as tryStart; anything else keeps the popup open.
     val goOn = startAsk == false && openedWatch && idle && errors.isEmpty() && !waitsForWatch(false) &&
-        problems(false).isEmpty() && !nightUnderway
+        (problems(false).isEmpty() || onlyWatchClosed()) && !nightUnderway
     LaunchedEffect(goOn) {
         if (goOn) {
             startAsk = null
             begin(false)
         }
     }
+    // With the screen off the watch's answers stop arriving: a popup left open must not start the night at the next
+    // unlock, maybe in the morning. A rotation is not leaving.
+    val activity = LocalActivity.current
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (activity?.isChangingConfigurations != true) startAsk = null }
     // Always through the popup: on arriving here the volume, speaker and Do Not Disturb checks have not been read yet.
     LaunchedEffect(quickAsk) {
         if (quickAsk) {
@@ -241,8 +253,13 @@ fun TonightScreen(
     }
 
     val sentence = when {
+        // The watch's own list when it sends one: only it knows an early wake-up skipped or too soon to ring.
         nightDone -> nightOnText(
-            alarmsAhead(config.alarms, System.currentTimeMillis(), ZoneId.systemDefault()), config.alarms.wakeEnabled,
+            when (val left = watchStatus?.alarmsLeft) {
+                null -> alarmsAhead(config.alarms, System.currentTimeMillis(), ZoneId.systemDefault())
+                else -> left.ifEmpty { null }
+            },
+            config.alarms.wakeEnabled,
         )
         // Not after a phone-only night's voice: it describes a night started now.
         !running && (status.state != TdiState.SESSION_COMPLETE || status.quickTest) ->

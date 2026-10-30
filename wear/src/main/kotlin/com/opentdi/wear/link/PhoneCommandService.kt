@@ -22,6 +22,7 @@ import com.opentdi.wear.sensing.SamsungKit
 import com.opentdi.wear.sensing.HealthTrackingForegroundService
 import com.opentdi.wear.sensing.SensingStateHolder
 import com.opentdi.shared.model.apkSha256
+import com.opentdi.wear.alarmsLeft
 import java.io.File
 
 /**
@@ -84,6 +85,18 @@ class PhoneCommandService : WearableListenerService() {
                 WatchStatus(
                     now, battery, SamsungKit.source(this), WatchOutputs.earbuds(audio)?.productName?.toString(),
                     understood = command != null, apk = installedApk(packageCodePath),
+                    // As the night page lists them (MainScreen), so the phone names no alarm that won't ring.
+                    alarmsLeft = if (state.running && now == WatchState.RECORDING) {
+                        alarmsLeft(
+                            WakeAlarms.parse(WakeAlarms.loadConfigJson(this)),
+                            state.wakeAgainAtMs,
+                            wbtbWontRing = state.wbtbAheadAtMs == null || state.wbtbSkip != null,
+                            System.currentTimeMillis(),
+                            state.wbtbAtMs,
+                        ).orEmpty()
+                    } else {
+                        null
+                    },
                 ),
             ).encodeToByteArray(),
         )

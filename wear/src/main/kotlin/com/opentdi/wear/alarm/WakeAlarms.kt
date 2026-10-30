@@ -713,15 +713,16 @@ class WakeAlarms(
             wakeAtMs?.let { it - nowMs <= NEW_NIGHT_MS } == true
 
         /**
-         * Nothing is left tonight and the dream questions are not on screen, and either the morning's wake-up was
-         * answered or ended ([morningDone]) with no report due, or the night is [NEW_NIGHT_MS] old: the wake-up off,
-         * questions never saved, or nothing done at all. A wake-up still due always holds the night ([somethingLeft]).
+         * Nothing is left tonight, and either the morning's wake-up was answered or ended ([morningDone]) with no report
+         * due and the dream questions not on screen, or the night is [NEW_NIGHT_MS] old: the wake-up off, questions
+         * never saved, or nothing done at all. The questions left open on the always-on screen hold it no longer than
+         * that, or the sensors would run all day. A wake-up still due always holds the night ([somethingLeft]).
          */
         internal fun nightOver(
             nowMs: Long, nightStartMs: Long, morningDone: Boolean, reportDue: Boolean, reportOnScreen: Boolean,
             somethingLeft: Boolean,
-        ): Boolean = !somethingLeft && !reportOnScreen &&
-            ((morningDone && !reportDue) || nowMs - nightStartMs >= NEW_NIGHT_MS)
+        ): Boolean = !somethingLeft &&
+            ((morningDone && !reportDue && !reportOnScreen) || nowMs - nightStartMs >= NEW_NIGHT_MS)
 
         /**
          * The night that ended last, for "Save my dream": its session folder and when it stopped (or was last alive,

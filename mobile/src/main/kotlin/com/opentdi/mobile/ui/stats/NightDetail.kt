@@ -110,7 +110,11 @@ internal fun NightDetail(row: NightRow, today: LocalDate, dates: Dates, onBack: 
                         Text(answer, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                if (answers(r).isEmpty()) Help("Every question was skipped.")
+                // A dream saved in the night asks no questions (the watch's shownQuestions): it is only the recording.
+                when {
+                    r.after == "NIGHT" -> if (r.recording != null) Help("Its recording is under Dream recordings.")
+                    answers(r).isEmpty() -> Help("Every question was skipped.")
+                }
             }
         }
         if (row.recordings.isNotEmpty()) {

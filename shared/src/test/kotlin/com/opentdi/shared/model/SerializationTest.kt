@@ -198,6 +198,8 @@ class SerializationTest {
         assertTrue(older.understood)
         assertNull(older.apk)
         roundTrip(WatchStatus(WatchState.WAITING, understood = false, apk = "ab12"))
+        assertNull(older.alarmsLeft) // unknown: the phone works the alarms out itself
+        roundTrip(WatchStatus(WatchState.RECORDING, alarmsLeft = "")) // none left, which is not unknown
     }
 
     @Test

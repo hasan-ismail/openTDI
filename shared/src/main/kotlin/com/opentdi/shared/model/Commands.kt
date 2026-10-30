@@ -84,4 +84,10 @@ data class WatchStatus(
     val earbuds: String? = null, // the earbuds connected to the watch, by name, or null
     val understood: Boolean = true, // false: the watch app could not read the command (another version), so did nothing
     val apk: String? = null, // the installed watch app's apkSha256; null from a watch app older than this field
+    /**
+     * While it was tracking: the alarms still to ring tonight in the words of the watch's night page ("" for none),
+     * which knows an early wake-up skipped, or too soon after the night's start to ring. Null otherwise, or from a
+     * watch app older than this field.
+     */
+    val alarmsLeft: String? = null,
 )

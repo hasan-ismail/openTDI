@@ -246,6 +246,11 @@ class MainActivity : ComponentActivity() {
                                         )
                                     },
                                     wbtbAhead = state.wbtbAheadAtMs != null,
+                                    endLine = nightEndLine(
+                                        WakeAlarms.parse(WakeAlarms.loadConfigJson(this@MainActivity)).wakeEnabled,
+                                        System.currentTimeMillis() -
+                                            (SystemClock.elapsedRealtime() - state.startedElapsedMs),
+                                    ),
                                     onEnd = {
                                         // Only here: Close OpenTDI while waiting must not stop a phone's Quick test.
                                         PhoneLink.endNight(this@MainActivity)
@@ -535,8 +540,8 @@ private fun MainScreen(
                     }
                 }
             }
-            // First: a dream fades within minutes of waking.
-            if (state.reportAfter != null) {
+            // First: a dream fades within minutes of waking. Not with "I woke up", which opens the same dream.
+            if (state.reportAfter != null && !showIWokeUp(state)) {
                 item {
                     Button(onClick = onReport, modifier = Modifier.fillMaxWidth(), label = { Text("Save my dream") })
                 }
@@ -886,6 +891,7 @@ private fun EndNightScreen(
     onReport: () -> Unit,
     alarmsAhead: String?,
     wbtbAhead: Boolean,
+    endLine: String, // nightEndLine: with the wake-up alarm off there is no morning alarm to end it
     onEnd: () -> Unit,
     onKeep: () -> Unit,
 ) {
@@ -894,7 +900,7 @@ private fun EndNightScreen(
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item { BigLine("End the night?") }
             item { Line("Tracking stops and the app closes.") }
-            item { Line("It ends by itself after your morning alarm.") }
+            item { Line(endLine) }
             // Ending in the middle of the night used to cancel the alarms still to come without a word.
             alarmsAhead?.let { item { Line("${it.replaceFirstChar(Char::uppercase)} won't ring.") } }
             if (wbtbAhead) {
@@ -1059,9 +1065,13 @@ internal fun alarmsLeft(
     config.copy(wbtbEnabled = config.wbtbEnabled && !wbtbWontRing), nowMs, ZoneId.systemDefault(), wbtbAtMs,
 )
 
-/** "I woke up" only when nothing else is due first: a ring, a snooze, dream questions, the stay-up time or the guide. */
+/**
+ * "I woke up" only when nothing else is due first: a ring, a snooze, dream questions, the stay-up time or the guide. A
+ * dream left unsaved in the night does not hide it: "I woke up" goes on with that dream, or to the early wake-up.
+ */
 internal fun showIWokeUp(state: SensingState): Boolean =
-    state.running && state.alarmRinging == null && state.wakeAgainAtMs == null && state.reportAfter == null &&
+    state.running && state.alarmRinging == null && state.wakeAgainAtMs == null &&
+        (state.reportAfter == null || state.reportAfter == "NIGHT") &&
         state.wbtbBackToSleepAtMs == null && !state.guideOffered && !state.guideRunning
 
 /**

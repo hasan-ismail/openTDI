@@ -18,6 +18,7 @@ class NightPageTest {
         assertFalse(showIWokeUp(night.copy(alarmRinging = "WAKE")))
         assertFalse(showIWokeUp(night.copy(wakeAgainAtMs = 1L))) // snoozed
         assertFalse(showIWokeUp(night.copy(reportAfter = "WBTB"))) // its own Save my dream is up
+        assertTrue(showIWokeUp(night.copy(reportAfter = "NIGHT"))) // a dream left unsaved keeps the early wake-up near
         assertFalse(showIWokeUp(night.copy(wbtbBackToSleepAtMs = 1L))) // the stay-up time
         assertFalse(showIWokeUp(night.copy(guideOffered = true)))
         assertFalse(showIWokeUp(night.copy(guideRunning = true)))

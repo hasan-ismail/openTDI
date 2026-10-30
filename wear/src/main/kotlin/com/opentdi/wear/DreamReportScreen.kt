@@ -288,17 +288,31 @@ fun DreamReportScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             label = { Text("Record") },
                                         )
+                                        // A dream saved in the night has no questions: without a recording there is
+                                        // nothing to save, so its way out leaves, and no empty row is written.
+                                        val night = after == "NIGHT"
                                         if (micFailed) {
                                             Line(
-                                                "The microphone didn't start. Tap Skip recording to answer the " +
-                                                    "questions.",
+                                                if (night) {
+                                                    "The microphone didn't start."
+                                                } else {
+                                                    "The microphone didn't start. Tap Skip recording to answer the " +
+                                                        "questions."
+                                                },
                                             )
                                         }
                                         Button(
-                                            onClick = ::next,
+                                            onClick = {
+                                                if (!night) {
+                                                    next()
+                                                } else if (settled()) {
+                                                    onSaved() // nothing due: "I woke up" can open it again
+                                                    onDone()
+                                                }
+                                            },
                                             colors = ButtonDefaults.filledTonalButtonColors(),
                                             modifier = Modifier.fillMaxWidth(),
-                                            label = { Text("Skip recording") },
+                                            label = { Text(if (night) "Not now" else "Skip recording") },
                                         )
                                     } else {
                                         // Next first: a tap on Start over replaces the dream just said.

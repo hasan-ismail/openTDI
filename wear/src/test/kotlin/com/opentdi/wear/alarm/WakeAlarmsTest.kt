@@ -188,8 +188,10 @@ class WakeAlarmsTest {
     }
 
     @Test
-    fun nightOver_neverWhileTheQuestionsAreOnScreen() {
-        assertFalse(over(20 * hour, morningDone = true, onScreen = true))
+    fun nightOver_whileTheQuestionsAreOnScreen_only12HoursAfterTheStart() {
+        assertFalse(over(8 * hour, morningDone = true, onScreen = true))
+        assertFalse(over(12 * hour - min, morningDone = true, reportDue = true, onScreen = true))
+        assertTrue(over(12 * hour, morningDone = true, reportDue = true, onScreen = true)) // left open in ambient
     }
 
     @Test

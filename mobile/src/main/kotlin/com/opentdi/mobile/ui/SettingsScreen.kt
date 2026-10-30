@@ -67,6 +67,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opentdi.mobile.MainViewModel
+import com.opentdi.mobile.WATCH_NO_ANSWER
+import com.opentdi.mobile.WATCH_NOT_STOPPED
 import com.opentdi.mobile.markTipsSeen
 import com.opentdi.mobile.cues.NEURAL_MODEL
 import com.opentdi.mobile.cues.NEURAL_VOICE_CHOICES
@@ -163,12 +165,19 @@ fun SettingsScreen(viewModel: MainViewModel, onQuickTest: () -> Unit, showWatch:
                     WatchCards()
                 }
                 // Not needed: the night ends by itself after the morning alarm (owner, 2026-10-30).
-                if (watchAnswer?.orElse(null)?.state == WatchState.RECORDING) {
+                // A stop the watch didn't take shows here too: a watch out of reach would otherwise just hide the button,
+                // as a stop that worked does, while the night and its alarms go on. Cleared once the watch answers IDLE.
+                val stopFailed = status.error?.takeIf { it == WATCH_NO_ANSWER || it == WATCH_NOT_STOPPED }
+                if (watchAnswer?.orElse(null)?.state == WatchState.RECORDING || stopFailed != null) {
                     Section(null) {
                         OutlinedButton(onClick = { confirmStopWatch = true }, modifier = Modifier.fillMaxWidth()) {
                             Text("End the night now")
                         }
-                        Help("Not needed: the night ends by itself after your morning alarm.")
+                        stopFailed?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        Help(
+                            "Not needed: the night ends by itself " +
+                                if (ui.config.alarms.wakeEnabled) "after your morning alarm." else "in the morning.",
+                        )
                     }
                 }
                 Section("Defaults") {

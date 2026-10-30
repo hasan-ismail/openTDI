@@ -14,6 +14,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.opentdi.shared.model.TdiState
 import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.WatchStatus
 import com.opentdi.shared.model.TdiCommand
@@ -96,8 +97,8 @@ data class UiState(
 const val PREPARING = "Getting the voice ready…"
 private const val GUIDE_NOT_SENT =
     "The watch didn't get the sleep guide. Keep it near the phone and tap Get the voice ready again."
-private const val WATCH_NO_ANSWER = "The watch didn't answer. On the watch: Details › End the night now."
-private const val WATCH_NOT_STOPPED = "The watch didn't stop. On the watch: Details › End the night now."
+internal const val WATCH_NO_ANSWER = "The watch didn't answer. On the watch: Details › End the night now."
+internal const val WATCH_NOT_STOPPED = "The watch didn't stop. On the watch: Details › End the night now."
 private const val UPDATE_WATCH_APP = "Update it in Settings › More › Install the watch app."
 
 /**
@@ -179,6 +180,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         while (true) {
             val status = watchRequest(app, TdiCommand.StatusRequest(DeviceRole.PHONE))
             if (status?.state == WatchState.IDLE) clearWatchStopError() // ended on the watch itself
+            // A watch not tracking once the voice is done: the night is over, so Tonight is ready for the next one
+            // instead of saying "Sleep well" until this process dies.
+            if (status != null && status.state != WatchState.RECORDING) SessionMonitor.update {
+                val done = !it.running && it.state == TdiState.SESSION_COMPLETE && !it.quickTest
+                if (done) it.copy(state = TdiState.IDLE) else it
+            }
             if (status?.state == WatchState.RECORDING) SessionMonitor.update { // back in reach, or started on the watch
                 if (it.error?.startsWith(NapSessionService.WATCH_STOPPED) == true) it.copy(error = null) else it
             }
