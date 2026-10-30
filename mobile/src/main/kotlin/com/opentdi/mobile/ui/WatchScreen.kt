@@ -40,50 +40,51 @@ const val STALE_MS = 10_000L // no batch for longer: the watch is not streaming
 private const val SPARK_WINDOW_MS = 180_000L
 private const val SPARK_MAX_GAP_MS = 1500L // packets come once a second; a longer gap is missing data
 
-/** The watch's live data: status, big tiles, 3-minute sparklines and the details, redrawn when a batch arrives. */
+/**
+ * The watch's live data (status, big tiles, 3-minute sparklines and the details, redrawn when a batch arrives), then
+ * installing the watch app and Samsung's kit: cards for the caller's column (Settings > More), with no scroll of their own.
+ */
 @Composable
-fun WatchScreen() {
+fun WatchCards() {
     val live by WatchTelemetry.live.collectAsStateWithLifecycle()
     val p = live.frames.lastOrNull()?.packet
-    Page("Watch") {
-        StreamStatus(live.receivedAtMs, live.sensorStatus)
-        if (p != null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Tile("Heart rate", format("%.0f", p.hr), "bpm", Modifier.weight(1f))
-                Tile("Skin response", format("%.2f", p.skinConductance), "µS", Modifier.weight(1f))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Tile(
-                    "Stillness",
-                    p.stillnessScore?.let { "${(it * 100).roundToInt()}" } ?: "—",
-                    "% still",
-                    Modifier.weight(1f),
-                )
-                Tile("Skin temp", format("%.1f", p.skinTemperature), "°C", Modifier.weight(1f))
-            }
+    StreamStatus(live.receivedAtMs, live.sensorStatus)
+    if (p != null) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Tile("Heart rate", format("%.0f", p.hr), "bpm", Modifier.weight(1f))
+            Tile("Skin response", format("%.2f", p.skinConductance), "µS", Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Tile(
-                "Blood oxygen",
-                p.spo2?.toString() ?: "—",
-                if (p.spo2 == null) "no check yet" else "% · checked ${time(live.spo2AtMs)}",
-                Modifier.fillMaxWidth(),
+                "Stillness",
+                p.stillnessScore?.let { "${(it * 100).roundToInt()}" } ?: "—",
+                "% still",
+                Modifier.weight(1f),
             )
-            Section("Last 3 minutes") {
-                SparkRow("Heart rate", "%.0f–%.0f bpm", live.frames) { it.hr }
-                SparkRow("Skin response", "%.3f–%.3f µS", live.frames) { it.skinConductance }
-                SparkRow("Stillness", "%.0f–%.0f", live.frames, fixedRange = 0f..1f) { it.stillnessScore }
-            }
-            Section(null) {
-                Fold("Technical details") {
-                    Help("RMSSD ${format("%.0f", p.rmssd)} ms · EDA status ${p.edaStatus ?: "—"}")
-                    Help("Stillness ${format("%.2f", p.stillnessScore)} · accel mean ${format("%.3f", p.accelMean)} g")
-                    Help("Jerks ${live.jerkEvents} · limp events ${live.limpEvents} · gravity ${live.gravityMode}")
-                    Help("Sensors ${live.sensorStatus ?: "—"}")
-                }
+            Tile("Skin temp", format("%.1f", p.skinTemperature), "°C", Modifier.weight(1f))
+        }
+        Tile(
+            "Blood oxygen",
+            p.spo2?.toString() ?: "—",
+            if (p.spo2 == null) "no check yet" else "% · checked ${time(live.spo2AtMs)}",
+            Modifier.fillMaxWidth(),
+        )
+        Section("Last 3 minutes") {
+            SparkRow("Heart rate", "%.0f–%.0f bpm", live.frames) { it.hr }
+            SparkRow("Skin response", "%.3f–%.3f µS", live.frames) { it.skinConductance }
+            SparkRow("Stillness", "%.0f–%.0f", live.frames, fixedRange = 0f..1f) { it.stillnessScore }
+        }
+        Section(null) {
+            Fold("Technical details") {
+                Help("RMSSD ${format("%.0f", p.rmssd)} ms · EDA status ${p.edaStatus ?: "—"}")
+                Help("Stillness ${format("%.2f", p.stillnessScore)} · accel mean ${format("%.3f", p.accelMean)} g")
+                Help("Jerks ${live.jerkEvents} · limp events ${live.limpEvents} · gravity ${live.gravityMode}")
+                Help("Sensors ${live.sensorStatus ?: "—"}")
             }
         }
-        WatchSetupCard()
-        SamsungKitCard()
     }
+    WatchSetupCard()
+    SamsungKitCard()
 }
 
 // The only part that changes every second, so the clock never redraws the sparklines.

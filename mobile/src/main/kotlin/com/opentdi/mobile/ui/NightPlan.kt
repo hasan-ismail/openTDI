@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -13,6 +14,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.opentdi.shared.audio.nextAlarmAt
 import com.opentdi.shared.audio.wbtbTooSoon
+import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.model.SessionConfig
 import com.opentdi.shared.time.clock12
 import java.time.ZonedDateTime
@@ -40,18 +42,48 @@ fun nightPlan(c: SessionConfig, now: ZonedDateTime): List<PlanMark> {
 
 /** "Voice now, then from about 11:20 PM until 2:10 AM at the latest · early wake-up 4:30 AM · wake-up 7 AM". */
 fun nightPlanLine(c: SessionConfig, now: ZonedDateTime): String {
-    fun at(min: Int) = now.plusMinutes(min.toLong()).let { clock12(it.hour * 60 + it.minute) }
     val marks = nightPlan(c, now)
     // The voice speaks once at Start (TimedCueScheduler.start), then in rounds.
     val line = marks.joinToString(" · ") {
         when (it.label) {
-            CUES -> "Voice now, then from about ${at(it.fromMin)} until ${at(it.toMin)} at the latest"
-            else -> "${it.label} ${at(it.fromMin)}"
+            CUES -> "Voice now, then from about ${at(now, it.fromMin)} until ${at(now, it.toMin)} at the latest"
+            else -> "${it.label} ${at(now, it.fromMin)}"
         }
     }
-    val skipped = c.alarms.wbtbEnabled && marks.none { it.label == WBTB || it.label == WBTB_BY }
-    return if (skipped) "$line · no early wake-up tonight (less than 4½ hours after Start)" else line
+    return if (wbtbSkipped(c, marks)) "$line · no early wake-up tonight (less than 4½ hours after Start)" else line
 }
+
+/**
+ * The bedtime card's sentence: where the voice plays and the watch's alarms if the night started [now], by the same
+ * rules as [nightPlan], e.g. "The voice plays from your watch. Alarms on the watch: early wake-up 4:30 AM, wake-up 7 AM."
+ */
+fun tonightSummary(c: SessionConfig, now: ZonedDateTime): String {
+    val device = if (c.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER) "watch" else "phone"
+    val marks = nightPlan(c, now)
+    val alarms = marks.filter { it.label != CUES }.map { "${it.label} ${at(now, it.fromMin)}" }
+    val skipped = wbtbSkipped(c, marks)
+    return "The voice plays from your $device." + when (alarms.size) {
+        0 -> if (skipped) "" else " No alarms tonight."
+        1 -> " Alarm on the watch: ${alarms[0]}."
+        else -> " Alarms on the watch: ${alarms.joinToString(", ")}."
+    } + if (skipped) " No early wake-up tonight: it's less than 4½ hours away." else ""
+}
+
+/** After the voice, while the watch tracks: the alarms still [ahead] ([alarmsAhead]'s words) and how the night ends. */
+fun nightOnText(ahead: String?, wakeEnabled: Boolean): String {
+    val end = if (wakeEnabled) "after your morning alarm" else "in the morning"
+    return if (ahead == null) {
+        "The voice is done. The watch tracks your sleep. The night ends by itself in the morning."
+    } else {
+        "The voice is done. Your alarms are on the watch: $ahead. The night ends by itself $end."
+    }
+}
+
+private fun at(now: ZonedDateTime, min: Int) = now.plusMinutes(min.toLong()).let { clock12(it.hour * 60 + it.minute) }
+
+/** The early wake-up is on, but too soon after a start now for the watch to ring it. */
+private fun wbtbSkipped(c: SessionConfig, marks: List<PlanMark>) =
+    c.alarms.wbtbEnabled && marks.none { it.label == WBTB || it.label == WBTB_BY }
 
 /** Tonight's plan as a timeline from now (a hollow dot) to the last alarm, shown while no session runs. */
 @Composable
@@ -81,6 +113,13 @@ fun NightPlanCard(config: SessionConfig, now: ZonedDateTime) {
             drawCircle(colors.onSurface, r, Offset(x(0), y), style = Stroke(1.5.dp.toPx()))
         }
         Help(line)
+    }
+}
+
+@Composable
+internal fun InstructionsCard(config: SessionConfig) {
+    Section("What to expect") {
+        Text(whatToExpect(config), style = MaterialTheme.typography.bodyMedium)
     }
 }
 

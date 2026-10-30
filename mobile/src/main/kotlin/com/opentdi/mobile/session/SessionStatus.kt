@@ -17,7 +17,7 @@ data class SessionStatus(
     val nextEventAtRealtimeMs: Long? = null,
     val lastEvent: String? = null,
     val error: String? = null,
-    /** One run on Quick test timing (Tonight's Quick test button). */
+    /** One run on Quick test timing (Settings > More > Quick test). */
     val quickTest: Boolean = false,
 )
 

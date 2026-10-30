@@ -13,7 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.opentdi.mobile.ROUTINE
 
-/** The bedtime routine as tips, in a popup: it opens by itself once, then from Bedtime tips on Tonight. */
+/** The bedtime routine as tips, in a popup: it opens by itself once, then from Settings > More > Bedtime tips. */
 @Composable
 fun BedtimeTipsDialog(onDone: () -> Unit) {
     AlertDialog(

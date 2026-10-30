@@ -1,6 +1,7 @@
 package com.opentdi.mobile.ui
 
 import com.opentdi.shared.model.AlarmConfig
+import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.mobile.audio.DndEffect
 import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.config.validate
@@ -25,36 +26,85 @@ class TonightTest {
 
     @Test
     fun statusLines_sayWhatHappensNext() {
-        assertEquals("Ready" to null, statusLines(SessionStatus(), NOW, ready = true))
-        assertEquals("Almost ready" to null, statusLines(SessionStatus(), NOW, ready = false))
+        assertEquals("Ready for tonight" to null, statusLines(SessionStatus(), NOW))
         assertEquals(
-            "Next voice in 12:30" to "Round 1 of 4", // the voice already spoke at Start
-            statusLines(running(TdiState.AWAKE_INCUBATING, 750_000), NOW, ready = true),
+            "Next voice in 12:30" to "Voice 1 of 4", // the voice already spoke at Start
+            statusLines(running(TdiState.AWAKE_INCUBATING, 750_000), NOW),
         )
         assertEquals(
-            "Question in 3:00" to "Round 1 of 4",
-            statusLines(running(TdiState.HYPNAGOGIA_DETECTED, 179_001, cycle = 1), NOW, ready = true),
+            "Question in 3:00" to "Voice 1 of 4",
+            statusLines(running(TdiState.HYPNAGOGIA_DETECTED, 179_001, cycle = 1), NOW),
         )
-        assertEquals("Speaking…" to "Round 2 of 4", statusLines(running(TdiState.WAKING_USER, cycle = 2), NOW, true))
+        assertEquals("Speaking…" to "Voice 2 of 4", statusLines(running(TdiState.WAKING_USER, cycle = 2), NOW))
         assertEquals(
             "Say what's on your mind — 0:24 left",
-            statusLines(running(TdiState.RECORDING_DREAM, 24_000, cycle = 2), NOW, true).first,
+            statusLines(running(TdiState.RECORDING_DREAM, 24_000, cycle = 2), NOW).first,
         )
         assertEquals(
-            "Next round in 6:10" to "Round 3 of 4", // the scheduler still says cycle 2 here
-            statusLines(running(TdiState.AWAKE_INCUBATING, 370_000, cycle = 2, completed = 2), NOW, true),
+            "Next voice in 6:10" to "Voice 3 of 4", // the scheduler still says cycle 2 here
+            statusLines(running(TdiState.AWAKE_INCUBATING, 370_000, cycle = 2, completed = 2), NOW),
         )
-        assertEquals(CUES_DONE to null, statusLines(running(TdiState.SESSION_COMPLETE, cycle = 4), NOW, true))
+        assertEquals("Sleep well", CUES_DONE)
+        assertEquals(CUES_DONE to null, statusLines(running(TdiState.SESSION_COMPLETE, cycle = 4), NOW))
         val ended = SessionStatus(state = TdiState.SESSION_COMPLETE, completedCycles = 4, maxCycles = 4)
-        assertEquals(CUES_DONE to null, statusLines(ended, NOW, ready = true))
-        assertEquals(QUICK_TEST_DONE to null, statusLines(ended.copy(quickTest = true), NOW, ready = true))
+        assertEquals(CUES_DONE to null, statusLines(ended, NOW))
+        assertEquals(QUICK_TEST_DONE to null, statusLines(ended.copy(quickTest = true), NOW))
         // The morning after the app process died: the watch still tracks, the phone's status is back to IDLE.
-        assertEquals("Tracking your sleep" to null, statusLines(SessionStatus(), NOW, ready = false, tracking = true))
-        assertEquals(CUES_DONE to null, statusLines(ended, NOW, ready = true, tracking = true))
+        assertEquals("Sleep well" to null, statusLines(SessionStatus(), NOW, tracking = true))
+        assertEquals(CUES_DONE to null, statusLines(ended, NOW, tracking = true))
         assertEquals("0:00", clock(-5_000)) // an overdue step never shows a negative time
         assertEquals( // past its earliest time a loop waits for stillness
             "Waiting until you're still",
-            statusLines(running(TdiState.AWAKE_INCUBATING, -1_000), NOW, ready = true).first,
+            statusLines(running(TdiState.AWAKE_INCUBATING, -1_000), NOW).first,
+        )
+    }
+
+    @Test
+    fun tonightSummary_saysWhereTheVoicePlays_andTheAlarms() {
+        val zone = ZoneId.of("America/New_York")
+        val at23 = ZonedDateTime.of(2026, 10, 27, 23, 0, 0, 0, zone)
+        val both = AlarmConfig(wakeEnabled = true, wakeAtMin = 7 * 60, wbtbEnabled = true, wbtbAtMin = 4 * 60 + 30)
+        val watch = SessionConfig(alarms = both).let {
+            it.copy(audio = it.audio.copy(route = AudioRouteMode.WATCH_WRIST_SPEAKER))
+        }
+        assertEquals(
+            "The voice plays from your watch. Alarms on the watch: early wake-up 4:30 AM, wake-up 7 AM.",
+            tonightSummary(watch, at23),
+        )
+        assertEquals(
+            "The voice plays from your phone. Alarm on the watch: wake-up 7 AM.",
+            tonightSummary(SessionConfig(alarms = both.copy(wbtbEnabled = false)), at23),
+        )
+        val none = AlarmConfig(wakeEnabled = false, wbtbEnabled = false)
+        assertEquals("The voice plays from your phone. No alarms tonight.", tonightSummary(SessionConfig(alarms = none), at23))
+        // At 1 AM the early wake-up is 3½ hours away: the watch skips it.
+        assertEquals(
+            "The voice plays from your phone. Alarm on the watch: wake-up 7 AM. No early wake-up tonight: it's less " +
+                "than 4½ hours away.",
+            tonightSummary(SessionConfig(alarms = both), at23.plusHours(2)),
+        )
+        assertEquals(
+            "The voice plays from your phone. Alarms on the watch: early wake-up by 4:30 AM, wake-up 7 AM.",
+            tonightSummary(SessionConfig(alarms = both.copy(wbtbAfterSleepMin = 360)), at23),
+        )
+    }
+
+    @Test
+    fun nightOnText_namesTheAlarmsLeft_andTheEnd() {
+        val ahead = "the early wake-up at 4:30 AM and the wake-up alarm at 7 AM"
+        assertEquals(
+            "The voice is done. Your alarms are on the watch: the early wake-up at 4:30 AM and the wake-up alarm at " +
+                "7 AM. The night ends by itself after your morning alarm.",
+            nightOnText(ahead, wakeEnabled = true),
+        )
+        assertEquals(
+            "The voice is done. Your alarms are on the watch: the early wake-up at 4:30 AM. The night ends by " +
+                "itself in the morning.",
+            nightOnText("the early wake-up at 4:30 AM", wakeEnabled = false),
+        )
+        assertEquals(
+            "The voice is done. The watch tracks your sleep. The night ends by itself in the morning.",
+            nightOnText(null, wakeEnabled = true),
         )
     }
 

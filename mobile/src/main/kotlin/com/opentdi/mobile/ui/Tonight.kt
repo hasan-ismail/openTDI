@@ -10,22 +10,21 @@ import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.WatchStatus
 import java.util.Locale
 
-/** Only the falling-asleep cue loops are over, not the night: "Session complete" read as the watch's end too. */
-const val CUES_DONE = "Voice done for tonight"
+/** The voice is over, and the night goes on: the same words as the watch's night page. */
+const val CUES_DONE = "Sleep well"
 const val QUICK_TEST_DONE = "Quick test done"
 
 /**
- * The Tonight card's big line and the cycle line under it, for [status] at [nowMs] (elapsedRealtime). [tracking]: the
+ * The Tonight card's big line and the voice line under it, for [status] at [nowMs] (elapsedRealtime). [tracking]: the
  * watch tracks a night whose voice is over, maybe in an app process started since (status back to IDLE).
  */
-fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean, tracking: Boolean = false): Pair<String, String?> {
+fun statusLines(status: SessionStatus, nowMs: Long, tracking: Boolean = false): Pair<String, String?> {
     val left = status.nextEventAtRealtimeMs?.let { clock(it - nowMs) }
     val headline = if (!status.running) {
         when {
             status.state == TdiState.SESSION_COMPLETE -> if (status.quickTest) QUICK_TEST_DONE else CUES_DONE
-            tracking -> "Tracking your sleep"
-            ready -> "Ready"
-            else -> "Almost ready"
+            tracking -> CUES_DONE
+            else -> "Ready for tonight" // the watch's waiting page says the same
         }
     } else {
         when (status.state) {
@@ -34,8 +33,7 @@ fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean, tracking: Bo
             TdiState.AWAKE_INCUBATING -> if (status.nextEventAtRealtimeMs?.let { it <= nowMs } == true) {
                 "Waiting until you're still"
             } else {
-                // "Next": the voice already spoke once at Start.
-                countdown(if (status.completedCycles == 0) "Next voice" else "Next round", left)
+                countdown("Next voice", left) // "Next": the voice already spoke once at Start
             }
             TdiState.HYPNAGOGIA_DETECTED -> countdown("Question", left)
             TdiState.WAKING_USER, TdiState.RE_INCUBATING -> "Speaking…"
@@ -46,7 +44,7 @@ fun statusLines(status: SessionStatus, nowMs: Long, ready: Boolean, tracking: Bo
     }
     val n = currentCycle(status)
     val shown = status.running && status.state != TdiState.SESSION_COMPLETE && n in 1..status.maxCycles
-    return headline to if (shown) "Round $n of ${status.maxCycles}" else null
+    return headline to if (shown) "Voice $n of ${status.maxCycles}" else null
 }
 
 /** The cycle the session is in or waiting for; between cycles the scheduler still reports the last one's number. */
@@ -238,7 +236,8 @@ fun checklist(
             null -> CheckItem(
                 Check.WATCH,
                 false,
-                "Can't reach the watch. Open OpenTDI on it. Not installed yet? Use the Watch tab.$why",
+                "Can't reach the watch. Keep it on your wrist, near the phone. Not installed yet? Settings › More › " +
+                    "Install the watch app.$why",
                 blocking = needed,
             )
         },
@@ -260,7 +259,7 @@ fun checklist(
             CheckItem(
                 Check.WATCH_BATTERY,
                 watchBatteryPct >= NIGHT_BATTERY_PCT,
-                "Watch battery is at $watchBatteryPct%. A night of tracking takes about 70%, so charge it first.",
+                "Watch battery is at $watchBatteryPct%. A night takes about 70%: charge it now if you can.",
             ),
         )
     }

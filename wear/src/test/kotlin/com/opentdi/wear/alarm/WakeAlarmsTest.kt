@@ -214,4 +214,10 @@ class WakeAlarmsTest {
         assertTrue(left(buzzAt = now + 10 * min))
         assertTrue(left(guide = true))
     }
+
+    @Test
+    fun minSec_inWords() {
+        assertEquals("0 min 0 s", WakeAlarms.minSec(0))
+        assertEquals("1 min 45 s", WakeAlarms.minSec(105_000))
+    }
 }

@@ -67,7 +67,8 @@ class SensingRulesTest {
     @Test
     fun statusTexts_areInPlainWords() {
         assertEquals(
-            "Basic watch sensors: heart rate and movement. Samsung's extra sensors can be added on the phone's Watch tab.",
+            "Basic watch sensors: heart rate and movement. Samsung's extra sensors can be added on the phone: " +
+                "Settings › More › Samsung's sensor kit.",
             statusText(SensorStatus.AAR_NOT_BUNDLED),
         )
         assertEquals("Samsung's Health Platform needs an update. Tap to update it.", statusText(SensorStatus.HSS_TOO_OLD))

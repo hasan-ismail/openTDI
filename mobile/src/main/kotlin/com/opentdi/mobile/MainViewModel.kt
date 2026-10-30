@@ -94,9 +94,9 @@ data class UiState(
 const val PREPARING = "Getting the voice ready…"
 private const val GUIDE_NOT_SENT =
     "The watch didn't get the sleep guide. Keep it near the phone and tap Get the voice ready again."
-private const val WATCH_NO_ANSWER = "The watch didn't answer. End the night on the watch itself."
-private const val WATCH_NOT_STOPPED = "The watch didn't stop. End the night on the watch itself."
-private const val UPDATE_WATCH_APP = "Update it on the Watch tab, under Install the watch app."
+private const val WATCH_NO_ANSWER = "The watch didn't answer. On the watch: Details › End the night now."
+private const val WATCH_NOT_STOPPED = "The watch didn't stop. On the watch: Details › End the night now."
+private const val UPDATE_WATCH_APP = "Update it in Settings › More › Install the watch app."
 
 /**
  * Why a test on the watch did not play: no answer, or a watch app too old to read it; null when the watch took it.

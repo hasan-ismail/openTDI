@@ -105,7 +105,7 @@ fun statusText(
     @Suppress("UNUSED_PARAMETER") message: String? = null,
 ): String = when (status) {
     SensorStatus.AAR_NOT_BUNDLED -> "Basic watch sensors: heart rate and movement. Samsung's extra sensors can be " +
-        "added on the phone's Watch tab."
+        "added on the phone: Settings › More › Samsung's sensor kit."
     SensorStatus.HSS_NOT_INSTALLED -> "Samsung's Health Platform is missing. Tap to install it."
     SensorStatus.HSS_TOO_OLD -> "Samsung's Health Platform needs an update. Tap to update it."
     SensorStatus.SDK_POLICY_ERROR ->

@@ -47,10 +47,10 @@ short while, then buzzes when to go back to bed. While the watch tracks your sle
 - **I woke up**, then **Do my early wake-up now** (from 4½ hours into the night) starts it straight away, without
   ringing, if you are already awake. **I woke up** also offers **Save my dream**: say the dream, and the night goes on.
 
-In Settings, **Time it from when you fall asleep** makes the early wake-up ring a set time after the watch sees you
-fall asleep: 6 hours unless you change it (4½ to 7 hours). The time you set is then called **No later than**: it never
-rings after that, and if the watch can't tell when you fell asleep, it rings at that time. This needs Samsung's sensor
-kit (see "What you need").
+In Settings › More, **Time it from when you fall asleep** makes the early wake-up ring a set time after the watch sees
+you fall asleep: 6 hours unless you change it (4½ to 7 hours). The time you set is then called **No later than**: it
+never rings after that, and if the watch can't tell when you fell asleep, it rings at that time. This needs Samsung's
+sensor kit (see "What you need").
 
 **The wake-up alarm has a backup.** The watch also sets it in its own alarm clock, so it still rings if tracking stops,
 the app closes, the watch restarts or the app updates during the night, and it still rings only once. If it can't
@@ -60,16 +60,16 @@ with a **Turn it off for this morning** button. Turning the wake-up alarm off on
 the backup off too. The backup is for the wake-up alarm only, not the early wake-up.
 
 **The phone checks the watch app.** If the watch runs a different version of OpenTDI from the phone, Start's popup
-says **The watch app is out of date**, with an **Update the watch app** button that opens the Watch tab. You can still
-start the night, but your sleep tracking and alarms might not work. The warning is hidden while the watch is tracking
-your sleep, because updating would end that night's tracking and alarms.
+says **The watch app is out of date**, with an **Update the watch app** button that opens Settings › More › **Install
+the watch app**. You can still start the night, but your sleep tracking and alarms might not work. The warning is hidden
+while the watch is tracking your sleep, because updating would end that night's tracking and alarms.
 
-To try the voice in about 5 minutes, tap **Quick test (5 min)**.
+To try the voice in about 5 minutes, tap **Quick test (5 min)** in Settings › More.
 
 The voice speaks slowly, one phrase at a time, and fades in over two seconds so it does not startle you. It never
 tells you that you are dreaming right now; it only says how to recognise a dream if you hear it in one. You can change
-the words, the voice and the speaking speed, and, under **More settings**, all the timings. If your phone is in another
-room, turn on **Play the voice on the watch** in Settings, and the watch plays it.
+the words (**What the voice says**), and, under **More**, the voice, the speaking speed and all the timings. If your
+phone is in another room, turn on **Play the voice on the watch** in Settings, and the watch plays it.
 
 While you sleep, the **watch tracks your body's signals**: heart rate and heartbeat timing, skin response (EDA),
 movement, skin temperature, blood-oxygen spot checks, and the raw pulse signal, which can later show your breathing.
@@ -120,7 +120,7 @@ become **lucid** has not been tested yet. Your own nights are the first test, so
 - Apart from that, the phone app uses the network only to reach your watch on your own Wi-Fi when it installs the
   watch app. The watch app only uses the network for Samsung's own sensor service.
 - Each night is saved as a set of simple spreadsheet (CSV) files. **Stats** on the phone shows your nights. **Saved
-  nights** (turn on **More settings** at the bottom of the phone's Settings) deletes what the voice did on those
+  nights** (turn on **More** at the bottom of the phone's Settings) deletes what the voice did on those
   nights, and the watch has its own **Saved nights** under **Details**. The sleep data and dream recordings already
   copied from the watch stay on the phone, in Stats. To remove them, clear OpenTDI's storage in the phone's Android
   settings (Apps > OpenTDI > Storage > Clear data). This also resets your settings and voice.

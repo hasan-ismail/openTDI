@@ -60,7 +60,7 @@ so does a phone APK built with it (inside its copy of the watch app); OpenTDI's 
 Without the AAR, or with `-Popentdi.forceSamsungStub=true` on the Gradle command line, `:wear` compiles against
 `:samsung-health-stub` and the watch uses Android's basic heart-rate and accelerometer sensors (no EDA, no IBI). Its
 Details page then says "Basic watch sensors: heart rate and movement. Samsung's extra sensors can be added on the
-phone's Watch tab."
+phone: Settings › More › Samsung's sensor kit."
 
 The SDK does not work on an emulator, so sensor work needs a real Galaxy Watch. EDA needs a Galaxy Watch8-series
 watch or later.
@@ -138,9 +138,10 @@ read-only `dumpsys` in §4, every command in this guide touches only the `com.op
 Install both APKs from the same build. The phone carries the watch APK of its own build (`assets/watch.apk`) and
 compares its SHA-256 with the one the installed watch app reports. If they differ, for example after rebuilding and
 installing only the watch app, Start's popup says "The watch app is out of date" with an **Update the watch app**
-button that opens the Watch tab (its **Install the watch app** section installs the matching copy). The warning never
-blocks Start and is hidden while the watch is tracking. A watch app that cannot read a command at all also makes the
-phone say "The watch app is out of date", and the watch tests on the phone say so instead of failing silently.
+button that opens Settings › More, where **Install the watch app** installs the matching copy. The
+warning never blocks Start and is hidden while the watch is tracking. A watch app that cannot read a command at all
+also makes the phone say "The watch app is out of date", and the watch tests on the phone say so instead of failing
+silently.
 
 If an install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (the installed copy was signed with another key),
 uninstall first. This deletes the app's data on that device, including its session logs, so copy them first (§8):
@@ -165,9 +166,9 @@ adb -s $P shell pm grant --user 0 com.opentdi android.permission.RECORD_AUDIO
 ```
 
 The watch asks for the microphone during its one-time setup, for recording your dream. The phone asks for
-`android.permission.RECORD_AUDIO` when you first tap **Record my voice** (Settings > Words > Edit the words);
-`install -g` grants it. `BODY_SENSORS` and `BODY_SENSORS_BACKGROUND` are not used on API 36 (granting them fails), and
-`BLUETOOTH_CONNECT` is not declared. Normal permissions such as `FOREGROUND_SERVICE_*`, `WAKE_LOCK` and `INTERNET`
+`android.permission.RECORD_AUDIO` when you first tap **Record my voice** (Settings > What the voice says > Edit the
+words); `install -g` grants it. `BODY_SENSORS` and `BODY_SENSORS_BACKGROUND` are not used on API 36 (granting them
+fails), and `BLUETOOTH_CONNECT` is not declared. Normal permissions such as `FOREGROUND_SERVICE_*`, `WAKE_LOCK` and `INTERNET`
 need no grant.
 
 ## 8. Retrieving session CSVs
@@ -312,8 +313,8 @@ restart or a time change. **Save my dream** in the night records the dream only,
 ends, **Save my dream** (From last night) saves a dream report into the last night's folder
 for up to 14 hours after that night; Stats labels it "Dream questions" and keeps it out of the soft-sound experiment.
 
-**Time it from when you fall asleep (phone Settings, Early wake-up).** The early wake-up then rings 4½ to 7 hours
-(6 by default) after the watch sees you fall asleep, never later than the set time, which the setting then labels
+**Time it from when you fall asleep (phone Settings › More, Early wake-up).** The early wake-up then rings 4½ to 7
+hours (6 by default) after the watch sees you fall asleep, never later than the set time, which the setting then labels
 "No later than". The watch looks for sleep onset every night while it is worn, for up to 3 hours after the night
 starts, and logs it as a `SLEEP` row with the event `ONSET` in `w_alarm.csv`; with no onset by then, the set time is used. Telling that
 the watch is worn needs Samsung's sensor kit (§2), so without it the early wake-up rings at the set time and Settings

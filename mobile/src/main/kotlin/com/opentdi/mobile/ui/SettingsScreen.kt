@@ -13,9 +13,15 @@ import android.content.Intent
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.Settings
+import com.opentdi.shared.audio.alarmsAhead
+import com.opentdi.shared.model.WatchState
+import com.opentdi.shared.model.WatchStatus
 import com.opentdi.shared.time.clock12
 import java.io.File
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.util.Optional
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import com.opentdi.shared.model.AlarmTone
 import com.opentdi.shared.model.AlarmConfig
@@ -33,6 +39,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -45,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -56,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.opentdi.mobile.MainViewModel
+import com.opentdi.mobile.markTipsSeen
 import com.opentdi.mobile.cues.NEURAL_MODEL
 import com.opentdi.mobile.cues.NEURAL_VOICE_CHOICES
 import com.opentdi.mobile.cues.PHASE1_CUES
@@ -82,16 +92,34 @@ import kotlin.math.roundToInt
 
 internal typealias Edit = ((SessionConfig) -> SessionConfig) -> Unit
 
-/** Settings in cards, expert controls behind More settings at the bottom. Locked while the voice plays or is made. */
+/**
+ * Settings (owner, 2026-10-30: fewer screens and options): the alarms, where the voice plays and what it says, then
+ * everything else behind More at the bottom. Locked while the voice plays or is made. [showWatch]: opened from the
+ * Tonight popup's Update the watch app, so More opens on the watch's install card.
+ */
 @Composable
-fun SettingsScreen(viewModel: MainViewModel) {
+fun SettingsScreen(viewModel: MainViewModel, onQuickTest: () -> Unit, showWatch: Boolean, onWatchShown: () -> Unit) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val status by SessionMonitor.status.collectAsStateWithLifecycle()
     val volumeOff by viewModel.mediaVolumeOff.collectAsStateWithLifecycle(initialValue = false)
+    // null until the watch's first answer (up to 5 s), so nothing flashes on opening.
+    val watchAnswer by remember(viewModel) { viewModel.watchStatus.map { Optional.ofNullable(it) } }
+        .collectAsStateWithLifecycle(initialValue = null)
     val cueProblem = remember(ui.config, ui.cues) { cueSetProblem(ui.cues, ui.config) }
     val idle = !status.running && !ui.preparing && !ui.testing
     val edit: Edit = viewModel::edit
-    var advanced by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    var advanced by rememberSaveable { mutableStateOf(showWatch) }
+    var tipsOpen by rememberSaveable { mutableStateOf(false) }
+    var confirmStopWatch by rememberSaveable { mutableStateOf(false) }
+    val watchCards = remember { BringIntoViewRequester() }
+    LaunchedEffect(Unit) { // Unit: clearing showWatch must not cancel the scroll
+        if (showWatch) {
+            onWatchShown()
+            delay(300) // after the tab's cross-fade, once the cards are laid out
+            watchCards.bringIntoView()
+        }
+    }
     // Leaving Settings gets the voice ready for what changed here, so Start is not blocked at bedtime.
     val latest by rememberUpdatedState(Triple(idle, cueProblem, ui.config.theme.length in 1..60))
     val activity = LocalActivity.current
@@ -110,10 +138,37 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 Help("Settings are locked while the voice plays. Tap Stop the voice on Tonight to change them.")
             !idle -> Help("Settings are locked while the voice is made or tested.")
         }
-        CompositionLocalProvider(LocalAdvanced provides advanced) { SettingsCards(viewModel, ui, idle, volumeOff, cueProblem) }
-        SwitchRow("More settings (most people never need these)", advanced, enabled = true) { advanced = it }
-        AnimatedVisibility(advanced, label = "defaults") {
+        CompositionLocalProvider(LocalAdvanced provides advanced) {
+            SettingsCards(viewModel, ui, idle, volumeOff, cueProblem, watchAnswer)
+        }
+        SwitchRow("More", advanced, enabled = true) { advanced = it }
+        AnimatedVisibility(advanced, label = "more") {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Section("Try it") {
+                    OutlinedButton(onClick = onQuickTest, enabled = idle, modifier = Modifier.fillMaxWidth()) {
+                        Text("Quick test (5 min)")
+                    }
+                    Help("Hear the voice twice in a few minutes. No alarms.")
+                    OutlinedButton(onClick = { tipsOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Bedtime tips")
+                    }
+                }
+                Text("How a night works", style = MaterialTheme.typography.titleMedium)
+                NightPlanCard(ui.config, ZonedDateTime.now())
+                InstructionsCard(ui.config)
+                Column(Modifier.bringIntoViewRequester(watchCards), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("Watch", style = MaterialTheme.typography.titleMedium)
+                    WatchCards()
+                }
+                // Not needed: the night ends by itself after the morning alarm (owner, 2026-10-30).
+                if (watchAnswer?.orElse(null)?.state == WatchState.RECORDING) {
+                    Section(null) {
+                        OutlinedButton(onClick = { confirmStopWatch = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("End the night now")
+                        }
+                        Help("Not needed: the night ends by itself after your morning alarm.")
+                    }
+                }
                 Section("Defaults") {
                     Help(
                         "The normal timing follows MIT Dormio's timer method: the first round after 10–15 min, 3 min " +
@@ -127,15 +182,46 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     ) { Text("Reset all of these to normal") }
                 }
                 SavedNights(viewModel)
+                Section("Set-up guide") {
+                    Help(
+                        "The step-by-step guide from the first launch: the watch, the voice, alarms and your first " +
+                            "night.",
+                    )
+                    OutlinedButton(onClick = viewModel::restartOnboarding, modifier = Modifier.fillMaxWidth()) {
+                        Text("Open the set-up guide")
+                    }
+                }
             }
         }
-        Section("Set-up guide") {
-            Help("The step-by-step guide from the first launch: the watch, the voice, alarms and your first night.")
-            OutlinedButton(onClick = viewModel::restartOnboarding, modifier = Modifier.fillMaxWidth()) {
-                Text("Open the set-up guide")
-            }
+        AboutCard() // outside More: "Not a medical device" stays easy to find
+    }
+
+    if (tipsOpen) {
+        BedtimeTipsDialog {
+            markTipsSeen(context)
+            tipsOpen = false
         }
-        AboutCard()
+    }
+    if (confirmStopWatch) {
+        // Ending also cancels the alarms, and the watch holds an unanswered dream report only in memory.
+        val ahead = alarmsAhead(ui.config.alarms, System.currentTimeMillis(), ZoneId.systemDefault())
+        AlertDialog(
+            onDismissRequest = { confirmStopWatch = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmStopWatch = false
+                    viewModel.stopWatch()
+                }) { Text("End the night") }
+            },
+            dismissButton = { TextButton(onClick = { confirmStopWatch = false }) { Text("Not yet") } },
+            title = { Text("End the night?") },
+            text = {
+                Text(
+                    "Answer the dream questions on the watch first. Then the watch stops tracking your sleep." +
+                        (ahead?.let { " ${it.replaceFirstChar(Char::uppercase)} won't ring." } ?: ""),
+                )
+            },
+        )
     }
 }
 
@@ -165,16 +251,24 @@ fun withDefaultNumbers(config: SessionConfig): SessionConfig {
     )
 }
 
+/** The few things people change, then, with More on, the voice, the timing and the sound. */
 @Composable
-private fun SettingsCards(viewModel: MainViewModel, ui: UiState, idle: Boolean, volumeOff: Boolean, cueProblem: String?) {
+private fun SettingsCards(
+    viewModel: MainViewModel,
+    ui: UiState,
+    idle: Boolean,
+    volumeOff: Boolean,
+    cueProblem: String?,
+    watchAnswer: Optional<WatchStatus>?,
+) {
     val config = ui.config
     val edit: Edit = viewModel::edit
-    run {
-        WatchAudioCard(config, idle, edit, viewModel)
-        AlarmsCard(config, idle, edit, viewModel)
+    AlarmsCard(config, idle, edit, viewModel)
+    WatchAudioCard(config, idle, edit, watchAnswer)
+    CueWordsCard(config, idle, edit, viewModel, ui.recordingCue)
+    if (LocalAdvanced.current) {
         VoiceCard(viewModel, ui, idle, volumeOff, cueProblem)
-        CueWordsCard(config, idle, edit, viewModel, ui.recordingCue)
-        if (LocalAdvanced.current) TimingCard(config, idle, edit)
+        TimingCard(config, idle, edit)
         SoundCard(config, idle, edit)
     }
 }
@@ -267,8 +361,8 @@ private fun CueWordsCard(
     viewModel: MainViewModel,
     recordingCue: PromptCue?,
 ) {
-    Section("Words") {
-        Help("What the voice says. By default, it helps you notice when you're dreaming.")
+    Section("What the voice says") {
+        Help("By default, it helps you notice when you're dreaming.")
         // The default words ignore the topic. A topic left blank by an older version stays shown, as it blocks Start.
         val showTopic = remember { config.theme.length !in 1..60 } ||
             config.audio.cueTexts.values.any { THEME_PLACEHOLDER in it }
@@ -503,19 +597,21 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
     val alarms = config.alarms
     fun change(transform: (AlarmConfig) -> AlarmConfig) = edit { it.copy(alarms = transform(it.alarms)) }
     val notSent = viewModel.ui.collectAsStateWithLifecycle().value.alarmsNotSent
+    // Hiding a row never changes its value: tones, snoozes and the rest keep what was set.
+    val more = LocalAdvanced.current
     Section("Alarms (on the watch)") {
         if (notSent) Text(ALARMS_NOT_SENT, color = MaterialTheme.colorScheme.error)
         Help("They ring on the watch while it tracks your sleep. Start the night sends them to the watch.")
         SwitchRow("Wake-up alarm", alarms.wakeEnabled, enabled) { on -> change { it.copy(wakeEnabled = on) } }
         if (alarms.wakeEnabled) {
             TimeRow("Wake up at", alarms.wakeAtMin, enabled) { m -> change { it.copy(wakeAtMin = m) } }
-            ToneChips(alarms.wakeTone, enabled, onTest) { t -> change { it.copy(wakeTone = t) } }
+            if (more) ToneChips(alarms.wakeTone, enabled, onTest) { t -> change { it.copy(wakeTone = t) } }
             IntSetting(
                 "Snoozes", "Each one waits ${alarms.snoozeMin} min. 0 = no snooze button.", alarms.maxSnoozes, 0..5, 1,
                 "", enabled,
             ) { v -> change { it.copy(maxSnoozes = v) } }
         }
-        if (AlarmTone.SPOKEN in listOfNotNull(
+        if (more && AlarmTone.SPOKEN in listOfNotNull(
                 alarms.wakeTone.takeIf { alarms.wakeEnabled },
                 alarms.wbtbTone.takeIf { alarms.wbtbEnabled },
             )
@@ -532,7 +628,7 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                         if (said) {
                             "The spoken wake-up says \"Good morning, $name.\" Then tap Get the voice ready."
                         } else {
-                            "Your own wake-up words are used. Add your name to them in Settings > Words."
+                            "Your own wake-up words are used. Add your name to them under What the voice says."
                         },
                     )
                 },
@@ -547,8 +643,10 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
         }
         if (alarms.wbtbEnabled) {
             val after = alarms.wbtbAfterSleepMin
-            SwitchRow("Time it from when you fall asleep", after != null, enabled) { on ->
-                change { it.copy(wbtbAfterSleepMin = if (on) WBTB_AFTER_SLEEP_MIN else null) }
+            if (more) {
+                SwitchRow("Time it from when you fall asleep", after != null, enabled) { on ->
+                    change { it.copy(wbtbAfterSleepMin = if (on) WBTB_AFTER_SLEEP_MIN else null) }
+                }
             }
             // With sleep timing the set time is the latest it rings, and the time used when the watch can't tell.
             val timeLabel = if (after == null) "Early wake-up at" else "No later than"
@@ -564,8 +662,8 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                     .collectAsStateWithLifecycle(initialValue = null)
                 if (watchAnswer?.orElse(null)?.let { it.samsungKit == null } == true) { // no answer: unknown, say nothing
                     Text(
-                        "Your watch needs Samsung's sensor kit for this (Watch tab). Without it, the early wake-up " +
-                            "rings at the set time.",
+                        "Your watch needs Samsung's sensor kit for this (Settings › More › Samsung's sensor kit). " +
+                            "Without it, the early wake-up rings at the set time.",
                         color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
@@ -576,9 +674,8 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                 ) { v -> change { it.copy(wbtbAfterSleepMin = v) } }
             }
             Help(
-                (if (after == null) "About 5 to 6 hours after you fall asleep. " else "") + "Stay up a while and " +
-                    "think about your last dream; a buzz tells you when to go back to bed. Best on 1 to 3 nights a " +
-                    "week. (This is called WBTB.)",
+                (if (after == null) "About 5 to 6 hours after you fall asleep. " else "") + "A buzz tells you when " +
+                    "to go back to bed. Best on 1 to 3 nights a week: skip it on the watch on the other nights.",
             )
             IntSetting(
                 "Stay up for", "Before the back-to-sleep buzz.", alarms.wbtbAwakeMin, 5..60, 5, "min", enabled,
@@ -599,8 +696,8 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                     color = MaterialTheme.colorScheme.tertiary,
                 )
             }
-            ToneChips(alarms.wbtbTone, enabled, onTest) { t -> change { it.copy(wbtbTone = t) } }
-            if (LocalAdvanced.current) {
+            if (more) {
+                ToneChips(alarms.wbtbTone, enabled, onTest) { t -> change { it.copy(wbtbTone = t) } }
                 SwitchRow("Guided back-to-sleep (on the watch)", alarms.wbtbGuide, enabled) { on ->
                     change { it.copy(wbtbGuide = on) }
                 }
@@ -753,11 +850,8 @@ private fun toneLabel(tone: AlarmTone) = when (tone) {
 
 /** Where the cues play (phone or watch), and where the watch plays them and its alarms: speaker or its earbuds. */
 @Composable
-private fun WatchAudioCard(config: SessionConfig, enabled: Boolean, edit: Edit, viewModel: MainViewModel) {
-    // null until the watch's first answer (up to 5 s), so it does not flash "No earbuds connected" on opening.
-    val watchAnswer by remember(viewModel) { viewModel.watchStatus.map { Optional.ofNullable(it) } }
-        .collectAsStateWithLifecycle(initialValue = null)
-    Section("Where you hear it") {
+private fun WatchAudioCard(config: SessionConfig, enabled: Boolean, edit: Edit, watchAnswer: Optional<WatchStatus>?) {
+    Section("Where the voice plays") {
         val onWatch = config.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER
         Row(
             Modifier
@@ -786,16 +880,21 @@ private fun WatchAudioCard(config: SessionConfig, enabled: Boolean, edit: Edit, 
             }
             Switch(checked = onWatch, onCheckedChange = null, enabled = enabled)
         }
-        Text("The watch plays through:")
-        Help("Where the watch plays the voice and alarms. Earbuds let you sleep with them in without waking anyone.")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for ((output, label) in listOf(WatchOutput.SPEAKER to "Watch speaker", WatchOutput.EARBUDS to "Earbuds")) {
-                FilterChip(
-                    selected = config.audio.watchOutput == output,
-                    onClick = { edit { it.copy(audio = it.audio.copy(watchOutput = output)) } },
-                    label = { Text(label) },
-                    enabled = enabled,
-                )
+        // Someone who chose earbuds keeps seeing the choice, so they can go back to the speaker.
+        if (LocalAdvanced.current || config.audio.watchOutput == WatchOutput.EARBUDS) {
+            Text("The watch plays through:")
+            Help(
+                "Where the watch plays the voice and alarms. Earbuds let you sleep with them in without waking anyone.",
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((output, label) in listOf(WatchOutput.SPEAKER to "Watch speaker", WatchOutput.EARBUDS to "Earbuds")) {
+                    FilterChip(
+                        selected = config.audio.watchOutput == output,
+                        onClick = { edit { it.copy(audio = it.audio.copy(watchOutput = output)) } },
+                        label = { Text(label) },
+                        enabled = enabled,
+                    )
+                }
             }
         }
         if (config.audio.watchOutput == WatchOutput.EARBUDS) {
@@ -877,7 +976,7 @@ private const val MIN_GAIN = 0.15f // a voice at 0 % would make the night silent
  */
 internal const val ALARMS_NOT_SENT =
     "The watch doesn't have your alarm change yet. Keep it near the phone: the phone keeps sending it. " +
-        "If this stays, update the watch app on the Watch tab."
+        "If this stays, update the watch app: Settings › More › Install the watch app."
 
 // §17.4, which includes the FS24 screening advice.
 private const val WELLNESS_STATEMENT =

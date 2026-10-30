@@ -32,6 +32,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -68,7 +69,6 @@ import com.opentdi.mobile.session.SessionStatus
 import com.opentdi.shared.audio.alarmsAhead
 import com.opentdi.shared.config.MAX_CUE_TEXT_CHARS
 import com.opentdi.shared.config.validate
-import com.opentdi.shared.model.SessionConfig
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.Optional
@@ -78,9 +78,9 @@ import kotlinx.coroutines.flow.map
 private val OK_COLOR = Color(0xFF86B79C) // muted green, dim enough for a dark bedroom
 
 /**
- * Tonight: what the night is doing, Start/Stop, tonight's plan, what to expect, and the Quick test and Bedtime tips
- * buttons. Start opens a popup only when something needs fixing.
- * While a session runs only the status, Stop and any problem stay on screen.
+ * Tonight (owner, 2026-10-30: one button at bedtime, no choices at night): what the night is doing in one line and one
+ * sentence, and Start the night or Stop the voice. Start opens a popup only when something needs fixing. Ending the
+ * night is under Settings > More: it ends by itself after the morning alarm.
  */
 @Composable
 fun TonightScreen(
@@ -92,7 +92,9 @@ fun TonightScreen(
     onRaiseVolume: () -> Unit,
     onOpenDnd: () -> Unit,
     onOpenBluetooth: () -> Unit,
-    onOpenWatch: () -> Unit, // the Watch tab, which installs the watch app
+    onOpenWatch: () -> Unit, // Settings > More > Watch, which installs the watch app
+    quickAsk: Boolean, // Quick test was tapped in Settings > More
+    onQuickAskSeen: () -> Unit,
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val carriedApk by viewModel.carriedApk.collectAsStateWithLifecycle()
@@ -155,7 +157,6 @@ fun TonightScreen(
     // The message when the popup opened, left out of it: it can be hours old (a watch test in Settings), and the
     // bedtime layout shows it under Start anyway.
     var oldMessage by rememberSaveable { mutableStateOf<String?>(null) }
-    var confirmStopWatch by rememberSaveable { mutableStateOf(false) }
     var tipsOpen by rememberSaveable { mutableStateOf(!tipsSeen(context)) }
 
     fun fix(check: Check): Pair<String, () -> Unit>? {
@@ -197,10 +198,27 @@ fun TonightScreen(
             startAsk = quick
         }
     }
+    // Always through the popup: on arriving here the volume, speaker and Do Not Disturb checks have not been read yet.
+    LaunchedEffect(quickAsk) {
+        if (quickAsk) {
+            onQuickAskSeen()
+            oldMessage = ui.cueMessage
+            startAsk = true
+        }
+    }
 
+    val sentence = when {
+        nightDone -> nightOnText(
+            alarmsAhead(config.alarms, System.currentTimeMillis(), ZoneId.systemDefault()), config.alarms.wakeEnabled,
+        )
+        // Not after a phone-only night's voice: it describes a night started now.
+        !running && (status.state != TdiState.SESSION_COMPLETE || status.quickTest) ->
+            tonightSummary(config, ZonedDateTime.now())
+        else -> null
+    }
     Page("Tonight") {
         MoonHeader(remember { System.currentTimeMillis() })
-        StatusCard(status, now, ready, nightDone)
+        StatusCard(status, now, nightDone, sentence)
         if (ui.alarmsNotSent) Text(ALARMS_NOT_SENT, color = MaterialTheme.colorScheme.error)
         if (running) {
             OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth().height(64.dp)) {
@@ -217,10 +235,7 @@ fun TonightScreen(
                 Section(null) { during.forEach { CheckRow(it, fix(it.check)) } }
             }
         } else if (nightDone) {
-            // After the voice the next step is ending the night in the morning, so that is the big button.
-            Button(onClick = { confirmStopWatch = true }, modifier = Modifier.fillMaxWidth().height(64.dp)) {
-                Text("End the night", style = MaterialTheme.typography.titleLarge)
-            }
+            // No End the night here (owner, 2026-10-30): at midnight it cancelled both alarms; the night ends by itself.
             TextButton(onClick = { tryStart(quick = false) }, enabled = idle, modifier = Modifier.fillMaxWidth()) {
                 Text("Start the voice again")
             }
@@ -238,20 +253,6 @@ fun TonightScreen(
                         enabled = idle && config.theme.isNotBlank() && config.theme.length <= 60,
                     ) { Text("Get the voice ready") }
                 }
-            }
-            // The watch tracks the whole night, past the end of the voice: in the morning it is stopped here.
-            if (nightUnderway) {
-                OutlinedButton(onClick = { confirmStopWatch = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("End the night")
-                }
-            }
-            NightPlanCard(config, ZonedDateTime.now())
-            InstructionsCard(config)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { tryStart(quick = true) }, enabled = idle, modifier = Modifier.weight(1f)) {
-                    Text("Quick test (5 min)")
-                }
-                OutlinedButton(onClick = { tipsOpen = true }, modifier = Modifier.weight(1f)) { Text("Bedtime tips") }
             }
         }
     }
@@ -284,7 +285,12 @@ fun TonightScreen(
                         }
                     }
                     if (waitsForWatch(quick)) Text("Checking the watch…")
-                    left.forEach { CheckRow(it, fix(it.check)) }
+                    // Grouped, so the dot's color is not the only sign of what keeps Start off.
+                    val (must, could) = left.partition { it.blocking }
+                    if (must.isNotEmpty()) Text("Fix this to start:", style = MaterialTheme.typography.titleSmall)
+                    must.forEach { CheckRow(it, fix(it.check)) }
+                    if (could.isNotEmpty()) Text("Good to fix:", style = MaterialTheme.typography.titleSmall)
+                    could.forEach { CheckRow(it, fix(it.check)) }
                     if (left.any { it.check == Check.BATTERY } && ui.batteryManual) {
                         Help("Settings > Apps > OpenTDI > Battery > Unrestricted")
                     }
@@ -296,6 +302,7 @@ fun TonightScreen(
                     when {
                         left.isEmpty() && !blocked -> Text("All set.", color = OK_COLOR)
                         !blocked -> Help("You can start anyway; fixing these makes the night more reliable.")
+                        must.isNotEmpty() -> Help("Fix the first ones to start.")
                     }
                 }
             },
@@ -316,28 +323,6 @@ fun TonightScreen(
             dismissButton = { TextButton(onClick = { startAsk = null }) { Text("Not now") } },
         )
     }
-    if (confirmStopWatch) {
-        // At night this button sits right under "Voice done": ending also cancels the alarms, and the watch holds an
-        // unanswered dream report only in memory.
-        val ahead = alarmsAhead(config.alarms, System.currentTimeMillis(), ZoneId.systemDefault())
-        AlertDialog(
-            onDismissRequest = { confirmStopWatch = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmStopWatch = false
-                    viewModel.stopWatch()
-                }) { Text("End the night") }
-            },
-            dismissButton = { TextButton(onClick = { confirmStopWatch = false }) { Text("Not yet") } },
-            title = { Text("End the night?") },
-            text = {
-                Text(
-                    "Answer the dream questions on the watch first. Then the watch stops tracking your sleep." +
-                        (ahead?.let { " ${it.replaceFirstChar(Char::uppercase)} won't ring." } ?: ""),
-                )
-            },
-        )
-    }
     if (tipsOpen) {
         BedtimeTipsDialog {
             markTipsSeen(context)
@@ -351,9 +336,10 @@ private val NOT_WHILE_RUNNING = setOf(Check.TIMING, Check.TEST_CUE, Check.WATCH_
 
 /** A settings error ([validate]) in plain words: the topic and the words a user can get wrong; Reset fixes the rest. */
 private fun settingsProblem(error: String) = when {
-    error.startsWith("theme") -> "Type a dream topic in Settings > Words."
+    error.startsWith("theme") -> "Type a dream topic in Settings › What the voice says."
     error.startsWith("audio.cueTexts") ->
-        "One of the voice's lines is too long ($MAX_CUE_TEXT_CHARS letters at most). Shorten it in Settings > Words."
+        "One of the voice's lines is too long ($MAX_CUE_TEXT_CHARS letters at most). Shorten it in Settings › What " +
+            "the voice says › Edit the words."
     else -> "Some settings don't fit together."
 }
 
@@ -386,9 +372,10 @@ private fun StartButton(enabled: Boolean, glow: Boolean, onStart: () -> Unit) {
     }
 }
 
+/** The big line, then [sentence] (tonight in short, or what is left of the night) or the voice line while it plays. */
 @Composable
-private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean, nightDone: Boolean) {
-    val (headline, cycle) = statusLines(status, now, ready, tracking = nightDone)
+private fun StatusCard(status: SessionStatus, now: Long, nightDone: Boolean, sentence: String?) {
+    val (headline, cycle) = statusLines(status, now, tracking = nightDone)
     val context = LocalContext.current
     val debuggable = remember { context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 }
     Section(null) {
@@ -398,16 +385,10 @@ private fun StatusCard(status: SessionStatus, now: Long, ready: Boolean, nightDo
             contentKey = { it.filterNot(Char::isDigit) }, // a calm fade when the state changes, not on every tick
             transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(300)) },
         ) { Text(it, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary) }
-        if (!status.running && !ready && !nightDone && status.state != TdiState.SESSION_COMPLETE) {
-            Help("Tap Start the night to see what's left.")
-        }
+        sentence?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
         cycle?.let {
             Text(it, style = MaterialTheme.typography.titleMedium)
             LoopDots(currentCycle(status), status.maxCycles)
-        }
-        // The voice ends long before the night; the watch's tracking and alarms go on (owner, 2026-10-29).
-        if (nightDone) {
-            Text("The watch keeps tracking your sleep and runs your alarms. Tap End the night when you get up.")
         }
         status.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (debuggable && (status.lastEvent != null || status.running)) {
@@ -453,12 +434,5 @@ private fun CheckRow(item: CheckItem, fix: Pair<String, () -> Unit>?) {
                 Text(fix.first)
             }
         }
-    }
-}
-
-@Composable
-private fun InstructionsCard(config: SessionConfig) {
-    Section("What to expect") {
-        Text(whatToExpect(config), style = MaterialTheme.typography.bodyMedium)
     }
 }

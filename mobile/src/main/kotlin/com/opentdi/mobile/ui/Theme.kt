@@ -100,10 +100,11 @@ fun OpenTdiTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = 
     CompositionLocalProvider(LocalContentColor provides Colors.onSurface, content = content)
 }
 
-val TABS = listOf("Tonight", "Watch", "Stats", "Settings")
+val TABS = listOf("Tonight", "Stats", "Settings")
 
 @Composable
-fun BottomTabs(selected: Int, onSelect: (Int) -> Unit) {
+fun BottomTabs(tab: Int, onSelect: (Int) -> Unit) {
+    val selected = tab.coerceAtMost(TABS.lastIndex) // a tab saved when there were four
     Surface(color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f)) {
         PrimaryTabRow(
             selectedTabIndex = selected,
@@ -112,7 +113,7 @@ fun BottomTabs(selected: Int, onSelect: (Int) -> Unit) {
             modifier = Modifier.navigationBarsPadding(),
         ) {
             TABS.forEachIndexed { i, name ->
-                // The content form has no 16 dp side padding, so four one-line names fit a 360 dp wide phone.
+                // The content form has no 16 dp side padding, so the one-line names fit a 360 dp wide phone.
                 Tab(
                     selected = i == selected,
                     onClick = { onSelect(i) },
@@ -162,7 +163,7 @@ fun Help(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-/** True while Settings shows its expert controls (behind "More settings" at the bottom of Settings). */
+/** True while Settings shows its expert controls (behind "More" at the bottom of Settings). */
 val LocalAdvanced = staticCompositionLocalOf { false } // Settings provides it; the set-up guide shows no sliders
 
 /** A slider setting; hidden unless [LocalAdvanced]. */

@@ -183,7 +183,7 @@ class NapSessionService : LifecycleService() {
         if (invalid != null) {
             Log.w(TAG_SESSION, logLine("INVALID_SETTING", "error" to invalid))
             return refuse(
-                "Some settings don't fit together. Open Settings > More settings and tap Reset all of these to normal.",
+                "Some settings don't fit together. Open Settings › More and tap Reset all of these to normal.",
             )
         }
         // The volume guard reads the media index of the current media device, which must be the cue's speaker.
@@ -282,7 +282,7 @@ class NapSessionService : LifecycleService() {
             ". On the watch: Details > Start without the phone."
         private val watchOutdated = WATCH_OUTDATED + " and couldn't start tracking your sleep" +
             (if (alarmsOn) ", so your alarms won't ring" else "") +
-            ". Update it on the Watch tab, under Install the watch app."
+            ". Update it in Settings › More › Install the watch app."
 
         fun begin() {
             wakeLock.acquire((config.sessionMaxMin + 10) * 60_000L) // §14.4

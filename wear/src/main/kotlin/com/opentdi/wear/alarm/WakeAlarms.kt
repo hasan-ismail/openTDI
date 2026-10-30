@@ -287,12 +287,12 @@ class WakeAlarms(
         val total = nowMs - (firstRingAt ?: r.startMs) // snoozes count as part of waking up
         val summary = when {
             r.kind != "WAKE" -> null
-            how == "STOPPED" -> "Woke up in ${clock(total)}" + when (tappedSnoozes) {
+            how == "STOPPED" -> "Woke up in ${minSec(total)}" + when (tappedSnoozes) {
                 0 -> "."
                 1 -> " (1 snooze)."
                 else -> " ($tappedSnoozes snoozes)."
             }
-            else -> "The wake-up alarm stopped by itself after ${clock(total)}."
+            else -> "The wake-up alarm stopped by itself after ${minSec(total)}."
         }?.let { if (restored != null) "$it Tracking stopped during the night." else it }
         // With the guide the cue is trained in bed instead, not now while the sleeper is groggy.
         val trains = r.kind == "WBTB" && how == "STOPPED" && lateCues != null && !guideReady()
@@ -740,6 +740,9 @@ class WakeAlarms(
 
         /** m:ss, or "—" when it never happened. */
         fun clock(ms: Long?): String = ms?.let { String.format(Locale.ROOT, "%d:%02d", it / 60_000, it / 1000 % 60) } ?: "—"
+
+        /** "1 min 45 s": a length in words, where "1:45" in a sentence reads as a time of day. */
+        fun minSec(ms: Long): String = "${ms / 60_000} min ${ms / 1000 % 60} s"
 
         /**
          * When tonight's sleep began, for the WBTB's "too early" check: the start of a recording, or the night's earlier

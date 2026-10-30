@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -48,7 +49,6 @@ import com.opentdi.mobile.ui.BottomTabs
 import com.opentdi.mobile.ui.OpenTdiTheme
 import com.opentdi.mobile.ui.SettingsScreen
 import com.opentdi.mobile.ui.TonightScreen
-import com.opentdi.mobile.ui.WatchScreen
 import com.opentdi.mobile.ui.stats.StatsScreen
 import com.opentdi.mobile.ui.stats.StatsViewModel
 import kotlinx.coroutines.Dispatchers
@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             OpenTdiTheme {
                 var tab by rememberSaveable { mutableIntStateOf(0) }
+                var quickAsk by rememberSaveable { mutableStateOf(false) } // Settings' Quick test, asked on Tonight
+                var showWatch by rememberSaveable { mutableStateOf(false) } // Settings opens on the watch's install
                 BackHandler(enabled = tab != 0) { tab = 0 }
                 NightSky() // behind every tab; the scaffold is see-through
                 val onboarded by viewModel.onboarded.collectAsStateWithLifecycle()
@@ -105,11 +107,24 @@ class MainActivity : ComponentActivity() {
                                     onRaiseVolume = ::raiseVolume,
                                     onOpenDnd = ::openDndSettings,
                                     onOpenBluetooth = { openFirst(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) },
-                                    onOpenWatch = { tab = 1 },
+                                    onOpenWatch = {
+                                        showWatch = true
+                                        tab = 2
+                                    },
+                                    quickAsk = quickAsk,
+                                    onQuickAskSeen = { quickAsk = false },
                                 )
-                                1 -> WatchScreen()
-                                2 -> StatsScreen(stats)
-                                else -> SettingsScreen(viewModel)
+                                1 -> StatsScreen(stats)
+                                // A tab saved by an older version as 3 (Settings, after the old Watch tab) lands here.
+                                else -> SettingsScreen(
+                                    viewModel,
+                                    onQuickTest = {
+                                        quickAsk = true
+                                        tab = 0
+                                    },
+                                    showWatch = showWatch,
+                                    onWatchShown = { showWatch = false },
+                                )
                             }
                         }
                     }
