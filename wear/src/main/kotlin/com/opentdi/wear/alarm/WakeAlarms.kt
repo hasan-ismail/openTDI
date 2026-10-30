@@ -1,6 +1,7 @@
 package com.opentdi.wear.alarm
 
 import com.opentdi.shared.csv.csvLine
+import com.opentdi.shared.csv.readCsv
 import com.opentdi.shared.model.LateCueMode
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -425,11 +426,8 @@ class WakeAlarms(
         if (!morningSaved(firstRingMs)) SensingStateHolder.update { it.copy(reportAfter = "WAKE") }
     }
 
-    /**
-     * A dream report was saved since the morning's first ring at [firstRingMs], such as during its snooze.
-     * shortcut: an early wake-up report saved then counts too; read the rows' "after" if that matters.
-     */
-    private fun morningSaved(firstRingMs: Long) = File(dir, CsvFiles.W_MORNING.name).lastModified() >= firstRingMs
+    /** The morning's own dream report (WAKE) was saved since its first ring at [firstRingMs], such as in its snooze. */
+    private fun morningSaved(firstRingMs: Long) = wakeSavedSince(File(dir, CsvFiles.W_MORNING.name), firstRingMs)
 
     /** The guide is on and every clip of it is on the watch; otherwise WBTB runs as it did before the guide. */
     private fun guideReady() = config.wbtbGuide && guideClipsPresent(context)
@@ -622,6 +620,19 @@ class WakeAlarms(
             } catch (e: IOException) { // a full watch, or storage still locked after a restart: the alarm rings on
                 logEvent("ALARM_LOG_FAILED", "event" to row[2], "error" to e.message)
             }
+        }
+
+        /** [file] (w_morning.csv) has a WAKE row written at or after [sinceMs]; a NIGHT or WBTB report is not one. */
+        internal fun wakeSavedSince(file: File, sinceMs: Long): Boolean {
+            if (file.lastModified() < sinceMs) return false // a missing file reads 0
+            val rows = try {
+                file.reader().use(::readCsv)
+            } catch (e: IOException) {
+                return false
+            } catch (e: IllegalArgumentException) { // a row cut short when the watch died
+                return false
+            }
+            return rows.drop(1).any { it.getOrNull(1) == "WAKE" && (it[0]?.toLongOrNull() ?: 0L) >= sinceMs }
         }
 
         private const val MOVING = 0.5f // AccelConfig.moveStillness: below it a second counts as moving

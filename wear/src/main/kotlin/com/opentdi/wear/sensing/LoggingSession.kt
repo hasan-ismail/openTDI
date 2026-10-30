@@ -143,6 +143,7 @@ class LoggingSession(
                     lastWakeText = it.lastWakeText,
                     snoozesLeft = it.snoozesLeft,
                     lateCuesTraining = it.lateCuesTraining,
+                    lateCuesEndAtMs = it.lateCuesEndAtMs, // the same LateCues carry on; their disarm/close clear it
                     guideOffered = it.guideOffered,
                     guideRunning = it.guideRunning,
                     reportAfter = it.reportAfter,

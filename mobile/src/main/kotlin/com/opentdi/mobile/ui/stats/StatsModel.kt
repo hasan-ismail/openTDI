@@ -391,7 +391,7 @@ fun marks(s: NightSummary): List<Mark> = buildList {
         a.stoppedAtMs?.let { add(Mark(it, "\"I'm awake\"", "Awake")) }
     }
     for (r in s.reports) {
-        add(Mark(r.atMs, questionsLabel(r.after), "Questions"))
+        add(Mark(r.atMs, questionsLabel(r.after), if (r.after == "NIGHT") "Dream" else "Questions")) // NIGHT asks none
     }
 }.sortedBy { it.atMs }
 

@@ -229,7 +229,10 @@ class MainActivity : ComponentActivity() {
                                         ?: File(filesDir, "sessions/${state.sessionId ?: "reports"}"),
                                     requestMic = ::requestMic,
                                     onSaved = {
-                                        if (SensingStateHolder.state.value.wakeAgainAtMs != null) savedInSnooze = true
+                                        val s = SensingStateHolder.state.value
+                                        // Only the morning's own: a night dream or WBTB report leaves it due.
+                                        val wake = reportDir == null && (s.reportAfter ?: "WAKE") == "WAKE"
+                                        if (s.wakeAgainAtMs != null && wake) savedInSnooze = true
                                         SensingStateHolder.update { it.copy(reportAfter = null) }
                                     },
                                     // Read now, not when composed: a night ended from the phone has no End the night.

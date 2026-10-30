@@ -1,6 +1,7 @@
 package com.opentdi.mobile.ui
 
 import android.content.pm.ApplicationInfo
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedContent
@@ -34,11 +35,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -215,12 +218,13 @@ fun TonightScreen(
     fun onlyWatchClosed() =
         (watch == WatchState.IDLE || checkingWatch) && problems(false).all { it.check == Check.WATCH }
     fun tryStart(quick: Boolean, screenOff: Boolean = false) {
-        if (!quick && unsure && !screenOff) {
+        val opens = !quick && onlyWatchClosed()
+        val clear = errors.isEmpty() && (opens || (!waitsForWatch(quick) && problems(quick).isEmpty()))
+        // Only a Start that would go on at once waits: a popup opens on the tap, while the user is still looking.
+        if (!quick && unsure && !screenOff && clear && !nightUnderway) {
             startOnAnswer = true
             return
         }
-        val opens = !quick && onlyWatchClosed()
-        val clear = errors.isEmpty() && (opens || (!waitsForWatch(quick) && problems(quick).isEmpty()))
         if (clear && (quick || !nightUnderway)) {
             if (opens) openWatch()
             begin(quick)
@@ -229,10 +233,13 @@ fun TonightScreen(
             startAsk = quick
         }
     }
+    // The popup the watch's answer opened (low watch battery, already tracking), maybe with nobody looking.
+    var askFromWait by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(startOnAnswer, unsure) {
         if (startOnAnswer && !unsure) {
             startOnAnswer = false
             if (idle) tryStart(quick = false)
+            askFromWait = startAsk == false
         }
     }
     // Only a real Start opens the watch app, never a Quick test. It only opens: the watch then waits for this Start.
@@ -242,9 +249,14 @@ fun TonightScreen(
             openWatch()
         }
     }
-    LaunchedEffect(startAsk) { if (startAsk == null) openedWatch = false }
+    LaunchedEffect(startAsk) {
+        if (startAsk == null) {
+            openedWatch = false
+            askFromWait = false
+        }
+    }
     // Goes on by itself once only the watch opening is left, as tryStart; anything else keeps the popup open.
-    val goOn = startAsk == false && openedWatch && idle && errors.isEmpty() && !waitsForWatch(false) &&
+    val goOn = startAsk == false && openedWatch && idle && errors.isEmpty() && !waitsForWatch(false) && !unsure &&
         (problems(false).isEmpty() || onlyWatchClosed()) && !nightUnderway
     LaunchedEffect(goOn) {
         if (goOn) {
@@ -259,10 +271,22 @@ fun TonightScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         if (activity?.isChangingConfigurations != true) {
             if (startOnAnswer && idle) tryStart(quick = false, screenOff = true)
+            // The answer's popup, unseen until the screen went off (not left for a fix's Settings page): the Start
+            // goes on as at a tap of Start anyway; a closed watch app is opened, as tryStart does.
+            if (askFromWait && startAsk == false && idle && errors.isEmpty() && !nightUnderway &&
+                problems(false).all { !it.blocking || (it.check == Check.WATCH && watch == WatchState.IDLE) } &&
+                context.getSystemService(PowerManager::class.java)?.isInteractive == false
+            ) {
+                if (watch == WatchState.IDLE) openWatch()
+                begin(false)
+            }
             startOnAnswer = false
             startAsk = null
         }
     }
+    // A tab switch disposes this screen; a Start still waiting for the watch goes on as at screen-off.
+    val goOnLeaving by rememberUpdatedState { if (startOnAnswer && idle) tryStart(quick = false, screenOff = true) }
+    DisposableEffect(Unit) { onDispose { if (activity?.isChangingConfigurations != true) goOnLeaving() } }
     // Always through the popup: on arriving here the volume, speaker and Do Not Disturb checks have not been read yet.
     LaunchedEffect(quickAsk) {
         if (quickAsk) {
@@ -325,7 +349,9 @@ fun TonightScreen(
     startAsk?.let { quick ->
         val left = problems(quick)
         val again = !quick && nightUnderway
-        val blocked = !idle || errors.isNotEmpty() || waitsForWatch(quick) || left.any { it.blocking }
+        // Held until a fresh watch answer: "already tracking" and a low watch battery show before anyone can tap.
+        val blocked = !idle || errors.isNotEmpty() || waitsForWatch(quick) || (!quick && unsure) ||
+            left.any { it.blocking }
         AlertDialog(
             onDismissRequest = { startAsk = null },
             title = { Text(if (quick) "Before the quick test" else "Before you start") },
@@ -349,7 +375,7 @@ fun TonightScreen(
                             Text("Reset to normal")
                         }
                     }
-                    if (waitsForWatch(quick)) Text("Checking the watch…")
+                    if (waitsForWatch(quick) || (!quick && unsure)) Text("Checking the watch…")
                     // Grouped, so the dot's color is not the only sign of what keeps Start off.
                     val (must, could) = left.partition { it.blocking }
                     if (must.isNotEmpty()) Text("Fix this to start:", style = MaterialTheme.typography.titleSmall)

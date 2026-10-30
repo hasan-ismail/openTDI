@@ -6,14 +6,32 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 
 class WakeAlarmsTest {
+    @get:Rule
+    val tmp = TemporaryFolder()
+
     private val hour = 3_600_000L
+
+    @Test
+    fun wakeSavedSince_countsOnlyTheMorningsOwnReport() {
+        val file = File(tmp.root, "w_morning.csv")
+        val ring = System.currentTimeMillis() - 60_000
+        assertFalse(WakeAlarms.wakeSavedSince(file, ring)) // no file yet
+        // A night dream and the early wake-up's report, saved in the snooze, and last morning's WAKE row.
+        file.writeText("wall_ms,after,recording\n${ring - hour},WAKE,\n${ring + 1000},NIGHT,a.m4a\n${ring + 2000},WBTB,\n")
+        assertFalse(WakeAlarms.wakeSavedSince(file, ring))
+        file.appendText("${ring + 3000},WAKE,\n")
+        assertTrue(WakeAlarms.wakeSavedSince(file, ring))
+    }
 
     @Test
     fun nightStart_keepsTheNightsStartForARestartSoonAfterAStop() {

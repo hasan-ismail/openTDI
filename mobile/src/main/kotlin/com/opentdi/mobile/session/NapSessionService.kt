@@ -28,6 +28,7 @@ import com.opentdi.shared.model.DeviceRole
 import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.WatchStatus
 import com.opentdi.shared.model.apkSha256
+import com.opentdi.mobile.link.openWatchApp
 import com.opentdi.mobile.link.watchRequest
 import com.opentdi.mobile.MainActivity
 import com.opentdi.mobile.R
@@ -94,6 +95,14 @@ internal fun afterSkippedCue(error: String?, skipped: String, missing: String, o
     if (error == missing || error == outdated) error else skipped
 
 private const val WATCH_MISSES = 3 // Start requests without a tracking watch before Tonight says so
+
+/**
+ * Start opens the watch app once; a failed open (no watch in reach then, its screen off) leaves the night untracked,
+ * so the watch still closed ([WatchState.IDLE]) after the first and third slow misses (about 30 s and 70 s after Start)
+ * is opened again. Never once it tracked tonight: a night ended on the watch stays ended.
+ */
+internal fun reopenWatch(answer: WatchStatus?, misses: Int, everTracked: Boolean) =
+    answer?.understood == true && answer.state == WatchState.IDLE && !everTracked && (misses == 1 || misses == 3)
 
 /**
  * Tonight's error after a Start request: [outdated] at once when the watch app could not read Start, or is older than
@@ -300,11 +309,14 @@ class NapSessionService : LifecycleService() {
                 var last: String? = null
                 var misses = 0
                 var tracking = false
+                var everTracked = false
                 val carried = withContext(Dispatchers.IO) { carriedWatchApk(this@NapSessionService) }
                 // A lost answer, a watch opened after Start or a restarted watch leaves it waiting: no tracking, no
                 // alarms. So Start repeats until the watch tracks. Once it does, the phone only asks: a resent Start
                 // re-runs the watch's 12 h "last night's recording" check, which can split the night at 12 h.
                 while (isActive && !ending) {
+                    // The watch app Start just opened is still opening: Start is resent soon, and a miss doesn't count.
+                    val early = SystemClock.elapsedRealtime() - startRealtimeMs < WATCH_OPENING_MS
                     val command = if (tracking) TdiCommand.StatusRequest(DeviceRole.PHONE) else start
                     val answer = watchRequest(this@NapSessionService, command)
                     val state = answer?.state
@@ -324,7 +336,12 @@ class NapSessionService : LifecycleService() {
                     // watch), so Start is resent until it is read.
                     if (answer != null) {
                         tracking = state == WatchState.RECORDING && answer.understood
-                        misses = if (tracking) 0 else misses + 1
+                        everTracked = everTracked || tracking
+                        misses = if (tracking) 0 else if (early) misses else misses + 1
+                    }
+                    if (reopenWatch(answer, misses, everTracked)) {
+                        sessionEvent(logLine("WATCH_OPEN_AGAIN", "misses" to misses))
+                        openWatchApp(this@NapSessionService)
                     }
                     SessionMonitor.update {
                         it.copy(error = watchStartError(it.error, answer, misses, carried, watchMissing, watchOutdated))
@@ -333,7 +350,7 @@ class NapSessionService : LifecycleService() {
                         sessionEvent(logLine("WAKE_VOICE_SENT", "stored" to player.storeOnWatch(voice)))
                         voice = null
                     }
-                    delay(WATCH_RETRY_MS)
+                    delay(if (!tracking && early) WATCH_OPENING_RETRY_MS else WATCH_RETRY_MS)
                 }
             }
             lifecycleScope.launch(Dispatchers.IO) { log.writeConfig(configRows()) }
@@ -530,6 +547,8 @@ class NapSessionService : LifecycleService() {
         private const val TICK_MS = 250L
         private const val FLUSH_MS = 5000L // §12.1
         private const val WATCH_RETRY_MS = 20_000L
+        private const val WATCH_OPENING_MS = 30_000L // GUESSED: a remote open lands well within this
+        private const val WATCH_OPENING_RETRY_MS = 2_000L
         private val COMMAND_URI = "wear://*${DataLayerPaths.STATE_COMMAND}".toUri()
         private val CLOCK = DateTimeFormatter.ofPattern("h:mm:ss a", Locale.US)
         private val SHORT_CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)

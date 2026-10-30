@@ -317,10 +317,14 @@ class StatsModelTest {
             night,
             wbtb = WbtbOutcome(ms(next, 4, 30), ms(next, 4, 31), ms(next, 4, 50), ms(next, 5, 2)),
             wake = AlarmOutcome(ms(next, 7), ms(next, 7, 3)),
-            reports = listOf(DreamReport(ms(next, 7, 5), "WAKE"), DreamReport(ms(next, 4, 33), "WBTB")),
+            reports = listOf(
+                DreamReport(ms(next, 7, 5), "WAKE"),
+                DreamReport(ms(next, 4, 33), "WBTB"),
+                DreamReport(ms(next, 6, 0), "NIGHT"), // saved in the night: no questions
+            ),
         )
         assertEquals(
-            listOf("Early", "Up", "Questions", "Bed", "Asleep", "Alarm", "Awake", "Questions"),
+            listOf("Early", "Up", "Questions", "Bed", "Asleep", "Dream", "Alarm", "Awake", "Questions"),
             marks(s).map { it.short },
         )
     }

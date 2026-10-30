@@ -3,7 +3,9 @@ package com.opentdi.mobile.session
 import com.opentdi.shared.model.WatchState
 import com.opentdi.shared.model.WatchStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WatchStartTest {
@@ -46,5 +48,18 @@ class WatchStartTest {
         assertEquals(outdated, afterSkippedCue(outdated, skipped, missing, outdated))
         assertEquals(skipped, afterSkippedCue(null, skipped, missing, outdated))
         assertEquals(skipped, afterSkippedCue("an older skip", skipped, missing, outdated))
+    }
+
+    @Test
+    fun aWatchStillClosed_isOpenedAgainTwice_neverOnceItTracked() {
+        val closed = WatchStatus(WatchState.IDLE, apk = carried)
+        assertTrue(reopenWatch(closed, misses = 1, everTracked = false))
+        assertFalse(reopenWatch(closed, misses = 2, everTracked = false))
+        assertTrue(reopenWatch(closed, misses = 3, everTracked = false))
+        assertFalse(reopenWatch(closed, misses = 4, everTracked = false))
+        assertFalse(reopenWatch(closed, misses = 1, everTracked = true)) // a night ended on the watch stays ended
+        assertFalse(reopenWatch(closed.copy(state = WatchState.WAITING), misses = 1, everTracked = false)) // open
+        assertFalse(reopenWatch(closed.copy(understood = false), misses = 1, everTracked = false))
+        assertFalse(reopenWatch(null, misses = 1, everTracked = false)) // out of reach
     }
 }
