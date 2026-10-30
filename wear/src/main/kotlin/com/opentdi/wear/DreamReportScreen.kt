@@ -99,9 +99,11 @@ internal const val SIGN_SEEN = 12
  * The indices of the questions this report asks, in order: the guide's after a guided WBTB ([guided]); the questions
  * about the dream itself only about a remembered one (no dream, or one without content, has nothing to judge); the
  * dream-sign question only when the phone sent signs ([signs]); how refreshed and how unusual the night only in the
- * morning, not at the early wake-up ([after] "WBTB").
+ * morning, not at the early wake-up ([after] "WBTB"). A dream saved in the night ("NIGHT") is only the recording: the
+ * questions would keep a sleeper awake.
  */
 internal fun shownQuestions(answers: Map<Int, String>, guided: Boolean, signs: Boolean, after: String): List<Int> {
+    if (after == "NIGHT") return emptyList()
     val dream = answers[RECALLED] == "YES"
     return QUESTIONS.indices.filter {
         when (it) {
@@ -116,7 +118,7 @@ internal fun shownQuestions(answers: Map<Int, String>, guided: Boolean, signs: B
 
 /**
  * A report being answered. It outlives the page, as SensingStateHolder does: back or the app closing keeps it, and
- * "Record your dream" goes on where it was left. Only Save, or the night ending ([flush]), writes its one row.
+ * "Save my dream" goes on where it was left. Only Save, or the night ending ([flush]), writes its one row.
  */
 internal class ReportDraft private constructor(
     val after: String,
@@ -171,7 +173,7 @@ internal class ReportDraft private constructor(
  * The morning report (owner, 2026-10-28; lucid_induction.md §5.3), also after WBTB: say the dream into the watch, then
  * one question per screen, one tap each; back goes to the previous screen. The recording and a w_morning.csv row go to
  * the night's session folder ([dir]), so cue and no-cue nights can be compared. Dream recall is the strongest personal
- * predictor of lucid dreams. Leaving keeps the unsaved report ([ReportDraft]) for "Record your dream".
+ * predictor of lucid dreams. Leaving keeps the unsaved report ([ReportDraft]) for "Save my dream".
  */
 @Composable
 fun DreamReportScreen(
@@ -280,11 +282,11 @@ fun DreamReportScreen(
                                                     "you're dreaming.",
                                             )
                                         }
-                                        Line("Replay the dream with your eyes closed. Then tap, say it, and tap Stop.")
+                                        Line("Replay the dream. Then tap Record, say it, and tap Stop.")
                                         Button(
                                             onClick = record,
                                             modifier = Modifier.fillMaxWidth(),
-                                            label = { Text("Tell me your dream") },
+                                            label = { Text("Record") },
                                         )
                                         if (micFailed) {
                                             Line(
@@ -392,7 +394,7 @@ fun DreamReportScreen(
                                 Button(
                                     onClick = {
                                         draft.write()
-                                        onSaved() // the report is done: "Record your dream" goes away
+                                        onSaved() // the report is done: "Save my dream" goes away
                                         onDone()
                                     },
                                     modifier = Modifier.fillMaxWidth(),

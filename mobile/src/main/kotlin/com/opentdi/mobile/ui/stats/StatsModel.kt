@@ -398,6 +398,7 @@ fun marks(s: NightSummary): List<Mark> = buildList {
 fun questionsLabel(after: String): String = when (after) {
     "WBTB" -> "Early wake-up questions"
     "LATER" -> "Dream questions"
+    "NIGHT" -> "Dream saved in the night"
     else -> "Morning questions"
 }
 
@@ -408,6 +409,7 @@ fun recordingLabel(name: String, reports: List<DreamReport>): String {
     val after = when (reports.firstOrNull { it.recording == name }?.after) {
         "WAKE" -> "after the wake-up alarm"
         "WBTB" -> "at the early wake-up"
+        "NIGHT" -> "in the night"
         else -> null
     }
     return listOfNotNull(time ?: name, after).joinToString(", ")

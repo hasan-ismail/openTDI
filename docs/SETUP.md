@@ -304,9 +304,12 @@ the tracking service. Each step is a `BACKUP` row in the night's `w_alarm.csv` (
 `NOT_ARMED`) and a `BACKUP_*` line in `adb -s $W logcat -s OTDI.Sensors`.
 
 **Early wake-up options (watch).** While tracking, the main screen offers **Skip the early wake-up** (tonight only; the
-wake-up alarm and tracking go on) and, from 4½ hours into the night, **I'm up now**, which starts the early wake-up
-without ringing. Both ask first, and either one, like a ring, settles the early wake-up for that night, even after a
-restart or a time change. After the night ends, **Record a dream** saves a dream report into the last night's folder
+wake-up alarm and tracking go on; it asks first) and **I woke up**. From 4½ hours into the night, **I woke up** offers
+**Do my early wake-up now**, which starts the early wake-up without ringing; before that, or with none ahead, it goes
+straight to **Save my dream**. Skip or start, like a ring, settles the early wake-up for that night, even after a
+restart or a time change. **Save my dream** in the night records the dream only, with no questions, as a
+`w_morning.csv` row with `after=NIGHT`; the night goes on, and Stats labels it "Dream saved in the night". After the night
+ends, **Save my dream** (From last night) saves a dream report into the last night's folder
 for up to 14 hours after that night; Stats labels it "Dream questions" and keeps it out of the soft-sound experiment.
 
 **Time it from when you fall asleep (phone Settings, Early wake-up).** The early wake-up then rings 4½ to 7 hours

@@ -290,6 +290,13 @@ class StatsModelTest {
     }
 
     @Test
+    fun recordingLabel_aDreamSavedInTheNight() {
+        val made = listOf(DreamReport(0, "NIGHT", recording = "w_dream_031500.m4a"))
+        assertEquals("Recorded 3:15 AM, in the night", recordingLabel("w_dream_031500.m4a", made))
+        assertEquals("Dream saved in the night", questionsLabel("NIGHT"))
+    }
+
+    @Test
     fun timeline_bucketsSkipGaps_runsAndMarksAreInOrder() {
         val e = Epochs(
             startMs = 0,

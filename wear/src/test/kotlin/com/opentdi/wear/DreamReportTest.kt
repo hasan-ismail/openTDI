@@ -74,6 +74,11 @@ class DreamReportTest {
     }
 
     @Test
+    fun shownQuestions_aDreamSavedInTheNight_asksNoQuestions() {
+        assertEquals(emptyList<Int>(), shownQuestions(mapOf(0 to "YES"), guided = true, signs = true, after = "NIGHT"))
+    }
+
+    @Test
     fun reportDraft_goesOnUntilSaved_andIsWrittenOnceWhenANewReportOrTheNightEndsIt() {
         ReportDraft.flush() // left by another test
         val night = tmp.newFolder("night")

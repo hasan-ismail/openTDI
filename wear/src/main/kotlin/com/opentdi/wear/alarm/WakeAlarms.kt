@@ -625,7 +625,7 @@ class WakeAlarms(
         private const val KEY_WBTB_DONE = "wbtbDone" // counts only from tonight's start on
         private const val KEY_WBTB_SKIPPED = "wbtbSkipped" // likewise
         private const val KEY_ONSET = "sleepOnset" // tonight's live onset; likewise
-        private const val LAST_NIGHT_MS = 14 * 3_600_000L // "Record a dream" for last night, until this long after it
+        private const val LAST_NIGHT_MS = 14 * 3_600_000L // "Save my dream" for last night, until this long after it
         private const val SAME_NIGHT_GAP_MS = 2 * 3_600_000L // GUESSED: a restart within 2 h is the same night
         private const val ALIVE_SAVE_MS = 60_000L // the stop time a dying recording leaves is at most this old
 
@@ -724,7 +724,7 @@ class WakeAlarms(
             ((morningDone && !reportDue) || nowMs - nightStartMs >= NEW_NIGHT_MS)
 
         /**
-         * The night that ended last, for "Record a dream": its session folder and when it stopped (or was last alive,
+         * The night that ended last, for "Save my dream": its session folder and when it stopped (or was last alive,
          * if the app died); null when it ended [LAST_NIGHT_MS] or more ago, or its folder is gone.
          */
         fun lastNight(context: Context): Pair<File, Long>? {

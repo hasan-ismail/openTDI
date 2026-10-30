@@ -1,0 +1,40 @@
+package com.opentdi.wear
+
+import com.opentdi.wear.sensing.SensingState
+import java.time.LocalDate
+import java.time.ZoneId
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class NightPageTest {
+    @Test
+    fun iWokeUp_showsOnlyWhenNothingElseIsDue() {
+        val night = SensingState(running = true)
+        assertTrue(showIWokeUp(night))
+        assertFalse(showIWokeUp(SensingState())) // not tracking
+        assertFalse(showIWokeUp(night.copy(alarmRinging = "WAKE")))
+        assertFalse(showIWokeUp(night.copy(wakeAgainAtMs = 1L))) // snoozed
+        assertFalse(showIWokeUp(night.copy(reportAfter = "WBTB"))) // its own Save my dream is up
+        assertFalse(showIWokeUp(night.copy(wbtbBackToSleepAtMs = 1L))) // the stay-up time
+        assertFalse(showIWokeUp(night.copy(guideOffered = true)))
+        assertFalse(showIWokeUp(night.copy(guideRunning = true)))
+    }
+
+    @Test
+    fun wbtbNowAt_onlyOnceTheEarlyWakeUpCouldRing() {
+        val ahead = SensingState(running = true, wbtbAheadAtMs = 9_000L, wbtbNowFromMs = 5_000L)
+        assertNull(wbtbNowAt(ahead, nowMs = 4_999L)) // too soon: straight to the dream
+        assertEquals(9_000L, wbtbNowAt(ahead, nowMs = 5_000L))
+        assertNull(wbtbNowAt(ahead.copy(wbtbAheadAtMs = null), nowMs = 6_000L)) // none, done or skipped
+    }
+
+    @Test
+    fun nightEndLine_afterTheWakeUp_orByATime() {
+        val start = LocalDate.of(2026, 10, 29).atTime(23, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals("The night ends by itself after your wake-up alarm.", nightEndLine(wakeEnabled = true, start))
+        assertEquals("The night ends by itself by 11 AM.", nightEndLine(wakeEnabled = false, start))
+    }
+}

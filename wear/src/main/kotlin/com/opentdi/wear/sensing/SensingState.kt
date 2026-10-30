@@ -32,7 +32,8 @@ data class SensingState(
     val lateCuesTraining: Boolean = false, // after a WBTB alarm with late cues: the cue is being trained
     val guideOffered: Boolean = false, // after the back-to-sleep buzz: "I'm in bed" starts the guided back-to-sleep
     val guideRunning: Boolean = false, // the guide plays; a long press or the back key stops it
-    // "WAKE" or "WBTB": a dream report is due (DreamReport). Saved reports also have "LATER": from last night, by hand.
+    // "WAKE", "WBTB" or "NIGHT" (saved in the night, only the recording): a dream report is due (DreamReport). Saved
+    // reports also have "LATER": from last night, by hand.
     val reportAfter: String? = null,
     val sessionId: String? = null,
     val startedElapsedMs: Long = 0L,

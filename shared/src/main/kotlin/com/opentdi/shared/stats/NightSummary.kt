@@ -127,7 +127,10 @@ data class LateCueOutcome(
 @Serializable
 data class DreamReport(
     val atMs: Long,
-    /** WAKE, WBTB, or LATER: "Record a dream / From last night", which the experiment leaves out. */
+    /**
+     * WAKE, WBTB, NIGHT ("Save my dream" in the night), or LATER ("Save my dream / From last night"); the experiment
+     * reads only WAKE.
+     */
     val after: String,
     /** The w_dream_*.m4a file in the same session folder. */
     val recording: String? = null,
