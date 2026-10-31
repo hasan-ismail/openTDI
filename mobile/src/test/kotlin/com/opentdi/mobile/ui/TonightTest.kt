@@ -261,7 +261,7 @@ class TonightTest {
 
     @Test
     fun nightPlan_wrapsPastMidnight() {
-        val cfg = SessionConfig(alarms = AlarmConfig(wakeEnabled = true, wakeAtMin = 7 * 60))
+        val cfg = SessionConfig(alarms = AlarmConfig(wakeEnabled = true, wakeAtMin = 7 * 60, wbtbEnabled = false))
         val zone = ZoneId.of("America/New_York")
         val at23 = ZonedDateTime.of(2026, 10, 27, 23, 0, 0, 0, zone)
         val plan = nightPlan(cfg, at23)

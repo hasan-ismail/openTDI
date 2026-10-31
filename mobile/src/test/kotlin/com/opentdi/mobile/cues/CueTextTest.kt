@@ -85,7 +85,8 @@ class CueTextTest {
     fun guide_saysTheFirstSignAsAnIfThenLine_andJoinsTheFingerprintOnlyWhenOn() {
         val wbtb = SessionConfig(alarms = AlarmConfig(wbtbEnabled = true))
         assertTrue(guideOn(wbtb)) // on by default once WBTB is
-        assertFalse(guideOn(SessionConfig()))
+        val noWbtb = SessionConfig(alarms = AlarmConfig(wbtbEnabled = false)) // WBTB is on by default
+        assertFalse(guideOn(noWbtb))
         val off = SessionConfig(alarms = AlarmConfig(wbtbEnabled = true, wbtbGuide = false))
         assertFalse(guideOn(off))
         val settle = guideText(GuideClip.SETTLE, wbtb)
@@ -96,9 +97,9 @@ class CueTextTest {
         val ifThen = " Next time I dream of my old school, I'll know I'm dreaming."
         assertEquals(generic + ifThen, guideText(GuideClip.MILD, signed)) // the first sign only
         // The guide on, or a new first sign, asks for Prepare cues; switched off, the cues stay ready.
-        assertNotEquals(cueFingerprint(SessionConfig(), "v"), cueFingerprint(wbtb, "v"))
+        assertNotEquals(cueFingerprint(noWbtb, "v"), cueFingerprint(wbtb, "v"))
         assertNotEquals(cueFingerprint(wbtb, "v"), cueFingerprint(signed, "v"))
-        assertEquals(cueFingerprint(SessionConfig(), "v"), cueFingerprint(off, "v"))
+        assertEquals(cueFingerprint(noWbtb, "v"), cueFingerprint(off, "v"))
     }
 
     @Test

@@ -251,8 +251,8 @@ private fun Figures(nights: List<NightRow>, days: Int) {
         Tile(
             "Lucid moments",
             if (rated == 0) "—" else "$lucidMornings",
-            if (rated == 0) "After your first dream questions" else
-                "Of ${plural(rated, "reported morning")} (knew you were dreaming: $LUCID_INSIGHT of 5 or more)",
+            if (rated == 0) "After your first remembered dream" else
+                "Of ${plural(rated, "remembered dream")} (knew you were dreaming: $LUCID_INSIGHT of 5 or more)",
             Modifier.weight(1f),
         )
     }

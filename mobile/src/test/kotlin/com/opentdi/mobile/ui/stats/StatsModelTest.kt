@@ -143,7 +143,7 @@ class StatsModelTest {
             row(day(6), summary(day(6), reports = listOf(report()))), // every question skipped
         )
         assertEquals(2 to 4, recall(nights))
-        assertEquals(1 to 4, lucid(nights)) // the WHITE morning counts as not lucid
+        assertEquals(1 to 2, lucid(nights)) // per remembered dream: day 1 and day 4
         assertEquals(
             listOf(Outcome.DREAM, Outcome.WHITE, Outcome.NO_DREAM, Outcome.LUCID, Outcome.NO_REPORT, Outcome.NO_REPORT),
             nights.map(::outcome),

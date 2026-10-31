@@ -142,12 +142,14 @@ fun recall(nights: List<NightRow>): Pair<Int, Int> {
 }
 
 /**
- * Mornings with insight of [LUCID_INSIGHT] or more, and mornings that answered recall or insight. Since 2026-10-29 the
- * watch asks insight only about a remembered dream, so a morning without one counts as not lucid, not as unrated.
+ * Mornings with insight of [LUCID_INSIGHT] or more, out of mornings that remembered a dream. Being woken and asked raises
+ * recall by itself, and more remembered dreams means more noticed lucid ones, so the rate is per remembered dream
+ * (owner, 2026-10-31). A lucid answer counts as remembered on older nights asked insight without recall.
  */
 fun lucid(nights: List<NightRow>): Pair<Int, Int> {
-    val answered = nights.filter { n -> n.reports.any { it.recalled != null || it.insight != null } }
-    return answered.count { (it.insight ?: 0) >= LUCID_INSIGHT } to answered.size
+    val isLucid = { n: NightRow -> (n.insight ?: 0) >= LUCID_INSIGHT }
+    val remembered = nights.filter { n -> isLucid(n) || n.reports.any { it.recalled == "YES" } }
+    return remembered.count(isLucid) to remembered.size
 }
 
 /** The night's own time zone, or the phone's when the stored one is unreadable. */

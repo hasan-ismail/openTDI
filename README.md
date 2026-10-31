@@ -40,7 +40,7 @@ on its sensor-free version that speaks on a timer only
    itself. Remember a dream later? Tap **Save my dream** on the watch, up to 14 hours after the night,
    and it is saved with that night.
 
-**WBTB** (Wake Back To Bed; off unless you turn it on in Settings) wakes you in the middle of the night, keeps you up for a
+**WBTB** (Wake Back To Bed; on by default, at 4:30 AM, which you can change or turn off in Settings) wakes you late in the night, keeps you up for a
 short while, then buzzes when to go back to bed. While the watch tracks your sleep, it shows two buttons for it:
 
 - **Skip WBTB** turns it off for tonight only (it asks first). Your wake-up alarm still rings, and the
@@ -72,8 +72,9 @@ tells you that you are dreaming right now; it only says how to recognise a dream
 the words (**What the voice says**), and, under **More**, the voice, the speaking speed and all the timings. If your
 phone is in another room, turn on **Play the voice on the watch** in Settings, and the watch plays it.
 
-While you sleep, the **watch tracks your body's signals**: heart rate and heartbeat timing, skin response (EDA),
-movement, skin temperature, blood-oxygen spot checks, and the raw pulse signal, which can later show your breathing.
+While you sleep, the **watch records** heart rate and heartbeat timing, skin response (EDA), movement, skin
+temperature, blood-oxygen spot checks, and the raw pulse signal, which can later show your breathing. It does not
+detect sleep stages: the only thing the app acts on is whether you lie still, to time the voice.
 The phone shows these live.
 
 ## What you need
@@ -101,15 +102,29 @@ the GPL does not allow distributing that combination as one app. Building it for
 | | Works now | Coming next |
 |---|---|---|
 | **The voice** | A voice on a timer (MIT's method) that waits until the watch shows you lying still; from the phone, or from the watch's speaker or earbuds paired with the watch; lucid-dream words by default; your own words, or your own recorded voice; a natural-sounding voice that runs on the phone | |
-| **Watch** | Tracks your sleep all night: heart rate, heartbeat timing, skin response, movement, skin temperature, blood oxygen and the raw pulse signal; the phone shows them live | Breathing rate worked out from the pulse signal |
-| **Alarms** | On the watch: a wake-up alarm, on by default (five tones, a spoken one with your name, snooze), that logs how long you take to wake up, with a backup in the watch's own alarm clock; and a WBTB (often called WBTB, "wake back to bed") that guides you through staying up and buzzes when to go back to bed. You can skip it for one night, start it yourself with **I woke up**, or time it from when you fall asleep | |
-| **Soft sounds** | After WBTB, the watch teaches you a soft three-note sound, then plays it quietly once you are asleep again; a test mode secretly skips some nights so Stats can show whether it helps you | |
+| **Watch** | Records your night: heart rate, heartbeat timing, skin response, movement, skin temperature, blood oxygen and the raw pulse signal; the phone shows them live. Stats' "possibly REM" is a rough guess, not a measured sleep stage | Breathing rate worked out from the pulse signal |
+| **Alarms** | On the watch, both on by default: a wake-up alarm (five tones, a spoken one with your name, snooze) that logs how long you take to wake up, with a backup in the watch's own alarm clock; and WBTB ("wake back to bed"), which wakes you late in the night, guides you through a short dream-rehearsal routine (MILD or SSILD) and buzzes when to go back to bed. You can skip it for one night, start it yourself with **I woke up**, or time it from when you fall asleep | |
+| **Soft sounds** | Off by default, an experiment: after WBTB, the watch teaches you a soft three-note sound, then plays it quietly once you are asleep again; a test mode secretly skips some nights so Stats can show whether it helps you | |
 | **Your answers** | Dream questions on the watch after each alarm: record your dream, then a few one-tap questions; **Save my dream** for a dream you remember in the night or after it; **Export my data** (Settings › More) saves every night and recording as one zip file | Showing your recordings as text (the phone already transcribes them offline, see [docs/SETUP.md](docs/SETUP.md) §13), and a dream journal on the phone |
 | **Safety** | The voice never gets louder than the volume you test it at. When the phone plays it, Start stops first if the phone's volume is off, its sound goes to headphones, or Do Not Disturb would mute it. Start warns when the watch app is out of date | |
 
-Good to know: MIT's own studies used a calm voice and short lines, like OpenTDI. In their at-home study, a timed
-voice alone got the chosen theme into at least one dream report for 73 of 80 people. Whether this setup helps you
-become **lucid** has not been tested yet. Your own nights are the first test, so tell us how it goes.
+### What the evidence says (and doesn't)
+
+- **The bedtime voice steers what you dream about.** That part is MIT's dream incubation. In their at-home study, a
+  timed voice got the chosen theme into at least one dream report for 73 of 80 people. The studies are small and
+  from one lab, and 52 of the 132 people who enrolled were left out, by their own reports, for not falling asleep
+  with the voice or not staying awake in the comparison session.
+- **Whether the bedtime voice helps you become lucid has not been tested.** In the studies, spoken lucid-dream cues
+  were played during REM sleep, later in the night, not at bedtime; hearing a line as you drift off is not the
+  same as practising it yourself.
+- **WBTB with the guided routine is the best-studied way to have lucid dreams at home.** Even so, it worked on about
+  1 night in 6 in a large study at home (15.8% of nights with MILD, 16.9% with SSILD). It also costs sleep, so
+  OpenTDI suggests 1 to 3 nights a week, not every night.
+- **Soft sounds are unproven.** The best test so far, run across several labs and registered in advance (a preprint,
+  not yet peer reviewed), found no benefit, and the sounds disturbed sleep in about 1 in 4 cued periods.
+- **Your own results can fool you.** Being woken and asked about your dreams makes you remember more of them, and
+  remembering more means noticing more lucid ones, so Stats counts lucid dreams per remembered dream. A real
+  difference takes dozens of nights to show.
 
 ## Your data stays with you
 

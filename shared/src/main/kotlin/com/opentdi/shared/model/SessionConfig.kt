@@ -146,7 +146,7 @@ data class AlarmConfig(
     val wakeEnabled: Boolean = true, // on: the dream questions open only after an alarm (WakeAlarms.stop)
     val wakeAtMin: Int = 420, // 0..1439 (07:00)
     val wakeTone: AlarmTone = AlarmTone.MELODY,
-    val wbtbEnabled: Boolean = false,
+    val wbtbEnabled: Boolean = true, // on by default: the best-studied lucid method (owner, 2026-10-31; README)
     // 0..1439 (04:30; owner, 2026-10-28: "do earlier wbtb"), GUESSED: with 30 min awake it leaves 2 h before a 07:00
     // wake-up (wakeTooSoonAfterWbtb); about 5 h after a 23:30 sleep onset, inside lucid_induction.md §5.2's 4.5–6.5 h
     val wbtbAtMin: Int = 270,
