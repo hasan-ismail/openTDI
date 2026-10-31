@@ -30,12 +30,13 @@ private val RECORDING = Regex("""w_dream_\d{6}\.m4a""") // DreamReportScreen: w_
 /**
  * Summarises one watch session folder for the night that began in [zone] (owner, 2026-10-28; the method is
  * docs/references/sleep_stats.md). [open] gives a file by name, null when it is missing: the watch's w_packets.csv,
- * w_alarm.csv and w_morning.csv, and p_transitions.csv, which is the phone's: the rows of every phone session that
- * overlaps the recording, header once. Null when w_packets.csv is missing or has no whole row. No clock and no
- * randomness, so the same files always give an equal summary; a reader's IOException is the caller's.
+ * w_alarm.csv, w_morning.csv and w_spo2.csv, and p_transitions.csv, which is the phone's: the rows of every phone
+ * session that overlaps the recording, header once. Null when w_packets.csv is missing or has no whole row. No clock and
+ * no randomness, so the same files always give an equal summary; a reader's IOException is the caller's.
  */
 fun summarizeNight(sessionId: String, zone: ZoneId, open: (fileName: String) -> Reader?): NightSummary? {
     val sec = open(CsvFiles.W_PACKETS.name)?.use(::readPackets) ?: return null
+    open(CsvFiles.W_SPO2.name)?.use(::readTable)?.let(sec::addSpo2)
     val alarms = open(CsvFiles.W_ALARM.name)?.use(::readTable).orEmpty().mapNotNull(::alarmRow).sortedBy { it.wallMs }
     val reports = open(CsvFiles.W_MORNING.name)?.use(::readTable).orEmpty().mapNotNull(::dreamReport)
         .sortedBy { it.atMs }
@@ -145,6 +146,20 @@ private fun readPackets(reader: Reader): Seconds? {
 }
 
 private fun List<String>.float(i: Int) = getOrNull(i)?.toFloatOrNull()?.takeIf { it.isFinite() }
+
+/**
+ * w_spo2.csv's completed spot checks (SPO2_RESULT), each at the second it was measured. Not w_packets.csv spo2_pct:
+ * that holds the last result for up to the next check, so it cannot tell one reading from two equal ones.
+ */
+private fun Seconds.addSpo2(rows: List<Map<String, String?>>) {
+    for (r in rows) {
+        if (r["event"] != "SPO2_RESULT") continue // DATA rows are the measurement in progress
+        val ms = r["sdk_ts_ms"]?.toLongOrNull() ?: continue
+        val pct = r["spo2_pct"]?.toFloatOrNull() ?: continue
+        val s = Math.floorDiv(ms - startMs, 1000L)
+        if (s in 0L until size && spo2[s.toInt()].isNaN()) spo2[s.toInt()] = pct
+    }
+}
 
 /** A small CSV ([readCsv]) as one map per row, by header name; a row of another width is dropped. */
 private fun readTable(reader: Reader): List<Map<String, String?>> {

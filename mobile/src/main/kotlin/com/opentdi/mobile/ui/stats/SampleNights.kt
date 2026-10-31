@@ -26,6 +26,7 @@ import kotlin.random.Random
  */
 fun sampleNights(today: LocalDate, zone: ZoneId, count: Int = 120, seed: Int = 20261028): List<NightRow> {
     val r = Random(seed)
+    val vitals = Random(seed + 1) // skin temperature and blood oxygen draw apart: the other values stay as they were
     fun gauss() = r.nextFloat() + r.nextFloat() + r.nextFloat() + r.nextFloat() - 2f // mean 0, SD 0.58
     fun chance(p: Float) = r.nextFloat() < p
     var pendingArm: Boolean? = null // the experiment pair's second night: true = cue
@@ -66,14 +67,21 @@ fun sampleNights(today: LocalDate, zone: ZoneId, count: Int = 120, seed: Int = 2
         val hr = ArrayList<Float?>()
         val asleep = ArrayList<Boolean?>()
         val remLikely = ArrayList<Boolean?>()
+        val skinTemp = ArrayList<Float?>()
+        val spo2 = ArrayList<Float?>()
         for (m in start until end) {
             if (chance(0.01f)) { // the watch sent nothing that minute
                 movement += null
                 hr += null
                 asleep += null
                 remLikely += null
+                skinTemp += null
+                spo2 += null
                 continue
             }
+            // Plausible: the wrist about a degree warmer after falling asleep; a spot check 2 min in, then every 15 min.
+            skinTemp += 32.6f + 1.1f * ((m - onset) / 90f).coerceIn(0f, 1f) + (vitals.nextFloat() - 0.5f) * 0.2f
+            spo2 += if ((m - start) % 15 == 2) 94f + vitals.nextInt(5) else null
             val awakeAtWbtb = wbtb?.reOnsetMs != null && m in 990 until reOnset
             val sleeping = m in onset until finalWake && !awakeAtWbtb && brief.none { m in it until it + 5 }
             asleep += sleeping
@@ -149,7 +157,7 @@ fun sampleNights(today: LocalDate, zone: ZoneId, count: Int = 120, seed: Int = 2
             recordStartMs = at(start),
             recordEndMs = at(end),
             sleep = sleep,
-            epochs = Epochs(at(start), 60, movement, hr, asleep, remLikely),
+            epochs = Epochs(at(start), 60, movement, hr, asleep, remLikely, skinTemp, spo2),
             wake = if (alarm) {
                 AlarmOutcome(at(1140), stopped, if (chance(0.2f)) 1 else 0, ((stopped - at(1140)) / 1000).toInt())
             } else {

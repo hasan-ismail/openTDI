@@ -157,7 +157,7 @@ data class AlarmConfig(
     // app can't decode fails the whole Start command (PhoneCommandService) and resets the watch's alarms (parse).
     val wbtbAfterSleepMin: Int? = null,
     val wbtbTone: AlarmTone = AlarmTone.VIBRATE_ONLY, // rarely wakes anyone else; adds sound after 2 min
-    val wbtbAwakeMin: Int = 30, // 5..60: 30+ min awake predicted success (LaBerge 2018); then a buzz says sleep
+    val wbtbAwakeMin: Int = 20, // 10..30 (owner, 2026-10-31: 30 was too long); then a buzz says sleep
     val rampS: Int = 30, // 0..300: the tone rises from quiet to the watch's alarm volume
     val maxRingMin: Int = 10, // 1..30: then it stops by itself
     val maxSnoozes: Int = 3, // 0..5 (0 = no snooze button), wake-up alarm only

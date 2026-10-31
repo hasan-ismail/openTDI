@@ -37,6 +37,9 @@ private const val GAP_EPOCHS = 10 * EPOCHS_PER_MIN // GUESSED: an invalid run th
 private const val RE_SLEEP_EPOCHS = 10 * EPOCHS_PER_MIN // GUESSED: without RE_ONSET, this much sleep ends the WBTB break
 private const val HR_MEAN_MIN_S = 30 * 60 // GUESSED: seconds of heart rate while estimated asleep for its mean ...
 private const val HR_MINUTE_MIN_S = 30 // GUESSED: ... and in a minute, for the lowest minute mean
+// GUESSED: outside these a value is a sensor error, not a wrist skin temperature (°C) or a blood oxygen reading (%).
+private val SKIN_TEMP_C = 20f..45f
+private val SPO2_PCT = 50f..100f
 
 /** w_packets.csv on a 1-s grid: index s is the second from [startMs] + 1000 s. NaN where a second has no value. */
 internal class Seconds(
@@ -59,6 +62,8 @@ internal class Seconds(
     val skinTemp: FloatArray = FloatArray(hr.size) { Float.NaN },
     /** The second's largest acceleration away from gravity, g: small twitches show here. */
     val accelPeak: FloatArray = FloatArray(hr.size) { Float.NaN },
+    /** Each completed SpO2 spot check, %, at the second it was measured (w_spo2.csv SPO2_RESULT). */
+    val spo2: FloatArray = FloatArray(hr.size) { Float.NaN },
 ) {
     val size: Int get() = hr.size
 
@@ -253,6 +258,7 @@ private fun measure(
 private fun timeline(sec: Seconds, major: BooleanArray, asleep: (minute: Int) -> Boolean?): Epochs {
     val minutes = ((sec.endMs - sec.startMs + 59_999) / 60_000).toInt()
     fun seconds(m: Int) = 60 * m until minOf(60 * (m + 1), sec.size)
+    fun mean(values: List<Float>) = values.takeIf { it.isNotEmpty() }?.average()?.toFloat()
     return Epochs(
         startMs = sec.startMs,
         movement = List(minutes) { m ->
@@ -260,10 +266,14 @@ private fun timeline(sec: Seconds, major: BooleanArray, asleep: (minute: Int) ->
             if (known.isEmpty()) null else known.count { major[it] }.toFloat() / known.size
         },
         hrBpm = List(minutes) { m ->
-            seconds(m).filter { !sec.detached[it] }.map { sec.hr[it] }.filter { !it.isNaN() }
-                .takeIf { it.isNotEmpty() }?.average()?.toFloat()
+            mean(seconds(m).filter { !sec.detached[it] }.map { sec.hr[it] }.filter { !it.isNaN() })
         },
         asleep = List(minutes, asleep),
+        // NaN is in neither range.
+        skinTempC = List(minutes) { m ->
+            mean(seconds(m).filter { !sec.detached[it] }.map { sec.skinTemp[it] }.filter { it in SKIN_TEMP_C })
+        },
+        spo2Pct = List(minutes) { m -> mean(seconds(m).map { sec.spo2[it] }.filter { it in SPO2_PCT }) },
     )
 }
 

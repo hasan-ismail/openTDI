@@ -465,8 +465,6 @@ class MainActivity : ComponentActivity() {
 private enum class Page { MAIN, AWAKE, DETAILS, SESSIONS, REPORT, END_NIGHT }
 
 private const val EXTRA_TEST_NIGHT = "com.opentdi.TEST_NIGHT"
-private const val UI_PREFS = "ui"
-private const val KEY_AOD_ASKED = "aodAsked" // the waiting page's Turn on Always On Display was tapped once
 
 // Near-black and dim with a muted indigo-lavender accent: the always-on screen stays lit beside the pillow (§14.6).
 private val NightColors = ColorScheme(
@@ -531,9 +529,6 @@ private fun MainScreen(
     val wbtbAt = state.wbtbAheadAtMs // tonight's WBTB, while it can still be skipped or started
     // Keyed on it: a question left open as WBTB rang or moved must not come back for another one.
     var askSkip by remember(wbtbAt) { mutableStateOf(false) }
-    // Asked once: after that it lives in Details, so a watch with it already on isn't nagged every night.
-    val ui = remember { context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE) }
-    var aodAsked by remember { mutableStateOf(ui.getBoolean(KEY_AOD_ASKED, false)) }
     // A night whose tracking died keeps its wake-up (WakeBackup): shown and offered off, as nothing else can stop it.
     val backupAt = state.backupAtMs.takeIf { !state.running }
     var askBackupOff by remember(backupAt) { mutableStateOf(false) }
@@ -619,23 +614,8 @@ private fun MainScreen(
                 item { Canvas(Modifier.fillMaxWidth().height(56.dp)) { drawMoon(moon) } } // tonight's real moon phase
                 item { BigLine("Ready for tonight") }
                 item { Line("Tap Start the night on your phone. The watch starts with it.") }
-                if (!aodAsked) item {
-                    // Apps cannot read or change Always On Display, so the watch offers its display settings instead.
-                    // With it off the watch went back to the watch face during the night (owner, 2026-10-29); with it
-                    // on, this always-on app stays on the dim screen.
-                    Button(
-                        onClick = {
-                            ui.edit { putBoolean(KEY_AOD_ASKED, true) }
-                            aodAsked = true
-                            openDisplaySettings(context)
-                        },
-                        colors = ButtonDefaults.filledTonalButtonColors(),
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Turn on Always On Display") },
-                        // Two lines at most on the round screen: the main label already says what to switch on.
-                        secondaryLabel = { Text("Then swipe right to come back") },
-                    )
-                }
+                // No Always On Display suggestion: its light kept the owner awake (2026-10-31). Tracking runs with
+                // the screen off; Details still opens the display settings.
             } else if (state.running) {
                 // The wake-up rang (or the morning ended in its snooze) and its dream is not saved: it holds the night.
                 val morning = state.reportAfter == "WAKE"
@@ -867,7 +847,7 @@ private fun DetailsScreen(
                     colors = ButtonDefaults.filledTonalButtonColors(),
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Always On Display") },
-                    secondaryLabel = { Text("Keeps OpenTDI on the screen at night") },
+                    secondaryLabel = { Text("Off for a dark screen at night") },
                 )
             }
             // Last and out of the way: the night ends by itself, and ending it cancels the alarms still to come.

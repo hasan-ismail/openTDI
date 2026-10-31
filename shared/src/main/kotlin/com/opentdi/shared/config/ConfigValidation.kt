@@ -142,7 +142,7 @@ fun SessionConfig.validate(): List<String> {
         int("alarms.wakeAtMin", wakeAtMin, 0..1439)
         int("alarms.wbtbAtMin", wbtbAtMin, 0..1439)
         wbtbAfterSleepMin?.let { int("alarms.wbtbAfterSleepMin", it, MIN_SLEEP_BEFORE_WBTB_MIN..420, step = 15) }
-        int("alarms.wbtbAwakeMin", wbtbAwakeMin, 5..60)
+        int("alarms.wbtbAwakeMin", wbtbAwakeMin, 10..30)
         int("alarms.rampS", rampS, 0..300)
         int("alarms.maxRingMin", maxRingMin, 1..30)
         int("alarms.maxSnoozes", maxSnoozes, 0..5)

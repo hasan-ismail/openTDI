@@ -196,6 +196,7 @@ fun SettingsScreen(viewModel: MainViewModel, onQuickTest: () -> Unit, showWatch:
                     ) { Text("Reset all of these to normal") }
                 }
                 SavedNights(viewModel)
+                ExportData()
                 Section("Set-up guide") {
                     Help(
                         "The step-by-step guide from the first launch: the watch, the voice, alarms and your first " +
@@ -711,7 +712,7 @@ internal fun AlarmsCard(config: SessionConfig, enabled: Boolean, edit: Edit, vie
                     "to go back to bed. Best on 1 to 3 nights a week: skip it on the watch on the other nights.",
             )
             IntSetting(
-                "Stay up for", "Before the back-to-sleep buzz.", alarms.wbtbAwakeMin, 5..60, 5, "min", enabled,
+                "Stay up for", "Before the back-to-sleep buzz.", alarms.wbtbAwakeMin, 10..30, 5, "min", enabled,
             ) { v -> change { it.copy(wbtbAwakeMin = v) } }
             if (alarms.wakeTooSoonAfterWbtb()) {
                 Text(

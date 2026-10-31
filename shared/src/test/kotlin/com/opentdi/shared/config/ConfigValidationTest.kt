@@ -237,10 +237,10 @@ class ConfigValidationTest {
 
     @Test
     fun theWbtbFix_leaves2hFromBackToBedToTheWakeUp() {
-        val late = AlarmConfig(wakeEnabled = true, wbtbEnabled = true, wbtbAtMin = 330)
+        val late = AlarmConfig(wakeEnabled = true, wbtbEnabled = true, wbtbAtMin = 330, wbtbAwakeMin = 30)
         assertEquals(270, late.wbtbAtMinBeforeWake())
         assertFalse(late.copy(wbtbAtMin = late.wbtbAtMinBeforeWake()).wakeTooSoonAfterWbtb())
-        assertEquals(22 * 60 + 30, AlarmConfig(wakeAtMin = 60).wbtbAtMinBeforeWake()) // across midnight
+        assertEquals(22 * 60 + 30, AlarmConfig(wakeAtMin = 60, wbtbAwakeMin = 30).wbtbAtMinBeforeWake()) // across midnight
         assertEquals(23 * 60 + 15, AlarmConfig(wakeAtMin = 120, wbtbAwakeMin = 45).wbtbAtMinBeforeWake())
     }
 
@@ -256,7 +256,7 @@ class ConfigValidationTest {
     @Test
     fun lateCuesThatCannotStartBeforeTheWakeUp_warn_andATimeThatFitsIsOffered() {
         // Back to bed at 05:00, wake-up at 07:00, guide on: 19 + 10 + 10 + 40 = 79 of 120 min.
-        val on = AlarmConfig(wakeEnabled = true, wbtbEnabled = true, lateCues = LateCueMode.ON)
+        val on = AlarmConfig(wakeEnabled = true, wbtbEnabled = true, lateCues = LateCueMode.ON, wbtbAwakeMin = 30)
         assertFalse(on.lateCuesAfterWake())
         val late = on.copy(lateCueAfterOnsetMin = 90)
         assertTrue(late.lateCuesAfterWake())

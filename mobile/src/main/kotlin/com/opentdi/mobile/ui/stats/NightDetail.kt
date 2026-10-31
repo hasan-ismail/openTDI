@@ -274,11 +274,16 @@ private val BAND_TITLE = 18.dp
 private val MOVE_H = 56.dp
 private val BAND_GAP = 12.dp
 private val HR_H = 110.dp
+private val VITAL_H = 80.dp // skin temperature, and blood oxygen
 private val X_BAND = 22.dp
 
+/** "33.8 °C". */
+private fun celsius(v: Float) = String.format(Locale.ROOT, "%.1f$NBSP°C", v)
+
 /**
- * The night's timeline: movement as thin bars and heart rate as a line, two charts with their own y-axes sharing one
- * time axis, the estimated asleep time shaded behind both, the possible REM as a strip between them, and the alarms,
+ * The night's timeline: movement as thin bars and heart rate as a line, then skin temperature as a line and the
+ * blood oxygen spot checks as dots on nights that have them, each chart with its own y-axis on one shared time axis,
+ * the estimated asleep time shaded behind them all, the possible REM as a strip between the first two, and the alarms,
  * WBTB steps, reports and the phone's cues marked above. Tap or drag for the values at a moment; the table lists half
  * hours.
  */
@@ -298,14 +303,28 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
     val moveAxis = YAxis(niceTicks(0f, maxOf(movePct, 1f), 2), { "${it.roundToInt()}%" })
     val hrs = bs.mapNotNull { it.hr }
     val hrAxis = YAxis(niceTicks(hrs.minOrNull() ?: 50f, hrs.maxOrNull() ?: 70f, 3), { "${it.roundToInt()}" })
+    // A night without skin temperature or blood oxygen (older nights, a watch without the sensor) has no such chart.
+    val temps = bs.mapNotNull { it.skinTemp }
+    val tempAxis = if (temps.isEmpty()) null else {
+        // GUESSED: 0.2 °C to spare and steps of at least 0.5 °C, so a flat night's sensor noise does not fill the chart.
+        val ticks = niceTicks(temps.min() - 0.2f, temps.max() + 0.2f, 3, minStep = 0.5f)
+        YAxis(ticks, { String.format(Locale.ROOT, if (ticks[1] - ticks[0] < 1f) "%.1f" else "%.0f", it) })
+    }
+    // The blood oxygen spot checks (minute start ms, %), each shown on its own: nothing was measured in between.
+    val checks = remember(e) { e.spo2Pct.withIndex().mapNotNull { (m, v) -> v?.let { t0 + m * stepMs to it } } }
+    val spo2Axis = checks.minOfOrNull { it.second }?.let { lo ->
+        YAxis(niceTicks(minOf(lo, 85f), 100f, 3), { "${it.roundToInt()}" })
+    }
+    val vitals = listOfNotNull(tempAxis, spo2Axis)
     val ink = rememberInk()
     val colors = MaterialTheme.colorScheme
-    val gutter = LocalDensity.current.axisGutter(ink, moveAxis, hrAxis)
+    val gutter = LocalDensity.current.axisGutter(ink, moveAxis, hrAxis, *vitals.toTypedArray())
     val right = with(LocalDensity.current) { 4.dp.toPx() }
     val line = with(LocalDensity.current) { ink.lineH.toDp() }
     val lane = maxOf(LANE, line * 3 + 4.dp)
     val bandTitle = maxOf(BAND_TITLE, line + 2.dp)
     val xBand = maxOf(X_BAND, line + 6.dp)
+    val vitalH = maxOf(VITAL_H, line * 4) // up to four tick labels that never touch
     var selected by remember(s) { mutableStateOf<Long?>(null) }
     var table by rememberSaveable { mutableStateOf(false) }
     fun clock(ms: Long) = clockLabel(clockMin(ms, night, zone))
@@ -314,6 +333,11 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
         append("Night timeline from ${clock(t0)} to ${clock(t1)}.")
         s.sleep?.let { append(" Estimated asleep ${hm(it.sleepMin)}.") }
         if (hasRem) append(" Possibly REM about ${hm(e.remLikely.count { it == true } * e.stepS / 60)}, a rough guess.")
+        if (temps.isNotEmpty()) append(" Skin temperature ${celsius(temps.min())} to ${celsius(temps.max())}.")
+        if (checks.isNotEmpty()) {
+            val (lo, hi) = checks.minOf { it.second }.roundToInt() to checks.maxOf { it.second }.roundToInt()
+            append(" Blood oxygen $lo% to $hi% in ${plural(checks.size, "spot check")}.")
+        }
         if (events.isNotEmpty()) append(" " + events.joinToString(", ") { "${it.label} ${clock(it.atMs)}" } + ".")
     }
 
@@ -323,18 +347,25 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                 Key("Asleep (estimated)", colors.onSurface.copy(alpha = 0.16f), KeyShape.BAR), // the wash, a little stronger to show
                 Key("Movement", SERIES_2, KeyShape.BAR),
                 Key("Heart rate", SERIES_1, KeyShape.LINE),
+                Key("Skin temperature", SERIES_1, KeyShape.LINE).takeIf { tempAxis != null },
+                Key("Blood oxygen (spot checks)", SERIES_1, KeyShape.DOT).takeIf { spo2Axis != null },
                 Key("Possible REM (rough guess)", SERIES_3, KeyShape.BAR).takeIf { hasRem },
             ),
         )
         Crossfade(table, animationSpec = tween(250), label = "table") { asTable ->
             if (asTable) {
                 Table(
-                    listOf("Time", "Movement", "Heart rate", "Asleep (est.)", "REM (guess)"),
+                    listOfNotNull(
+                        "Time", "Movement", "Heart rate", "Skin temp.".takeIf { tempAxis != null },
+                        "Blood oxygen".takeIf { spo2Axis != null }, "Asleep (est.)", "REM (guess)",
+                    ),
                     buckets(e, (30 * 60 / e.stepS).coerceAtLeast(1)).map { b ->
-                        listOf(
+                        listOfNotNull(
                             clock(b.startMs),
                             b.movement?.let { "${(it * 100).roundToInt()}%" } ?: "—",
                             b.hr?.let { "${it.roundToInt()} bpm" } ?: "—",
+                            (b.skinTemp?.let(::celsius) ?: "—").takeIf { tempAxis != null },
+                            (b.spo2?.let { "${it.roundToInt()}%" } ?: "—").takeIf { spo2Axis != null },
                             "${b.asleepMin} min",
                             if (hasRem) "${b.remMin} min" else "—",
                         ) to null
@@ -346,7 +377,10 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(lane + bandTitle + MOVE_H + BAND_GAP + bandTitle + HR_H + xBand)
+                        .height(
+                            lane + bandTitle + MOVE_H + BAND_GAP + bandTitle + HR_H + xBand +
+                                (BAND_GAP + bandTitle + vitalH) * vitals.size,
+                        )
                         .onSizeChanged { widthPx = it.width }
                         .semantics { contentDescription = takeaway }
                         .pointerInput(s) {
@@ -369,16 +403,28 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                         val moveBottom = moveTop + MOVE_H.toPx()
                         val hrTop = moveBottom + (BAND_GAP + bandTitle).toPx()
                         val hrBottom = hrTop + HR_H.toPx()
-                        for (r in runs) { // the estimated asleep time, a wash behind both charts
+                        fun below(above: Float, axis: YAxis?) = axis?.let {
+                            val top = above + (BAND_GAP + bandTitle).toPx()
+                            Plot(left, top, end, top + vitalH.toPx(), 1, it)
+                        }
+                        val temp = below(hrBottom, tempAxis)
+                        val spo2 = below(temp?.bottom ?: hrBottom, spo2Axis)
+                        val bottom = (spo2 ?: temp)?.bottom ?: hrBottom
+                        for (r in runs) { // the estimated asleep time, a wash behind all the charts
                             val a = x(t0 + r.first * stepMs)
                             val width = x(t0 + (r.last + 1) * stepMs) - a
-                            drawRect(colors.onSurface.copy(alpha = 0.07f), Offset(a, moveTop), Size(width, hrBottom - moveTop))
+                            drawRect(colors.onSurface.copy(alpha = 0.07f), Offset(a, moveTop), Size(width, bottom - moveTop))
                         }
                         val move = Plot(left, moveTop, end, moveBottom, 1, moveAxis)
                         val heart = Plot(left, hrTop, end, hrBottom, 1, hrAxis)
-                        drawGrid(move, ink)
-                        drawGrid(heart, ink)
-                        for ((title, top) in listOf("Movement, share of the minute" to moveTop, "Heart rate, bpm" to hrTop)) {
+                        for (p in listOfNotNull(move, heart, temp, spo2)) drawGrid(p, ink)
+                        val titles = listOfNotNull(
+                            "Movement, share of the minute" to moveTop,
+                            "Heart rate, bpm" to hrTop,
+                            temp?.let { "Skin temperature, °C" to it.top },
+                            spo2?.let { "Blood oxygen, %" to it.top },
+                        )
+                        for ((title, top) in titles) {
                             // One line, cut with "…" when large text makes it wider than the chart; the legend says it too.
                             val l = ink.measurer.measure(
                                 title, ink.label, TextOverflow.Ellipsis, maxLines = 1,
@@ -400,14 +446,18 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                             val to = Offset(maxOf(x(t0 + (r.last + 1) * stepMs), a + 2.dp.toPx()), remY)
                             drawLine(SERIES_3, Offset(a, remY), to, 4.dp.toPx(), StrokeCap.Round)
                         }
-                        var previous: Offset? = null
-                        for (b in bs) {
-                            val point = b.hr?.let { Offset(x(b.startMs) + slot / 2, heart.y(it)) }
-                            if (point != null && previous != null) {
-                                drawLine(SERIES_1, previous, point, 2.dp.toPx(), StrokeCap.Round)
+                        fun curve(p: Plot, of: (Bucket) -> Float?) {
+                            var previous: Offset? = null
+                            for (b in bs) {
+                                val point = of(b)?.let { Offset(x(b.startMs) + slot / 2, p.y(it)) }
+                                if (point != null && previous != null) {
+                                    drawLine(SERIES_1, previous, point, 2.dp.toPx(), StrokeCap.Round)
+                                }
+                                previous = point
                             }
-                            previous = point
                         }
+                        curve(heart) { it.hr }
+                        temp?.let { p -> curve(p) { it.skinTemp } }
                         // Event names in up to three rows; a name with no room is left to the list and the readout.
                         val rowEnds = FloatArray(3) { Float.NEGATIVE_INFINITY }
                         fun label(text: String, at: Float) {
@@ -429,8 +479,17 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                         for (m in events) {
                             val mx = x(m.atMs)
                             val hairline = colors.onSurfaceVariant.copy(alpha = 0.5f)
-                            drawLine(hairline, Offset(mx, lane.toPx() - 2.dp.toPx()), Offset(mx, hrBottom), 1.dp.toPx())
+                            drawLine(hairline, Offset(mx, lane.toPx() - 2.dp.toPx()), Offset(mx, bottom), 1.dp.toPx())
                             label(m.short, mx)
+                        }
+                        // Dots, never joined: 8 dp with a 2 dp ring in the card colour, so close ones and the marker
+                        // lines behind stay apart.
+                        if (spo2 != null) {
+                            for ((ms, v) in checks) {
+                                val c = Offset(x(ms + stepMs / 2), spo2.y(v))
+                                drawCircle(ink.surface, 6.dp.toPx(), c)
+                                drawCircle(SERIES_1, 4.dp.toPx(), c)
+                            }
                         }
                         val hours = when {
                             t1 - t0 <= 4 * 3_600_000L -> 1
@@ -444,22 +503,26 @@ private fun Timeline(s: NightSummary, phone: PhoneNight?, night: LocalDate, zone
                             if (h.hour % hours == 0) {
                                 val l = ink.measurer.measure(clock(ms), ink.label)
                                 val lx = (x(ms) - l.size.width / 2f).coerceIn(left, maxOf(left, end - l.size.width))
-                                drawText(l, topLeft = Offset(lx, hrBottom + 4.dp.toPx()))
+                                drawText(l, topLeft = Offset(lx, bottom + 4.dp.toPx()))
                             }
                             h = h.plusHours(1)
                         }
                         selected?.let { t ->
                             val crosshair = colors.onSurface.copy(alpha = 0.6f)
-                            drawLine(crosshair, Offset(x(t), moveTop), Offset(x(t), hrBottom), 1.dp.toPx())
+                            drawLine(crosshair, Offset(x(t), moveTop), Offset(x(t), bottom), 1.dp.toPx())
                         }
                     }
                     selected?.let { t ->
                         val b = bs[((t - t0) / (per * stepMs)).toInt().coerceIn(0, bs.size - 1)]
                         val asleep = e.asleep.getOrNull(((t - t0) / stepMs).toInt())
                         val rem = e.remLikely.getOrNull(((t - t0) / stepMs).toInt()) == true
+                        // The spot check nearest the tap within 10 min, as for the events: a dot is hard to hit exactly.
+                        val check = checks.minByOrNull { abs(it.first - t) }?.takeIf { abs(it.first - t) <= 10 * 60_000L }
                         val values = listOfNotNull(
                             b.hr?.let { "heart rate" to "${it.roundToInt()} bpm" },
                             b.movement?.let { "movement" to "${(it * 100).roundToInt()}%" },
+                            b.skinTemp?.let { "skin temperature" to celsius(it) },
+                            check?.let { (ms, v) -> "blood oxygen, ${clock(ms)}" to "${v.roundToInt()}%" },
                             asleep?.let {
                                 "" to when {
                                     !it -> "Awake (estimated)"

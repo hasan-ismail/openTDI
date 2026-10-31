@@ -57,7 +57,10 @@ data class SleepEstimate(
     val method: String,
 )
 
-/** The night minute by minute from [startMs], for the night timeline; every list but an empty [remLikely] has one length. */
+/**
+ * The night minute by minute from [startMs], for the night timeline; every list has one length, but [remLikely] is
+ * empty without a sleep estimate and [skinTempC] and [spo2Pct] in a summary kept from before they were added.
+ */
 @Serializable
 data class Epochs(
     val startMs: Long,
@@ -73,6 +76,10 @@ data class Epochs(
      * [asleep] is, and empty without a sleep estimate.
      */
     val remLikely: List<Boolean?> = emptyList(),
+    /** Skin temperature, °C, while on the wrist (w_packets.csv skin_temp_c); null where there is none. */
+    val skinTempC: List<Float?> = emptyList(),
+    /** Blood oxygen, %: each completed spot check in its minute (w_spo2.csv SPO2_RESULT), null between checks. */
+    val spo2Pct: List<Float?> = emptyList(),
 )
 
 /** The morning wake-up alarm (w_alarm.csv, alarm WAKE). */
@@ -157,7 +164,7 @@ data class DreamReport(
 )
 
 /** Bump whenever [summarizeNight]'s output changes for the same files. */
-const val SUMMARY_VERSION = 6
+const val SUMMARY_VERSION = 7
 
 /** The evening a time belongs to: noon to noon, so an evening and the night after it share one date. */
 fun nightDate(epochMs: Long, zone: ZoneId): LocalDate =

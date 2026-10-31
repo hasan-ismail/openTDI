@@ -4,6 +4,7 @@ import com.opentdi.shared.csv.CsvFiles.P_TRANSITIONS
 import com.opentdi.shared.csv.CsvFiles.W_ALARM
 import com.opentdi.shared.csv.CsvFiles.W_MORNING
 import com.opentdi.shared.csv.CsvFiles.W_PACKETS
+import com.opentdi.shared.csv.CsvFiles.W_SPO2
 import com.opentdi.shared.csv.CsvWriter
 import com.opentdi.shared.model.SensorSource
 import java.io.StringReader
@@ -34,6 +35,7 @@ class NightSummariesTest {
         val hr: Float? = 60f,
         val hrStatus: Int? = 1,
         val edaStatus: Int? = 0,
+        val skinTemp: Float? = 33f,
     )
 
     private fun csv(columns: List<String>, rows: List<List<Any?>>): String {
@@ -52,7 +54,7 @@ class NightSummariesTest {
                 val ts = startMs + s * 1000L
                 listOf(
                     ts, s, SensorSource.SAMSUNG_SDK, r.hr, r.hrStatus, emptyList<Int>(), null, 1.2f, r.edaStatus, 1f,
-                    0.003f, 0.01f, r.stillness, false, false, null, 25, ts + 1200, 33f, null, r.angle,
+                    0.003f, 0.01f, r.stillness, false, false, null, 25, ts + 1200, r.skinTemp, null, r.angle,
                 ).take(columns.size)
             },
         )
@@ -487,6 +489,32 @@ class NightSummariesTest {
         assertEquals(1f, e.movement[10])
         assertEquals(0f, e.movement[60])
         assertEquals(60f, e.hrBpm[60])
+    }
+
+    @Test
+    fun skinTempAndSpo2_perMinute_invalidValuesLeftOut() {
+        val packets = W_PACKETS.name to packets(start, 2 * 3600) { s ->
+            when (s / 60) {
+                5 -> Row(jitter(s), skinTemp = 0f)
+                6 -> Row(jitter(s), skinTemp = 50f)
+                7 -> Row(jitter(s), hr = null, hrStatus = -3) // off the wrist: the air, not the skin
+                else -> Row(jitter(s))
+            }
+        }
+        val spo2 = W_SPO2.name to csv(
+            W_SPO2.columns,
+            listOf(
+                listOf(at(10), at(10) - 20_000, 0, 60, 0, "DATA", null, null), // still measuring
+                listOf(at(10) + 500, at(10), 96, 61, 2, "SPO2_RESULT", 25, 30_000),
+                listOf(at(30), at(30) - 1000, null, 60, -6, "SPO2_TIMEOUT", 20, 60_000),
+                listOf(at(50), at(50), 0, 60, 2, "SPO2_RESULT", 25, 30_000),
+                listOf(start, start - 60_000, 95, 60, 2, "SPO2_RESULT", 25, 30_000), // before the recording
+            ),
+        )
+        val e = summarize(mapOf(packets, spo2))!!.epochs
+        assertEquals(List(120) { m -> if (m in 5..7) null else 33f }, e.skinTempC)
+        assertEquals(List(120) { m -> if (m == 10) 96f else null }, e.spo2Pct)
+        assertEquals(List(120) { null }, summarize(mapOf(packets))!!.epochs.spo2Pct) // no w_spo2.csv
     }
 
     @Test
