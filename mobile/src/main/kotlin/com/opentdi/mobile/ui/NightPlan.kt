@@ -14,7 +14,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.opentdi.shared.audio.alarmsAhead
 import com.opentdi.shared.audio.nextAlarmAt
-import com.opentdi.shared.audio.wbtbTooSoon
 import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.AudioRouteMode
 import com.opentdi.shared.model.SessionConfig
@@ -31,15 +30,11 @@ fun nightPlan(c: SessionConfig, now: ZonedDateTime): List<PlanMark> {
     val nowMs = now.toInstant().toEpochMilli()
     // As the watch sets them; rounded up, so an alarm keeps its minute when now has seconds.
     fun ahead(at: Int) = ((nextAlarmAt(at, nowMs, now.zone) - nowMs + 59_999) / 60_000).toInt()
-    // The watch skips a WBTB too soon after Start, in milliseconds, so not by the rounded minutes.
-    // shortcut: a night restarted soon after a stopped one keeps its earlier start on the watch (WakeAlarms), so the
-    // plan can wrongly leave WBTB out then; upgrade if the phone ever learns the watch's night start.
-    val wbtbRings = !wbtbTooSoon(nextAlarmAt(c.alarms.wbtbAtMin, nowMs, now.zone), nowMs)
     return listOfNotNull(
         PlanMark(CUES, minOf(c.timed.firstSleepMinMin, c.sessionMaxMin), c.sessionMaxMin),
         // Timed from falling asleep, it rings at the set time or before (WakeAlarms.wbtbTime).
         PlanMark(if (c.alarms.wbtbAfterSleepMin != null) WBTB_BY else WBTB, ahead(c.alarms.wbtbAtMin))
-            .takeIf { c.alarms.wbtbEnabled && wbtbRings },
+            .takeIf { c.alarms.wbtbEnabled },
         PlanMark(WAKE, ahead(c.alarms.wakeAtMin)).takeIf { c.alarms.wakeEnabled },
     )
 }
@@ -54,7 +49,7 @@ fun nightPlanLine(c: SessionConfig, now: ZonedDateTime): String {
             else -> "${it.label} ${at(now, it.fromMin)}"
         }
     }
-    return if (wbtbSkipped(c, marks)) "$line · no WBTB tonight (less than 4½ hours after Start)" else line
+    return line
 }
 
 /**
@@ -65,12 +60,11 @@ fun tonightSummary(c: SessionConfig, now: ZonedDateTime): String {
     val device = if (c.audio.route == AudioRouteMode.WATCH_WRIST_SPEAKER) "watch" else "phone"
     val marks = nightPlan(c, now)
     val alarms = marks.filter { it.label != CUES }.map { "${it.label} ${at(now, it.fromMin)}" }
-    val skipped = wbtbSkipped(c, marks)
     return "The voice plays from your $device." + when (alarms.size) {
-        0 -> if (skipped) "" else " No alarms tonight."
+        0 -> " No alarms tonight."
         1 -> " Alarm on the watch: ${alarms[0]}."
         else -> " Alarms on the watch: ${alarms.joinToString(", ")}."
-    } + if (skipped) " No WBTB tonight: it's less than 4½ hours away." else ""
+    }
 }
 
 /** After the voice, while the watch tracks: the alarms still [ahead] ([alarmsAhead]'s words) and how the night ends. */
@@ -85,7 +79,7 @@ fun nightOnText(ahead: String?, wakeEnabled: Boolean): String {
 
 /**
  * The alarms still to ring tonight: the watch's own list when it sends one (only it knows a snooze, or a WBTB
- * skipped or too soon), else [alarmsAhead] from the settings (an older watch app, or no answer). Null when none.
+ * skipped), else [alarmsAhead] from the settings (an older watch app, or no answer). Null when none.
  */
 fun alarmsLeftTonight(watch: WatchStatus?, alarms: AlarmConfig): String? = when (val left = watch?.alarmsLeft) {
     null -> alarmsAhead(alarms, System.currentTimeMillis(), ZoneId.systemDefault())
@@ -93,10 +87,6 @@ fun alarmsLeftTonight(watch: WatchStatus?, alarms: AlarmConfig): String? = when 
 }
 
 private fun at(now: ZonedDateTime, min: Int) = now.plusMinutes(min.toLong()).let { clock12(it.hour * 60 + it.minute) }
-
-/** WBTB is on, but too soon after a start now for the watch to ring it. */
-private fun wbtbSkipped(c: SessionConfig, marks: List<PlanMark>) =
-    c.alarms.wbtbEnabled && marks.none { it.label == WBTB || it.label == WBTB_BY }
 
 /** Tonight's plan as a timeline from now (a hollow dot) to the last alarm, shown while no session runs. */
 @Composable

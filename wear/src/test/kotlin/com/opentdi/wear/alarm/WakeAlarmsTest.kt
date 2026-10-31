@@ -69,15 +69,15 @@ class WakeAlarmsTest {
         val wbtb = 4 * 60 + 30 // 4:30 AM
         val start = 23 * hour
         val tonight = 28 * hour + 30 * 60_000
-        assertEquals(tonight, WakeAlarms.wbtbAhead(WakeAlarms.nextWbtbAt(wbtb, start, null, utc), start, start))
+        assertEquals(tonight, WakeAlarms.wbtbAhead(WakeAlarms.nextWbtbAt(wbtb, start, null, utc), start))
         // Up at 2:00, skipped or started now: the next 4:30 is the next night's, so none is ahead tonight.
         val up = 26 * hour
-        assertNull(WakeAlarms.wbtbAhead(WakeAlarms.nextWbtbAt(wbtb, up, up, utc), up, start))
+        assertNull(WakeAlarms.wbtbAhead(WakeAlarms.nextWbtbAt(wbtb, up, up, utc), up))
         // Moved to 5 AM at 3:00, or a restart at 3:00 with the saved done time: still none tonight.
-        assertNull(WakeAlarms.wbtbAhead(WakeAlarms.nextWbtbAt(5 * 60, 27 * hour, up, utc), 27 * hour, start))
-        // Too soon after the night began to ring, or more than 12 h away: none either.
-        assertNull(WakeAlarms.wbtbAhead(tonight, 25 * hour, 25 * hour))
-        assertNull(WakeAlarms.wbtbAhead(tonight, 14 * hour, 14 * hour))
+        assertNull(WakeAlarms.wbtbAhead(WakeAlarms.nextWbtbAt(5 * 60, 27 * hour, up, utc), 27 * hour))
+        // However soon after the night began, it rings (owner, 2026-10-31); more than 12 h away: none.
+        assertEquals(tonight, WakeAlarms.wbtbAhead(tonight, 25 * hour))
+        assertNull(WakeAlarms.wbtbAhead(tonight, 14 * hour))
     }
 
     @Test
@@ -90,12 +90,6 @@ class WakeAlarmsTest {
         assertEquals(hour, moved - seven.toInstant().toEpochMilli()) // 7 AM in Chicago is an hour later
     }
 
-    @Test
-    fun wbtbTooSoon_skipsAnEarlyWakeUpLessThan4_5HoursIntoTheNight() {
-        val wbtb = 28 * hour + 30 * 60_000 // 4:30 AM
-        assertTrue(WakeAlarms.wbtbTooSoon(wbtb, 25 * hour)) // to bed at 1 AM: 3.5 h, skipped
-        assertFalse(WakeAlarms.wbtbTooSoon(wbtb, 24 * hour)) // to bed at midnight: 4.5 h, rings
-    }
 
     private val min = 60_000L
     private val setAt = 28 * hour + 30 * min // the set time, 4:30 AM

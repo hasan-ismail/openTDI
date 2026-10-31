@@ -77,10 +77,9 @@ class TonightTest {
         )
         val none = AlarmConfig(wakeEnabled = false, wbtbEnabled = false)
         assertEquals("The voice plays from your phone. No alarms tonight.", tonightSummary(SessionConfig(alarms = none), at23))
-        // At 1 AM WBTB is 3½ hours away: the watch skips it.
+        // At 1 AM WBTB is 3½ hours away: it still rings (owner, 2026-10-31: no silent skip).
         assertEquals(
-            "The voice plays from your phone. Alarm on the watch: wake-up 7\u00A0AM. No WBTB tonight: it's less " +
-                "than 4½ hours away.",
+            "The voice plays from your phone. Alarms on the watch: WBTB 4:30\u00A0AM, wake-up 7\u00A0AM.",
             tonightSummary(SessionConfig(alarms = both), at23.plusHours(2)),
         )
         assertEquals(
@@ -277,28 +276,24 @@ class TonightTest {
     }
 
     @Test
-    fun nightPlan_leavesOutAnEarlyWakeUpTheWatchWouldSkip() {
+    fun nightPlan_keepsWbtbHoweverSoonAfterStart() {
         val cfg = SessionConfig(alarms = AlarmConfig(wbtbEnabled = true, wbtbAtMin = 4 * 60 + 30))
-        val late = ZonedDateTime.of(2026, 3, 10, 0, 30, 0, 0, ZoneId.of("UTC")) // 4 h before it: the watch skips it
-        assertTrue(nightPlan(cfg, late).none { it.label == "WBTB" })
-        assertTrue(nightPlanLine(cfg, late).endsWith(" · no WBTB tonight (less than 4½ hours after Start)"))
-        val midnight = late.withMinute(0) // 4.5 h: it rings
-        assertEquals(PlanMark("WBTB", 270), nightPlan(cfg, midnight)[1])
-        assertFalse("no WBTB" in nightPlanLine(cfg, midnight))
+        val late = ZonedDateTime.of(2026, 3, 10, 0, 30, 0, 0, ZoneId.of("UTC")) // 4 h before it: still rings
+        assertEquals(PlanMark("WBTB", 240), nightPlan(cfg, late)[1])
+        assertFalse("no WBTB" in nightPlanLine(cfg, late))
     }
 
     @Test
-    fun nightPlan_sleepTimingSaysBy_andASkipStaysASkip() {
+    fun nightPlan_sleepTimingSaysBy() {
         val alarms = AlarmConfig(wakeAtMin = 420, wbtbEnabled = true, wbtbAtMin = 270, wbtbAfterSleepMin = 360)
         val zone = ZoneId.of("America/New_York")
         val at23 = ZonedDateTime.of(2026, 10, 28, 23, 0, 0, 0, zone)
         val cfg = SessionConfig(alarms = alarms)
         assertEquals(PlanMark("WBTB by", 330), nightPlan(cfg, at23)[1])
         assertTrue("· WBTB by 4:30\u00A0AM ·" in nightPlanLine(cfg, at23))
-        for (c in listOf(cfg, SessionConfig(alarms = alarms.copy(wbtbAfterSleepMin = null)))) {
-            val line = nightPlanLine(c, at23.plusHours(2)) // 1 AM: 3.5 h before it, the watch skips it
-            assertTrue(line, line.endsWith(" · no WBTB tonight (less than 4½ hours after Start)"))
-        }
+        // 1 AM, 3.5 h before it: the set time still rings, so the plan still names it.
+        val line = nightPlanLine(SessionConfig(alarms = alarms.copy(wbtbAfterSleepMin = null)), at23.plusHours(2))
+        assertTrue(line, "· WBTB 4:30\u00A0AM ·" in line)
     }
 
     @Test

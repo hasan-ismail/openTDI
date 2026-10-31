@@ -305,9 +305,9 @@ the tracking service. Each step is a `BACKUP` row in the night's `w_alarm.csv` (
 `NOT_ARMED`) and a `BACKUP_*` line in `adb -s $W logcat -s OTDI.Sensors`.
 
 **WBTB options (watch).** While tracking, the main screen offers **Skip WBTB** (tonight only; the
-wake-up alarm and tracking go on; it asks first) and **I woke up**. From 4½ hours into the night, **I woke up** offers
-**Do my WBTB now**, which starts WBTB without ringing; before that, or with none ahead, it goes
-straight to **Save my dream**. Skip or start, like a ring, settles WBTB for that night, even after a
+wake-up alarm and tracking go on; it asks first) and **I woke up**. While WBTB is still ahead, **I woke up** offers
+**Do my WBTB now**, which starts WBTB without ringing; with none ahead, it goes
+straight to **Save my dream**. WBTB always rings at its set time, however soon after Start. Skip or start, like a ring, settles WBTB for that night, even after a
 restart or a time change. **Save my dream** in the night records the dream only, with no questions, as a
 `w_morning.csv` row with `after=NIGHT`; the night goes on, and Stats labels it "Dream saved in the night". After the night
 ends, **Save my dream** (From last night) saves a dream report into the last night's folder

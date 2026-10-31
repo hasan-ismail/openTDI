@@ -1,6 +1,5 @@
 package com.opentdi.shared.audio
 
-import com.opentdi.shared.config.MIN_SLEEP_BEFORE_WBTB_MIN
 import com.opentdi.shared.model.AlarmConfig
 import com.opentdi.shared.model.AlarmTone
 import com.opentdi.shared.time.clock12
@@ -93,9 +92,6 @@ fun nextAlarmAt(minuteOfDay: Int, fromMs: Long, zone: ZoneId): Long {
     if (!at.isAfter(from)) at = at.plusDays(1)
     return at.toInstant().toEpochMilli()
 }
-
-/** Too early a WBTB cuts the first, deep half of the night (MIN_SLEEP_BEFORE_WBTB_MIN): the watch skips it. */
-fun wbtbTooSoon(atMs: Long, nightStartMs: Long) = atMs - nightStartMs < MIN_SLEEP_BEFORE_WBTB_MIN * 60_000L
 
 /**
  * The alarms of [config] still to ring tonight, soonest first, e.g. "WBTB at 4:30 AM and the wake-up

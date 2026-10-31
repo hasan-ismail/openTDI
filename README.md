@@ -45,7 +45,7 @@ short while, then buzzes when to go back to bed. While the watch tracks your sle
 
 - **Skip WBTB** turns it off for tonight only (it asks first). Your wake-up alarm still rings, and the
   watch keeps tracking your sleep.
-- **I woke up**, then **Do my WBTB now** (from 4½ hours into the night) starts it straight away, without
+- **I woke up**, then **Do my WBTB now** starts it straight away, without
   ringing, if you are already awake. **I woke up** also offers **Save my dream**: say the dream, and the night goes on.
 
 In Settings › More, **Time it from when you fall asleep** makes WBTB ring a set time after the watch sees

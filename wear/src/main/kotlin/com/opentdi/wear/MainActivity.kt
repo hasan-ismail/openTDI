@@ -632,11 +632,7 @@ private fun MainScreen(
                     ?.let { "${it.replaceFirstChar(Char::uppercase)}." }
                     ?: "No alarm set on the watch".takeIf { !config.wakeEnabled && !config.wbtbEnabled }
                 alarms?.let { item { Line(it) } }
-                when (state.wbtbSkip) {
-                    "MIN_SLEEP_BEFORE_WBTB" ->
-                        item { Line("No WBTB tonight: it's less than 4½ hours after you went to bed.") }
-                    "PASSED" -> item { Line("No WBTB tonight: its time had already passed.") }
-                }
+                if (state.wbtbSkip == "PASSED") item { Line("No WBTB tonight: its time had already passed.") }
                 if (state.wbtbSkippedTonight) item { Line("WBTB skipped tonight.") }
                 if (showIWokeUp(state)) {
                     item {
@@ -1060,7 +1056,7 @@ private fun format(pattern: String, value: Float?) = value?.let { String.format(
 
 /**
  * The alarms still to ring, worded as [alarmsAhead]: a snoozed or rung-out wake-up at its next ring
- * ([wakeAgainAtMs]), and no WBTB that won't ring tonight ([wbtbWontRing]: too soon after bedtime, rung,
+ * ([wakeAgainAtMs]), and no WBTB that won't ring tonight ([wbtbWontRing]: rung,
  * skipped or started early).
  */
 internal fun alarmsLeft(
